@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Browse Files{% endblock %}
+
+{% block head %}
+<style>
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .breadcrumb a { color: var(--accent2); }
+  .breadcrumb span { color: var(--border); }
+
+  .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .file-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.15s;
+    text-decoration: none;
+    color: var(--text);
+  }
+  .file-card:hover {
+    border-color: var(--text-dim);
+    background: var(--surface2);
+    text-decoration: none;
+    transform: translateY(-1px);
+  }
+  .file-type-icon { font-size: 28px; flex-shrink: 0; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .file-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .filter-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 600;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">📁 Browse Files</div>
+
+  <!-- Breadcrumb -->
+  <div class="breadcrumb">
+    <a href="/files">Storage Root</a>
+    {% if current_path %}
+      {% set parts = current_path.split('/') %}
+      {% set accumulated = [] %}
+      {% for part in parts %}
+        {% if part %}
+          {% set _ = accumulated.append(part) %}
+          <span>›</span>
+          {% if not loop.last %}
+            <a href="/files?path={{ accumulated|join('/') }}">{{ part }}</a>
+          {% else %}
+            <strong style="color: var(--text);">{{ part }}</strong>
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    {% if parent is not none %}
+    <a href="/files?path={{ parent }}" class="btn btn-secondary btn-sm">← Up</a>
+    {% endif %}
+    <button class="filter-btn active" onclick="filterFiles('all')">All</button>
+    <button class="filter-btn" onclick="filterFiles('dir')">📁 Folders</button>
+    <button class="filter-btn" onclick="filterFiles('pdf')">📄 PDFs</button>
+    <button class="filter-btn" onclick="filterFiles('epub')">📖 Books</button>
+    <button class="filter-btn" onclick="filterFiles('mp4')">🎬 Videos</button>
+    <button class="filter-btn" onclick="filterFiles('zim')">📚 ZIM</button>
+    <span style="color: var(--text-dim); font-size: 12px; margin-left: auto;">
+      {{ items|length }} items
+    </span>
+  </div>
+
+  <!-- Files grid -->
+  {% if items %}
+  <div class="file-grid" id="fileGrid">
+    {% for item in items %}
+    {% set icons = {
+      'dir': '📁',
+      'pdf': '📄', 'PDF': '📄',
+      'epub': '📖', 'mobi': '📖', 'azw3': '📖',
+      'mp4': '🎬', 'mkv': '🎬', 'avi': '🎬', 'webm': '🎬',
+      'mp3': '🎵', 'm4a': '🎵',
+      'zim': '📚',
+      'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️',
+      'sh': '⚙️', 'py': '🐍',
+      'txt': '📝', 'md': '📝',
+      'mbtiles': '🗺️', 'pbf': '🗺️',
+    } %}
+    {% if item.is_dir %}
+    <a href="/files?path={{ item.path }}"
+       class="file-card" data-type="dir">
+      <div class="file-type-icon">📁</div>
+      <div class="file-info">
+        <div class="file-name">{{ item.name }}</div>
+        <div class="file-meta">Folder • {{ item.modified }}</div>
+      </div>
+    </a>
+    {% else %}
+    <a href="/serve/{{ item.path }}"
+       class="file-card" data-type="{{ item.ext }}" target="_blank">
+      <div class="file-type-icon">{{ icons.get(item.ext, '📄') }}</div>
+      <div class="file-info">
+        <div class="file-name">{{ item.name }}</div>
+        <div class="file-meta">{{ item.ext.upper() if item.ext else 'FILE' }} • {{ item.size_mb }} MB • {{ item.modified }}</div>
+      </div>
+    </a>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="text-align: center; padding: 60px 20px; color: var(--text-dim);">
+    <div style="font-size: 48px; margin-bottom: 12px;">📭</div>
+    <div style="font-size: 16px; font-weight: 600;">No content here yet</div>
+    <div style="margin-top: 8px; font-size: 14px;">
+      Run <code style="background:var(--surface2); padding:2px 8px; border-radius:4px;">
+      bash download/download_all.sh</code> to start downloading
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterFiles(type) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+
+  document.querySelectorAll('#fileGrid .file-card').forEach(card => {
+    if (type === 'all') {
+      card.style.display = '';
+    } else if (type === 'dir') {
+      card.style.display = card.dataset.type === 'dir' ? '' : 'none';
+    } else {
+      card.style.display = card.dataset.type === type ? '' : 'none';
+    }
+  });
+}
+</script>
+{% endblock %}

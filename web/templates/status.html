@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}System Status{% endblock %}
+
+{% block head %}
+<style>
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+  }
+  .stat-val { font-size: 32px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .content-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .content-row:last-child { border-bottom: none; }
+  .content-icon { font-size: 24px; }
+  .content-info { flex: 1; }
+  .content-name { font-size: 13px; font-weight: 600; }
+  .content-meta { font-size: 12px; color: var(--text-dim); }
+  .file-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .file-table th {
+    text-align: left; padding: 8px 12px;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .file-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .file-table tr:hover td { background: var(--surface2); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">📊 System Status</div>
+  <div class="page-sub">Real-time status of all SurviveV1 services and content</div>
+
+  <!-- Storage overview -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-val" style="color:var(--accent);">{{ storage.used_gb }}</div>
+      <div class="stat-label">GB Used</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" style="color:var(--accent2);">{{ storage.free_gb }}</div>
+      <div class="stat-label">GB Free</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">{{ storage.total_gb }}</div>
+      <div class="stat-label">GB Total</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" style="color:{{ 'var(--danger)' if storage.percent > 90 else 'var(--warning)' if storage.percent > 75 else 'var(--accent)' }};">
+        {{ storage.percent }}%
+      </div>
+      <div class="stat-label">Disk Used</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" style="color:var(--accent);">
+        {{ services.values()|selectattr('running')|list|length }}
+      </div>
+      <div class="stat-label">Services Up</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" style="color:var(--text-dim);">
+        {{ services.values()|rejectattr('running')|list|length }}
+      </div>
+      <div class="stat-label">Services Down</div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+
+    <!-- Services -->
+    <div class="card">
+      <div class="card-title">Services</div>
+      {% for name, svc in services.items() %}
+      <div class="service-row">
+        <div class="service-icon">{{ svc.icon }}</div>
+        <div class="service-info">
+          <div class="service-name">{{ svc.name }}</div>
+          <div class="service-port">localhost:{{ svc.port }}</div>
+        </div>
+        {% if svc.running %}
+          <a href="http://localhost:{{ svc.port }}" target="_blank"
+             class="badge badge-green" style="text-decoration:none;">● UP</a>
+        {% else %}
+          <span class="badge badge-red">● DOWN</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+
+      <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);">
+        <button onclick="fetch('/api/status').then(r=>r.json()).then(d=>location.reload())"
+                class="btn btn-secondary btn-sm">Refresh Status</button>
+      </div>
+    </div>
+
+    <!-- Content inventory -->
+    <div class="card">
+      <div class="card-title">Content Inventory</div>
+      {% set content_icons = {'zim': '📚', 'videos': '🎬', 'books': '📖', 'pdfs': '📄', 'maps': '🗺️'} %}
+      {% for cat, stats in content.items() %}
+      <div class="content-row">
+        <div class="content-icon">{{ content_icons.get(cat, '📦') }}</div>
+        <div class="content-info">
+          <div class="content-name">{{ cat|title }}</div>
+          <div class="content-meta">
+            {% if stats.exists %}
+              {{ stats.count }} files • {{ stats.size_gb }} GB
+            {% else %}
+              Not downloaded yet
+            {% endif %}
+          </div>
+        </div>
+        {% if stats.exists %}
+          <span class="badge badge-green">✓</span>
+        {% else %}
+          <span class="badge badge-red">✗</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+
+  <!-- Recent files -->
+  {% if recent %}
+  <div class="card" style="margin-top: 20px;">
+    <div class="card-title">Recently Downloaded</div>
+    <table class="file-table">
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Type</th>
+          <th>Size</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in recent[:15] %}
+        <tr>
+          <td>{{ f.name }}</td>
+          <td><span class="badge badge-blue">{{ f.path.split('/')[0] }}</span></td>
+          <td style="color:var(--text-dim);">{{ f.size_mb }} MB</td>
+          <td style="color:var(--text-dim);">{{ f.modified[:10] }}</td>
+          <td>
+            <a href="/serve/{{ f.path }}" class="btn btn-secondary btn-sm"
+               target="_blank">Open</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Commands reference -->
+  <div class="card" style="margin-top: 20px;">
+    <div class="card-title">Management Commands</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      {% set commands = [
+        ('Start all services', 'bash scripts/start_services.sh'),
+        ('Stop all services', 'bash scripts/stop_services.sh'),
+        ('Check status', 'bash scripts/status.sh'),
+        ('Download all content', 'bash download/download_all.sh'),
+        ('Update content', 'bash scripts/update_content.sh'),
+        ('Sync to cloud', 'bash sync/sync_to_cloud.sh gdrive'),
+        ('Download Wikipedia', 'bash download/kiwix_content.sh --only wikipedia'),
+        ('Download videos', 'bash download/videos.sh'),
+      ] %}
+      {% for label, cmd in commands %}
+      <div style="background: var(--surface2); border: 1px solid var(--border);
+                  border-radius: var(--radius); padding: 10px 12px;">
+        <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 4px;">{{ label }}</div>
+        <code style="font-family: var(--mono); font-size: 12px; color: var(--accent);">{{ cmd }}</code>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

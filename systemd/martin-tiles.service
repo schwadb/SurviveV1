@@ -1,0 +1,17 @@
+[Unit]
+Description=Martin Tile Server (Offline Maps)
+After=network.target local-fs.target
+
+[Service]
+Type=simple
+User=pi
+ExecStart=/usr/local/bin/martin \
+    --config /mnt/survive/maps/martin_config.yaml \
+    --listen-addresses 0.0.0.0:3000
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/survive_maps.log
+StandardError=append:/var/log/survive_maps.log
+
+[Install]
+WantedBy=multi-user.target

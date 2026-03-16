@@ -1,0 +1,19 @@
+[Unit]
+Description=SurviveV1 Dashboard Web Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/survive/web
+ExecStart=/opt/survive/venv/bin/python3 /opt/survive/web/server.py
+Restart=on-failure
+RestartSec=5
+Environment="PORT=8080"
+Environment="HOST=0.0.0.0"
+StandardOutput=append:/var/log/survive_dashboard.log
+StandardError=append:/var/log/survive_dashboard.log
+
+[Install]
+WantedBy=multi-user.target

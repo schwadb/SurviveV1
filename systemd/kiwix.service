@@ -1,0 +1,21 @@
+[Unit]
+Description=Kiwix Server (Offline Wikipedia & Books)
+After=network.target local-fs.target
+Wants=local-fs.target
+
+[Service]
+Type=simple
+User=pi
+ExecStartPre=/bin/mkdir -p /mnt/survive/zim
+ExecStart=/usr/local/bin/kiwix-serve \
+    --library /mnt/survive/.kiwix_library.xml \
+    --port 8081 \
+    --address 0.0.0.0 \
+    --threads 4
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/survive_kiwix.log
+StandardError=append:/var/log/survive_kiwix.log
+
+[Install]
+WantedBy=multi-user.target

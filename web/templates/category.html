@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ cat.name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <!-- Category header -->
+  <div style="background: var(--surface); border: 1px solid var(--border);
+              border-left: 4px solid {{ cat.color }}; border-radius: var(--radius);
+              padding: 20px; margin-bottom: 24px; display: flex; align-items: center; gap: 16px;">
+    <div style="font-size: 48px;">{{ cat.icon }}</div>
+    <div>
+      <div class="page-title">{{ cat.name }}</div>
+      <div class="page-sub" style="margin-bottom: 0;">{{ cat.desc }}</div>
+    </div>
+  </div>
+
+  <!-- Category nav -->
+  <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px;">
+    {% for c in categories %}
+    <a href="/category/{{ c.id }}"
+       style="background: {{ 'var(--surface2)' if c.id == cat.id else 'var(--surface)' }};
+              border: 1px solid {{ c.color if c.id == cat.id else 'var(--border)' }};
+              color: var(--text); padding: 6px 12px; border-radius: 20px;
+              font-size: 12px; text-decoration: none; transition: all 0.15s;"
+       onmouseover="this.style.borderColor='{{ c.color }}'"
+       onmouseout="if('{{ c.id }}'!='{{ cat.id }}') this.style.borderColor='var(--border)'">
+      {{ c.icon }} {{ c.name }}
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- Quick links to services for this category -->
+  {% set service_links = {
+    'reference': [('Wikipedia', 'http://localhost:8081', '📚'), ('E-Books', 'http://localhost:8083', '📖')],
+    'education': [('Khan Academy', 'http://localhost:8082', '🎓'), ('Wikipedia', 'http://localhost:8081', '📚')],
+    'videos': [('Video Player', 'http://localhost:8096', '🎬')],
+    'maps': [('Map Server', 'http://localhost:3000', '🗺️')],
+  } %}
+
+  {% if cat.id in service_links %}
+  <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+    {% for name, url, icon in service_links[cat.id] %}
+    <a href="{{ url }}" target="_blank" class="btn btn-secondary">
+      {{ icon }} Open {{ name }}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Files in this category -->
+  {% if files %}
+  <div style="margin-bottom: 12px; color: var(--text-dim); font-size: 13px;">
+    {{ files|length }} files in this category
+  </div>
+  <div class="grid grid-auto">
+    {% set ext_icons = {
+      'pdf': '📄', 'epub': '📖', 'mobi': '📖',
+      'mp4': '🎬', 'mkv': '🎬',
+      'zim': '📚', 'mp3': '🎵',
+      'jpg': '🖼️', 'png': '🖼️', 'webp': '🖼️',
+    } %}
+    {% for f in files %}
+    <a href="/serve/{{ f.path }}" class="cat-card" target="_blank"
+       style="border-left: 3px solid {{ cat.color }};">
+      <div class="cat-icon">{{ ext_icons.get(f.ext, '📄') }}</div>
+      <div class="cat-info">
+        <div class="cat-name" style="white-space: normal; font-size: 13px;">{{ f.name }}</div>
+        <div class="cat-desc">{{ f.ext.upper() if f.ext else 'FILE' }} • {{ f.size_mb }} MB</div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="text-align: center; padding: 60px 20px;">
+    <div style="font-size: 64px; margin-bottom: 12px;">{{ cat.icon }}</div>
+    <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">
+      No files yet in {{ cat.name }}
+    </div>
+    <div style="color: var(--text-dim); font-size: 14px; margin-bottom: 20px;">
+      Download content to populate this category
+    </div>
+    <div style="display: inline-flex; flex-direction: column; gap: 8px; text-align: left;">
+      <code style="background: var(--surface2); padding: 8px 14px; border-radius: var(--radius);
+                   font-size: 13px; color: var(--accent);">
+        bash download/download_all.sh
+      </code>
+      <code style="background: var(--surface2); padding: 8px 14px; border-radius: var(--radius);
+                   font-size: 13px; color: var(--accent);">
+        bash download/books_pdfs.sh
+      </code>
+    </div>
+    <div style="margin-top: 20px;">
+      <a href="/ai" class="btn btn-primary">🤖 Ask AI Assistant about {{ cat.name }}</a>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

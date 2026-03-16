@@ -1,0 +1,17 @@
+[Unit]
+Description=Ollama Local AI Server
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+Environment="OLLAMA_MODELS=/mnt/survive/ai_models/ollama"
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+ExecStart=/usr/local/bin/ollama serve
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/survive_ollama.log
+StandardError=append:/var/log/survive_ollama.log
+
+[Install]
+WantedBy=multi-user.target
