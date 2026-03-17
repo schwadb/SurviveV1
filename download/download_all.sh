@@ -127,6 +127,11 @@ main() {
         run_or_dry bash "$REPO_DIR/download/kolibri_content.sh" --storage "$STORAGE_PATH"
     fi
 
+    # Gap-filling content from expert research
+    if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "gaps" ]]; then
+        run_or_dry bash "$REPO_DIR/download/gaps_content.sh" --storage "$STORAGE_PATH"
+    fi
+
     section "Download Complete"
     df -h "$STORAGE_PATH"
     success "All selected content downloaded to $STORAGE_PATH"
