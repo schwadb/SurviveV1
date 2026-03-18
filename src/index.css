@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+/* ─── Base ─────────────────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #0a0e1a;
+  color: #e2e8f0;
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #111827; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+
+/* ─── Reusable component classes ───────────────────────────────────────────── */
+
+.card {
+  background: #1a2235;
+  border: 1px solid #1f2937;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #1f2937;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #4f46e5;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+  text-decoration: none;
+}
+.btn-primary:hover:not(:disabled) { background: #4338ca; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  border: 1px solid #374151;
+  cursor: pointer;
+  transition: background 0.2s;
+  text-decoration: none;
+}
+.btn-secondary:hover:not(:disabled) { background: #374151; }
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.input-field {
+  background: #111827;
+  border: 1px solid #374151;
+  color: #f3f4f6;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  width: 100%;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input-field::placeholder { color: #6b7280; }
+.input-field:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.3);
+}
+
+/* Badge base */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.badge-green { background: rgba(20,83,45,0.5); color: #4ade80; }
+.badge-yellow { background: rgba(113,63,18,0.5); color: #facc15; }
+.badge-red { background: rgba(127,29,29,0.5); color: #f87171; }
+.badge-blue { background: rgba(30,58,138,0.5); color: #60a5fa; }
+.badge-purple { background: rgba(88,28,135,0.5); color: #c084fc; }
+
+.status-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  cursor: pointer;
+  border: none;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+}
+.nav-item-active {
+  background: rgba(99,102,241,0.15);
+  color: #818cf8;
+  border: 1px solid rgba(99,102,241,0.3);
+}
+.nav-item-active:hover { background: rgba(99,102,241,0.2); }
+.nav-item-inactive {
+  color: #9ca3af;
+  background: transparent;
+  border: 1px solid transparent;
+}
+.nav-item-inactive:hover { background: rgba(31,41,55,0.6); color: #e5e7eb; }
+
+.glow-border {
+  border-color: rgba(99,102,241,0.3) !important;
+  box-shadow: 0 0 15px rgba(99,102,241,0.15);
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #f3f4f6;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.data-table { width: 100%; font-size: 0.875rem; border-collapse: collapse; }
+.data-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #1f2937;
+  white-space: nowrap;
+}
+.data-table td { padding: 0.625rem 0.75rem; border-bottom: 1px solid rgba(31,41,55,0.5); color: #d1d5db; }
+.data-table tr:hover td { background: rgba(31,41,55,0.3); }
+
+/* ─── Leaflet overrides ─────────────────────────────────────────────────────── */
+.leaflet-container { background: #0a0e1a !important; }
+.leaflet-popup-content-wrapper {
+  background: #1a2235 !important;
+  border: 1px solid #374151 !important;
+  color: #e2e8f0 !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+}
+.leaflet-popup-tip { background: #1a2235 !important; }
+.leaflet-control-zoom a { background: #1a2235 !important; color: #e2e8f0 !important; border-color: #374151 !important; }
+.leaflet-control-zoom a:hover { background: #374151 !important; }
+.leaflet-attribution-flag { display: none !important; }
+
+/* ─── Animations ─────────────────────────────────────────────────────────────── */
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.live-indicator { animation: live-pulse 1.5s ease-in-out infinite; }
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.animate-spin { animation: spin 1s linear infinite; }
+
+/* ─── Mobile ─────────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .card { padding: 0.75rem; border-radius: 0.5rem; }
+}
