@@ -5,19 +5,31 @@ Compiled from research on: Creek Stewart, Cody Lundin, Les Stroud, Dave Canterbu
 John "Lofty" Wiseman (SAS), James Wesley Rawles, Dr. Joseph Alton (Doom and Bloom),
 Fernando "Ferfal" Aguirre, Laurence Gonzales, Sandor Katz, and others.
 
+> **Web Research Update (2026-03):** Specific free PDF URLs, book titles, YouTube channels,
+> expert names, and websites verified and added below. New download targets integrated into
+> `download/gaps_content.sh`.
+
 ---
 
 ## 🔴 TIER 1 — CRITICAL GAPS (Absent from v1, life-or-death importance)
 
 ### 1. Advanced Survival Medicine
 **What's missing:** The current repo has basic first aid. It lacks:
-- **"The Survival Medicine Handbook"** — Dr. Joseph & Amy Alton (700+ pages, covers suturing, childbirth, dental, antibiotics, surgical procedures). THE definitive text.
+- **"The Survival Medicine Handbook"** — Dr. Joseph & Amy Alton (700+ pages, covers suturing, childbirth, dental, antibiotics, surgical procedures). THE definitive text. — doomandbloom.net / Amazon
 - **"Emergency War Surgery"** — NATO/Borden Institute (FREE, public domain) — damage control surgery, trauma management
+- **"Survival and Austere Medicine: An Introduction" 3rd Ed (2017)** — FREE PDF: griddownmed.blog — collaborative work by experienced medics for grid-down medicine
+- **"Wilderness Medicine: Beyond First Aid"** — Dr. William W. Forgey — for wilderness/remote care; deeper than NOLS
 - **"Special Operations Forces Medical Handbook"** — US SOCOM (FREE PDF) — the medic's bible
 - **"Armageddon Medicine"** — Dr. Cynthia Koelker — antibiotic stockpiling, drug equivalences
-- **"Ditch Medicine"** — Hugh Coffee — trauma in remote settings
+- **"Ditch Medicine"** — Hugh Coffee — trauma in remote settings; covers Bier blocks, IV access
+- **"Alton's Antibiotics and Infectious Disease"** — Amy & Joe Alton — layman's guide to antibiotics in austere settings (1st place Book Excellence Award)
+- **Doom and Bloom website** — doomandbloom.net — blog, podcast, YouTube (@DoomAndBloom)
+- **Survival Medicine Podcast** — Dr. Bones & Nurse Amy — available on Podbean, iHeart, Spreaker
+- **The Patriot Nurse** (YouTube) — field medicine, triage — NOT in standard repos
+- **Skinny Medic** (YouTube) — TCCC, tourniquet use — NOT in standard repos
 - Antibiotic dosing reference for collapse scenarios
 - Drug equivalence charts (veterinary ↔ human medications)
+- **ACEP Austere Medicine Reading List** — FREE PDF from acep.org — curated by emergency physicians
 
 ### 2. Emergency Childbirth / Obstetrics
 **What's missing entirely:** One of the highest-stakes grid-down scenarios.
@@ -30,18 +42,23 @@ Fernando "Ferfal" Aguirre, Laurence Gonzales, Sandor Katz, and others.
 
 ### 3. Dental Emergency Skills
 **What's missing:** Zero dental content in v1.
-- **"Where There Is No Dentist"** — Murray Dickson (Hesperian, FREE)
-- Tooth extraction technique, dental blocks, abscess I&D
-- Temporary filling materials (zinc oxide eugenol, Cavit)
-- Oil of cloves/eugenol for pain management
+- **"Where There Is No Dentist"** — Murray Dickson (Hesperian, FREE — hesperian.org) — includes Atraumatic Restorative Treatment (ART) for cavity filling without a drill
+- Tooth extraction technique, dental blocks, abscess I&D — key: teeth are EASED out, not pulled; clear infection before extracting
+- Temporary filling materials (zinc oxide eugenol, Cavit, dental cement for crowns)
+- Oil of cloves/eugenol for pain management — clove oil is the most effective natural dental analgesic
+- **Key web resources:** offgridweb.com/survival (emergency dentistry series), thesurvivalmom.com (SHTF dental plan)
+- **Untreated tooth abscess → sepsis → death** — this category is life-or-death, not cosmetic
 
 ### 4. Psychiatric & Mental Health in Collapse
 **What's missing entirely:** Arguably the most neglected survival topic.
-- **"Where There Is No Psychiatrist"** — Vikram Patel (Hesperian, FREE)
-- **"Psychological First Aid"** — WHO/NCTSN (FREE PDF)
+- **"Where There Is No Psychiatrist"** — Vikram Patel (Hesperian, FREE — hesperian.org)
+- **"Psychological First Aid"** — WHO/NCTSN (FREE PDF — who.int and nctsn.org)
+- **"SHTF Psychology: Mindset Rewiring Hacks"** — Michael Harris — collapse-specific mental preparation, reprogramming against panic; available on Amazon Kindle
+- **"Mental Health Survival Kit and Withdrawal from Psychiatric Drugs"** — Peter C. Gøtzsche — CRITICAL for those dependent on psychiatric medications when supply chains fail; safe tapering protocols
+- **"Psychological Issues in Escape, Rescue, and Survival in the Wake of Disaster"** — George Everly Jr — FREE CDC/NIOSH PDF — 65% of disaster survivors develop new-onset depression/anxiety; 45% of OKC bombing survivors had psychiatric disorder at 6 months
 - **"Deep Survival"** — Laurence Gonzales — why some live and others die (psychology)
 - **"The Unthinkable"** — Amanda Ripley — disaster psychology
-- Medication management for existing psychiatric patients
+- Medication management for existing psychiatric patients — safe drug tapering
 - Grief processing, PTSD prevention, group trauma response
 - Decision fatigue in extended emergencies
 - **The psychological cost of violence** — almost never addressed in prepper content
@@ -64,10 +81,15 @@ Fernando "Ferfal" Aguirre, Laurence Gonzales, Sandor Katz, and others.
 
 ### 7. Animal Husbandry
 **What's missing:** Zero livestock content in v1. Long-term food = animals.
-- **Storey's Guide series** — Raising Goats, Chickens, Pigs, Dairy Goats, Rabbits (Storey Publishing — the standard)
+- **Storey's Guide series** — Raising Goats, Chickens, Pigs, Dairy Goats, Rabbits (Storey Publishing — the standard; Storey's Guide to Raising Chickens is Amazon #1 Best Seller)
+- **"The Backyard Homestead Guide to Raising Farm Animals"** — Gail Damerow — covers chickens, turkeys, ducks, geese, rabbits, bees, goats, sheep, pigs, dairy/beef cattle
+- **"Hobby Farm Animals"** — CompanionHouse Books — comprehensive multi-species guide
+- **"Secret Livestock of Survival"** — Rick Austin (Secret Garden of Survival series) — specifically focused on retreat/homestead livestock
+- **"Butchering Poultry, Rabbit, Lamb, Goat, and Pork"** — Adam Danforth — photographic guide to humane slaughtering; rated 4.61/5 on Goodreads
 - **"The Independent Farmstead"** — Shawn & Beth Dougherty
 - **"Keeping a Family Cow"** — Joann Grohman
-- Disease management (Newcastle, mastitis, bloat)
+- **FAO guides** — FREE at fao.org — Small-Scale Poultry, Goat Production, Pig Production, Rabbit Production
+- Disease management (Newcastle disease, mastitis, bloat, varroa in bees)
 - Breeding cycles and genetics
 - Butchering and processing
 
@@ -78,10 +100,16 @@ Fernando "Ferfal" Aguirre, Laurence Gonzales, Sandor Katz, and others.
 ### 8. Seed Saving (not just buying seeds)
 **What's missing:** Most repos mention buying seeds, not saving them.
 - **"Seed to Seed"** — Suzanne Ashworth (THE definitive seed saving reference — isolation distances, fermentation for tomatoes, biennial crops)
+- **"The Seed Garden: The Art and Practice of Seed Saving"** — Seed Savers Exchange — for home gardeners and horticulturists
+- **Seed Savers Exchange** — seedsavers.org — 20,000+ varieties stewarded; free online guides at seedsavers.org/learn; The Exchange (gardener-to-gardener seed swap)
+- **Community Seed Network** — communityseednetwork.org — US/Canada seed movement network
+- **Southern Exposure Seed Exchange guide** — FREE PDF at southernexposure.com — practical saving guide
+- **Organic Seed Alliance** — seedalliance.org — professional seed saving education
+- Best beginner crops: beans, peas, tomatoes, lettuce (self-pollinating, no cross-pollination risk)
 - Seed bank construction and long-term storage (mylar, oxygen absorbers, silica gel)
-- Open-pollinated vs. hybrid distinction
+- Open-pollinated vs. hybrid distinction (hybrids do NOT breed true)
 - Minimum population sizes to avoid inbreeding depression
-- Seed viability testing
+- Seed viability testing; rule of thumb: temp(°F) + relative humidity ≤ 100 for storage
 
 ### 9. Beekeeping
 **What's missing:** Not in v1 at all. Critical for pollination and medicine.
@@ -95,9 +123,15 @@ Fernando "Ferfal" Aguirre, Laurence Gonzales, Sandor Katz, and others.
 
 ### 10. Blacksmithing
 **What's missing:** Mentioned but no actual technical content.
-- **"The Complete Modern Blacksmith"** — Alexander Weygers
-- **"Practical Blacksmithing"** — M.T. Richardson (4 volumes, public domain)
-- **"The Backyard Blacksmith"** — Lorelei Sims
+- **"The Complete Modern Blacksmith"** — Alexander Weygers — teaches lost arts, reuse of old materials, easy-to-follow; essential for any craftsman
+- **"Practical Blacksmithing"** — M.T. Richardson (4 volumes, public domain — archive.org)
+- **"Basic Blacksmithing"** — D. Harries (Practical Action, 1993) — FREE PDF at northernbush.com — designed for those without expensive equipment; ideal for survival
+- **"The New Edge of the Anvil"** — Jack Andrews — technical metallurgy, best for intermediate smiths
+- **"The Home Blacksmith"** — Ryan Ridgway — 40 step-by-step projects with 500+ photos
+- **"A Blacksmithing Primer"** — Randy McDaniel — 400+ drawings for beginners through intermediate
+- **Blackbear Forge** (YouTube) — beginner-focused, highly recommended
+- **Alec Steele** (YouTube) — advanced techniques, enthusiastic presentation
+- **theswissbay.ch** — survival-indexed blacksmithing PDFs
 - Improvised forge construction (brake drum + hair dryer)
 - Basic tool repair: hammer eyes, knife making, hook and hinge making
 - Coal vs. charcoal vs. propane forge options
@@ -262,20 +296,27 @@ Fernando "Ferfal" Aguirre, Laurence Gonzales, Sandor Katz, and others.
 
 | Resource | URL | Size Est. |
 |----------|-----|-----------|
-| Humanure Handbook (full book, free) | humanurehandbook.com | <5 MB |
+| Humanure Handbook (full book, free) | humanurehandbook.com/downloads/H2.pdf | <5 MB |
 | Hesperian Health Guides | hesperian.org | <100 MB |
-| Emergency Childbirth (Gregory White) | Archive.org | <5 MB |
-| Emergency War Surgery | Borden Institute | <20 MB |
-| SOF Medical Handbook | Various mirrors | <20 MB |
+| Emergency Childbirth (Gregory White) | archive.org/download/EmergencyChildbirth | <5 MB |
+| Emergency War Surgery | cs.amedd.army.mil | <20 MB |
+| **Survival & Austere Medicine 3rd Ed** | **griddownmed.blog/wp-content/uploads/2018/11/austmed.pdf** | <5 MB |
+| SOF Medical Handbook | bits.de mirror | <20 MB |
+| ACEP Austere Medicine Reading List | acep.org (disaster section) | <1 MB |
 | NCHFP Canning Guides | nchfp.uga.edu | <50 MB |
 | Hand-Dug Wells (IT Pub) | Practical Action | <10 MB |
 | Peace Corps Well Construction | peacecorps.gov | <10 MB |
 | FM 21-60 Visual Signals | armypubs.army.mil | <5 MB |
-| Psychological First Aid (WHO) | who.int | <5 MB |
-| Art & Skill of Radio Telegraphy | N0HFF (free PDF) | <5 MB |
+| Psychological First Aid (WHO) | apps.who.int/iris | <5 MB |
+| **CDC NIOSH Disaster Psychology** | **cdc.gov/niosh/docket/archive/pdfs/NIOSH-154/0154-010108-everly.pdf** | <1 MB |
+| Art & Skill of Radio Telegraphy | qsl.net/n9bor/n0hff.pdf | <5 MB |
 | Peace Corps Manuals (all) | peacecorps.gov | ~500 MB |
 | LCWO Morse Code Trainer | lcwo.net | Web app |
 | CHIRP Radio Software | chirp.danplanet.com | <50 MB |
+| Basic Blacksmithing (free PDF) | northernbush.com/wp-content/downloads/woodcraft/Harries-David-and-Heer-Bernhard-Basic-Blacksmithing-1993.pdf | <5 MB |
+| Southern Exposure Seed Saving Guide | southernexposure.com/growing-guides/saving-seeds-home-use.pdf | <2 MB |
+| Seed Savers Exchange Learn Hub | seedsavers.org/learn | Web |
+| Community Seed Network | communityseednetwork.org | Web |
 
 ---
 

@@ -23,7 +23,7 @@ A self-hosted, offline-first knowledge base for post-apocalyptic or grid-down su
 
 ```bash
 # 1. Clone on your Raspberry Pi
-git clone <this-repo> ~/SurviveV1
+git clone https://github.com/schwadb/SurviveV1.git ~/SurviveV1
 cd ~/SurviveV1
 
 # 2. Run the installer

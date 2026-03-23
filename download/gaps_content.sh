@@ -25,11 +25,11 @@ done
 
 mkdir -p "$PDF_DIR"/{medicine_advanced,obstetrics,dental,sanitation,animal_husbandry,\
 blacksmithing,fermentation,beeswax,seeds,security,psychology,community,water_systems,\
-primitive_skills,permaculture,economics}
+primitive_skills,permaculture,economics,radio}
 mkdir -p "$VIDEO_DIR"/{primitive_skills,fermentation,blacksmithing,animal_husbandry,security}
 mkdir -p "$LOG_DIR"
 
-BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33d'; NC='\033[0m'
+BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[GAPS]${NC} $*"; }
 success() { echo -e "${GREEN}[GAPS]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[GAPS]${NC} $*"; }
@@ -95,7 +95,17 @@ dl_advanced_medicine() {
         "https://www.bits.de/NRANEU/others/amd-us-archive/fm8-10-1%281994%29.pdf" \
         "$DIR" "FM8-10-1_Combat_Medic.pdf"
 
-    # Drone and Bloom videos
+    # Survival and Austere Medicine 3rd Ed (2017) — free from griddownmed.blog
+    dl_file "Survival and Austere Medicine 3rd Ed (free)" \
+        "https://griddownmed.blog/wp-content/uploads/2018/11/austmed.pdf" \
+        "$DIR" "Survival_Austere_Medicine_3rd_Ed.pdf"
+
+    # Wilderness Medicine Beyond First Aid — ACEP reference list (free excerpt)
+    dl_file "ACEP Austere Medicine Book List" \
+        "https://www.acep.org/siteassets/uploads/uploaded-files/acep/membership/sections-of-membership/disaster/austere-medicine-books.pdf" \
+        "$DIR" "ACEP_Austere_Medicine_Reading_List.pdf"
+
+    # Doom and Bloom videos
     dl_channel "medical" "Doom and Bloom (Dr. Bones & Nurse Amy)" \
         "https://www.youtube.com/@DoomAndBloom/videos" 200
 
@@ -169,6 +179,11 @@ dl_mental_health() {
     dl_file "The Sphere Handbook (Mental Health chapter)" \
         "https://spherestandards.org/wp-content/uploads/Sphere-Handbook-2018-EN.pdf" \
         "$DIR" "Sphere_Handbook_Humanitarian_Standards.pdf"
+
+    # CDC/NIOSH — Psychological Issues in Escape, Rescue, and Survival (free)
+    dl_file "CDC NIOSH Disaster Survival Psychology (Everly)" \
+        "https://www.cdc.gov/niosh/docket/archive/pdfs/NIOSH-154/0154-010108-everly.pdf" \
+        "$DIR" "CDC_NIOSH_Disaster_Survival_Psychology.pdf"
 }
 
 dl_sanitation() {
@@ -249,6 +264,16 @@ dl_seed_saving() {
     dl_file "Peace Corps Seed Production and Improvement" \
         "https://files.peacecorps.gov/multimedia/pdf/library/M0046_seedproduction.pdf" \
         "$DIR" "Peace_Corps_Seed_Production.pdf"
+
+    # Southern Exposure Seed Exchange saving guide (free PDF)
+    dl_file "Southern Exposure Seed Saving Guide" \
+        "https://www.southernexposure.com/growing-guides/saving-seeds-home-use.pdf" \
+        "$DIR" "Southern_Exposure_Seed_Saving_Guide.pdf"
+
+    # Oregon State Extension — Step-by-Step Seed Saving
+    dl_file "OSU Extension Seed Saving Guide" \
+        "https://extension.oregonstate.edu/sites/default/files/documents/ec871.pdf" \
+        "$DIR" "OSU_Seed_Saving_Guide.pdf" || true
 
     # Videos
     dl_channel "food" "MIGardener (seed saving)" \
