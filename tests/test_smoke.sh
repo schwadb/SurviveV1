@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# =============================================================================
+# SurviveV1 — Smoke tests for the dashboard web server
+# Usage: bash tests/test_smoke.sh [--port 8080]
+# Starts a test server, hits key endpoints, reports pass/fail, then stops.
+# =============================================================================
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PORT="${TEST_PORT:-18080}"  # use non-standard port to avoid conflicts
+SERVER_PID=""
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+pass()  { echo -e "  ${GREEN}[PASS]${NC}  $*"; PASSED=$((PASSED+1)); }
+fail()  { echo -e "  ${RED}[FAIL]${NC}  $*"; FAILED=$((FAILED+1)); }
+info()  { echo -e "  ${BLUE}[INFO]${NC}  $*"; }
+
+PASSED=0
+FAILED=0
+
+cleanup() {
+    if [[ -n "$SERVER_PID" ]]; then
+        kill "$SERVER_PID" 2>/dev/null || true
+        wait "$SERVER_PID" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
+# ── Start test server ─────────────────────────────────────────────────────────
+start_server() {
+    info "Starting test server on port $PORT..."
+
+    # Activate venv if available
+    PYTHON="python3"
+    [[ -f /opt/survive/venv/bin/python3 ]] && PYTHON=/opt/survive/venv/bin/python3
+    [[ -f "$REPO_DIR/.venv/bin/python3" ]] && PYTHON="$REPO_DIR/.venv/bin/python3"
+
+    PORT="$PORT" SURVIVE_STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/tmp/survive_test}" \
+        "$PYTHON" "$REPO_DIR/web/server.py" > /tmp/survive_test.log 2>&1 &
+    SERVER_PID=$!
+
+    # Wait for server to become ready
+    local retries=20
+    while [[ $retries -gt 0 ]]; do
+        if curl -sf "http://localhost:$PORT/" >/dev/null 2>&1; then
+            pass "Server started (PID $SERVER_PID)"
+            return 0
+        fi
+        sleep 0.5
+        retries=$((retries-1))
+    done
+
+    fail "Server did not start within 10 seconds"
+    cat /tmp/survive_test.log
+    return 1
+}
+
+# ── HTTP check helper ─────────────────────────────────────────────────────────
+check_http() {
+    local name="$1"
+    local url="$2"
+    local expected_status="${3:-200}"
+
+    local actual
+    actual=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT$url")
+
+    if [[ "$actual" == "$expected_status" ]]; then
+        pass "$name → HTTP $actual"
+    else
+        fail "$name → expected HTTP $expected_status, got HTTP $actual"
+    fi
+}
+
+check_json() {
+    local name="$1"
+    local url="$2"
+    local jq_filter="${3:-.}"
+
+    local body
+    body=$(curl -sf "http://localhost:$PORT$url" 2>/dev/null || echo "CURL_FAILED")
+
+    if [[ "$body" == "CURL_FAILED" ]]; then
+        fail "$name → curl failed"
+        return
+    fi
+
+    if echo "$body" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+        pass "$name → valid JSON"
+    else
+        fail "$name → invalid JSON response"
+    fi
+}
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+run_tests() {
+    echo ""
+    echo -e "${BLUE}── Route tests ──────────────────────────────────────${NC}"
+    check_http "GET /"            "/"
+    check_http "GET /status"      "/status"
+    check_http "GET /ai"          "/ai"
+    check_http "GET /files"       "/files"
+    check_http "GET /search"      "/search"
+    check_http "GET /search?q=water" "/search?q=water"
+
+    echo ""
+    echo -e "${BLUE}── API tests ────────────────────────────────────────${NC}"
+    check_json "GET /api/status"  "/api/status"
+    check_json "GET /api/recent"  "/api/recent"
+
+    echo ""
+    echo -e "${BLUE}── Security tests ───────────────────────────────────${NC}"
+    check_http "Path traversal blocked"  "/serve/../etc/passwd"    "403"
+    check_http "404 handler works"       "/nonexistent-page-12345" "404"
+
+    echo ""
+    echo -e "${BLUE}── AI chat API ──────────────────────────────────────${NC}"
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+        -X POST "http://localhost:$PORT/api/ai/chat" \
+        -H "Content-Type: application/json" \
+        -d '{}')
+    if [[ "$STATUS" == "400" ]]; then
+        pass "POST /api/ai/chat (empty body) → HTTP 400 (correct)"
+    else
+        fail "POST /api/ai/chat (empty body) → expected 400, got $STATUS"
+    fi
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+echo ""
+echo -e "${BLUE}════════════════════════════════════════${NC}"
+echo -e "${BLUE}  SurviveV1 Smoke Tests${NC}"
+echo -e "${BLUE}════════════════════════════════════════${NC}"
+
+# Create minimal test storage dir
+mkdir -p /tmp/survive_test
+
+start_server
+run_tests
+
+echo ""
+echo -e "${BLUE}════════════════════════════════════════${NC}"
+echo -e "  Passed: ${GREEN}$PASSED${NC}  Failed: ${RED}$FAILED${NC}"
+echo -e "${BLUE}════════════════════════════════════════${NC}"
+echo ""
+
+[[ "$FAILED" -eq 0 ]] && exit 0 || exit 1

@@ -10,6 +10,7 @@ WorkingDirectory=/opt/survive/web
 ExecStart=/opt/survive/venv/bin/python3 /opt/survive/web/server.py
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=30
 Environment="PORT=8080"
 Environment="HOST=0.0.0.0"
 StandardOutput=append:/var/log/survive_dashboard.log

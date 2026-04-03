@@ -146,6 +146,11 @@ main() {
         run_or_dry bash "$REPO_DIR/download/gaps_content.sh" --storage "$STORAGE_PATH"
     fi
 
+    # Mental health & psychological first aid
+    if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "mental_health" ]]; then
+        run_or_dry bash "$REPO_DIR/download/mental_health.sh" --storage "$STORAGE_PATH"
+    fi
+
     section "Download Complete"
     df -h "$STORAGE_PATH"
     success "All selected content downloaded to $STORAGE_PATH"

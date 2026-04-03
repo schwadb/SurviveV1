@@ -42,6 +42,8 @@ download_zim() {
     local dest="$dest_dir/$filename"
 
     info "[$name] Downloading to $dest..."
+    local BW_ARGS=()
+    [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--max-overall-download-limit="${SURVIVE_BANDWIDTH_LIMIT}")
     aria2c \
         --continue=true \
         --max-connection-per-server=4 \
@@ -50,6 +52,7 @@ download_zim() {
         --out="$filename" \
         --console-log-level=warn \
         --summary-interval=60 \
+        "${BW_ARGS[@]}" \
         "$url" \
     && {
         success "[$name] Done: $filename"

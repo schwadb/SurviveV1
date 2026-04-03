@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+      - name: Lint shell scripts
+        run: |
+          find . -name "*.sh" \
+            ! -path "./.git/*" \
+            -print0 \
+          | xargs -0 shellcheck \
+              --severity=warning \
+              --exclude=SC1091 \
+              --shell=bash
+
+  python:
+    name: Python lint & smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -q -r requirements.txt
+          pip install -q pylint
+      - name: Pylint
+        run: |
+          pylint web/server.py \
+            --disable=C0114,C0115,C0116 \
+            --disable=R0903,R0913,R0914 \
+            --fail-under=7.0
+      - name: Smoke tests
+        run: |
+          bash tests/test_smoke.sh
+        env:
+          SURVIVE_STORAGE_PATH: /tmp/survive_test
+
+  validate-configs:
+    name: Validate configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate nginx config syntax
+        run: |
+          sudo apt-get install -y nginx
+          sudo nginx -t -c /dev/stdin << 'EOF'
+          events {}
+          http {
+            include /etc/nginx/mime.types;
+            include $(pwd)/config/nginx.conf;
+          }
+          EOF
+        continue-on-error: true
+      - name: Validate YAML files
+        run: |
+          pip install -q pyyaml
+          python3 -c "
+          import yaml, glob, sys
+          errors = []
+          for f in glob.glob('**/*.yaml', recursive=True) + glob.glob('**/*.yml', recursive=True):
+              if '.github' in f:
+                  continue
+              try:
+                  yaml.safe_load(open(f))
+                  print(f'  OK: {f}')
+              except yaml.YAMLError as e:
+                  errors.append(f'  FAIL: {f}: {e}')
+          if errors:
+              print('\n'.join(errors))
+              sys.exit(1)
+          "

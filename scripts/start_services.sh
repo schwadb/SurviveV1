@@ -14,6 +14,26 @@ GREEN='\033[0;32m'; BLUE='\033[0;34m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC
 info()    { echo -e "${BLUE}[START]${NC} $*"; }
 success() { echo -e "${GREEN}[START]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[START]${NC} $*"; }
+error()   { echo -e "${RED}[START]${NC} $*" >&2; }
+
+preflight_check() {
+    # Verify storage is mounted and has at least 100MB free
+    if ! mountpoint -q "$STORAGE_PATH" 2>/dev/null; then
+        if [[ "$STORAGE_PATH" != "/mnt/survive" ]]; then
+            info "Storage at $STORAGE_PATH is not a separate mount — continuing"
+        else
+            warn "Storage drive not mounted at $STORAGE_PATH"
+            warn "Some services may not start correctly. Mount your drive first:"
+            warn "  sudo mount /dev/sda1 /mnt/survive"
+        fi
+    fi
+
+    local free_kb
+    free_kb=$(df -k "$STORAGE_PATH" 2>/dev/null | tail -1 | awk '{print $4}') || free_kb=0
+    if [[ "$free_kb" -lt 102400 ]]; then
+        warn "Less than 100MB free on $STORAGE_PATH — services may fail to write logs"
+    fi
+}
 
 # Detect if running as root (systemctl) or user (direct)
 USE_SYSTEMD=false
@@ -133,6 +153,7 @@ print_urls() {
 main() {
     echo ""
     info "Starting SurviveV1 services..."
+    preflight_check
 
     start_manual dashboard
     start_manual kiwix

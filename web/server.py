@@ -6,13 +6,20 @@ Flask app serving the offline survival knowledge portal
 
 import os
 import json
-import subprocess
+import logging
 import shutil
 from pathlib import Path
 from datetime import datetime
 from flask import (
     Flask, render_template, jsonify, request,
     send_from_directory, redirect, url_for
+)
+
+from constants import SERVICES, PORT_OLLAMA  # noqa: E402
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
 app = Flask(__name__)
@@ -23,6 +30,7 @@ if os.environ.get("SECRET_KEY"):
     app.secret_key = os.environ["SECRET_KEY"]
 elif _KEY_FILE.exists():
     app.secret_key = _KEY_FILE.read_text().strip()
+    _KEY_FILE.chmod(0o600)  # enforce permissions on every startup
 else:
     import secrets as _secrets
     _new_key = _secrets.token_hex(32)
@@ -44,15 +52,6 @@ TIMEOUT_AI_CHAT       = float(os.environ.get("SURVIVE_AI_CHAT_TIMEOUT", "60"))
 # Fall back to repo data dir if storage not mounted
 if not STORAGE_PATH.exists():
     STORAGE_PATH = DATA_DIR
-
-SERVICES = {
-    "kiwix": {"name": "Wikipedia & Books", "port": 8081, "icon": "📚", "color": "#2980b9"},
-    "kolibri": {"name": "Khan Academy", "port": 8082, "icon": "🎓", "color": "#27ae60"},
-    "calibre": {"name": "E-book Library", "port": 8083, "icon": "📖", "color": "#8e44ad"},
-    "jellyfin": {"name": "Videos", "port": 8096, "icon": "🎬", "color": "#e74c3c"},
-    "maps": {"name": "Offline Maps", "port": 3000, "icon": "🗺️", "color": "#f39c12"},
-    "ai": {"name": "AI Assistant", "port": 11434, "icon": "🤖", "color": "#16a085"},
-}
 
 CATEGORIES = [
     # ── Core Survival ─────────────────────────────────────────
@@ -118,8 +117,18 @@ CATEGORIES = [
 ]
 
 
+def _safe_walk(root: Path):
+    """Yield files under root without following symlinks (prevents infinite loops)."""
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        # Skip hidden directories in-place
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for name in filenames:
+            if not name.startswith("."):
+                yield Path(dirpath) / name
+
+
 def get_storage_info():
-    """Get disk usage information."""
+    """Return disk usage for the storage path."""
     try:
         total, used, free = shutil.disk_usage(str(STORAGE_PATH))
         return {
@@ -128,7 +137,8 @@ def get_storage_info():
             "free_gb": round(free / (1024**3), 1),
             "percent": round((used / total) * 100, 1),
         }
-    except Exception:
+    except OSError as e:
+        logging.warning("Could not read disk usage: %s", e)
         return {"total_gb": 0, "used_gb": 0, "free_gb": 0, "percent": 0}
 
 
@@ -143,7 +153,7 @@ def check_service(port: int) -> bool:
 
 
 def get_content_stats():
-    """Count files in each content directory."""
+    """Count files and total size for each content subdirectory."""
     stats = {}
     dirs = {
         "zim": STORAGE_PATH / "zim",
@@ -154,8 +164,13 @@ def get_content_stats():
     }
     for name, path in dirs.items():
         if path.exists():
-            count = sum(1 for _ in path.rglob("*") if _.is_file())
-            size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+            count, size = 0, 0
+            for f in _safe_walk(path):
+                count += 1
+                try:
+                    size += f.stat().st_size
+                except OSError:
+                    pass
             stats[name] = {
                 "count": count,
                 "size_gb": round(size / (1024**3), 2),
@@ -167,20 +182,26 @@ def get_content_stats():
 
 
 def get_recent_downloads():
-    """Get recently downloaded files."""
+    """Return the 20 most recently modified content files."""
     recent = []
+    allowed_exts = {".zim", ".pdf", ".epub", ".mp4"}
     try:
-        for pattern in ["*.zim", "*.pdf", "*.epub", "*.mp4"]:
-            for f in STORAGE_PATH.rglob(pattern):
-                recent.append({
-                    "name": f.name,
-                    "path": str(f.relative_to(STORAGE_PATH)),
-                    "size_mb": round(f.stat().st_size / (1024**2), 1),
-                    "modified": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-                })
+        for f in _safe_walk(STORAGE_PATH):
+            if f.suffix.lower() in allowed_exts:
+                try:
+                    st = f.stat()
+                    recent.append({
+                        "name": f.name,
+                        "path": str(f.relative_to(STORAGE_PATH)),
+                        "size_mb": round(st.st_size / (1024**2), 1),
+                        "modified": datetime.fromtimestamp(st.st_mtime).isoformat(),
+                    })
+                except OSError:
+                    pass
         recent.sort(key=lambda x: x["modified"], reverse=True)
         return recent[:20]
-    except Exception:
+    except OSError as e:
+        logging.warning("get_recent_downloads failed: %s", e)
         return []
 
 
@@ -217,17 +238,16 @@ def category(cat_id):
         ]
         for d in search_dirs:
             if d.exists():
-                for f in d.rglob("*"):
-                    if f.is_file():
-                        files.append({
-                            "name": f.stem,
-                            "filename": f.name,
-                            "ext": f.suffix.lower().lstrip("."),
-                            "path": str(f.relative_to(STORAGE_PATH)),
-                            "size_mb": round(f.stat().st_size / (1024**2), 1),
-                        })
-    except Exception:
-        pass
+                for f in _safe_walk(d):
+                    files.append({
+                        "name": f.stem,
+                        "filename": f.name,
+                        "ext": f.suffix.lower().lstrip("."),
+                        "path": str(f.relative_to(STORAGE_PATH)),
+                        "size_mb": round(f.stat().st_size / (1024**2), 1),
+                    })
+    except OSError as e:
+        logging.warning("category listing failed for %s: %s", cat_id, e)
 
     return render_template("category.html", cat=cat, files=files, categories=CATEGORIES)
 
@@ -286,11 +306,11 @@ def search():
     results = []
 
     if query and len(query) >= 2:
-        # Search file names in storage
+        ql = query.lower()
         try:
-            for f in STORAGE_PATH.rglob("*"):
-                if f.is_file() and query.lower() in f.name.lower():
-                    if not any(part.startswith(".") for part in f.parts):
+            for f in _safe_walk(STORAGE_PATH):
+                if ql in f.name.lower():
+                    try:
                         results.append({
                             "name": f.stem,
                             "filename": f.name,
@@ -298,10 +318,12 @@ def search():
                             "path": str(f.relative_to(STORAGE_PATH)),
                             "size_mb": round(f.stat().st_size / (1024**2), 1),
                         })
-                        if len(results) >= 50:
-                            break
-        except Exception:
-            pass
+                    except OSError:
+                        pass
+                    if len(results) >= 50:
+                        break
+        except OSError as e:
+            logging.warning("search walk failed: %s", e)
 
     return render_template(
         "search.html",
@@ -313,7 +335,7 @@ def search():
 
 @app.route("/ai")
 def ai_page():
-    ai_running = check_service(11434)
+    ai_running = check_service(PORT_OLLAMA)
     models = []
     if ai_running:
         try:
@@ -321,8 +343,8 @@ def ai_page():
             with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=TIMEOUT_OLLAMA_LIST) as r:
                 data = json.loads(r.read())
                 models = [m["name"] for m in data.get("models", [])]
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as e:
+            logging.debug("Could not fetch Ollama model list: %s", e)
     return render_template("ai.html", ai_running=ai_running, models=models, categories=CATEGORIES)
 
 
@@ -426,6 +448,6 @@ def server_error(e):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     host = os.environ.get("HOST", "0.0.0.0")
-    debug = os.environ.get("DEBUG", "false").lower() == "true"
-    print(f"SurviveV1 Dashboard starting on {host}:{port}")
-    app.run(host=host, port=port, debug=debug)
+    # Debug mode disabled in production — never expose stack traces to users
+    logging.info("SurviveV1 Dashboard starting on %s:%d", host, port)
+    app.run(host=host, port=port, debug=False)

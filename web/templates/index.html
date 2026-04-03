@@ -128,12 +128,12 @@
 {% block content %}
 <div class="container">
 
-  <!-- Offline banner -->
-  <div class="offline-banner">
-    <div class="dot"></div>
-    <strong>System Online — Running Offline</strong>
+  <!-- Offline banner — updated dynamically by JS -->
+  <div class="offline-banner" id="offlineBanner">
+    <div class="dot" id="offlineDot"></div>
+    <strong id="offlineTitle">Checking connectivity…</strong>
     &nbsp;&bull;&nbsp;
-    Internet connection: <strong style="color:var(--danger)">NOT REQUIRED</strong>
+    Internet: <strong id="internetStatus" style="color:var(--text-dim)">…</strong>
     &nbsp;&bull;&nbsp;
     All content stored locally
     &nbsp;&bull;&nbsp;
@@ -301,7 +301,6 @@
     fetch('/api/status')
       .then(r => r.json())
       .then(data => {
-        // Update storage
         if (data.storage) {
           document.querySelectorAll('.progress-bar').forEach(bar => {
             bar.style.width = data.storage.percent + '%';
@@ -310,5 +309,29 @@
       })
       .catch(() => {});
   }, 30000);
+
+  // Dynamic offline/online indicator
+  function checkConnectivity() {
+    // Try to reach a known external URL; if it succeeds, we have internet
+    fetch('https://www.gstatic.com/generate_204', { mode: 'no-cors', cache: 'no-store' })
+      .then(() => {
+        document.getElementById('offlineDot').style.background = 'var(--warning)';
+        document.getElementById('offlineTitle').textContent = 'System Running — Internet Available';
+        document.getElementById('internetStatus').textContent = 'CONNECTED';
+        document.getElementById('internetStatus').style.color = 'var(--warning)';
+        document.getElementById('offlineBanner').style.borderColor = 'rgba(210,153,34,0.3)';
+        document.getElementById('offlineBanner').style.background = 'rgba(210,153,34,0.06)';
+      })
+      .catch(() => {
+        document.getElementById('offlineDot').style.background = 'var(--accent)';
+        document.getElementById('offlineTitle').textContent = 'Offline Mode: ACTIVE';
+        document.getElementById('internetStatus').textContent = 'NOT AVAILABLE';
+        document.getElementById('internetStatus').style.color = 'var(--danger)';
+        document.getElementById('offlineBanner').style.borderColor = 'rgba(63,185,80,0.3)';
+        document.getElementById('offlineBanner').style.background = 'rgba(63,185,80,0.08)';
+      });
+  }
+  checkConnectivity();
+  setInterval(checkConnectivity, 60000);
 </script>
 {% endblock %}

@@ -115,13 +115,37 @@ ollama pull tinyllama    # 637MB — very fast, basic quality
 ## Step 7: Start Everything
 
 ```bash
-# Start all services
-bash scripts/start_services.sh
+# First time: generate systemd service files for your storage path
+sudo bash scripts/generate_services.sh
 
-# Open in browser
-# http://localhost:8080
-# or from another device: http://survive.local:8080
+# Enable services to start on boot
+sudo systemctl enable survive-dashboard kiwix ollama martin-tiles kolibri
+
+# Start all services now
+sudo systemctl start survive-dashboard kiwix ollama martin-tiles
+
+# Or use the convenience script (works with or without systemd)
+bash scripts/start_services.sh
 ```
+
+**Managing individual services with systemctl:**
+```bash
+# Check status
+sudo systemctl status survive-dashboard
+
+# Restart a service
+sudo systemctl restart kiwix
+
+# View live logs
+sudo journalctl -u ollama -f
+
+# Stop all SurviveV1 services
+sudo systemctl stop survive-dashboard kiwix ollama martin-tiles kolibri
+```
+
+Open in browser:
+- From the Pi: `http://localhost:8080`
+- From another device: `http://survive.local:8080`
 
 ---
 

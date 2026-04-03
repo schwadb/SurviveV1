@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-mkdir -p "$VIDEO_DIR"/{survival,medical,food,water,shelter,energy,tools,farming,skills,preparedness}
+mkdir -p "$VIDEO_DIR"/{survival,medical,food,water,shelter,energy,tools,farming,skills,preparedness,animal_husbandry,psychology}
 mkdir -p "$LOG_DIR"
 
 BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
@@ -50,6 +50,8 @@ dl_playlist() {
     local dest="$VIDEO_DIR/$category"
 
     info "[$category] $name"
+    local BW_ARGS=()
+    [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--limit-rate "${SURVIVE_BANDWIDTH_LIMIT}")
     yt-dlp \
         --format "bestvideo[height<=${QUALITY}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${QUALITY}][ext=mp4]/best" \
         --merge-output-format mp4 \
@@ -64,6 +66,7 @@ dl_playlist() {
         --no-warnings \
         --concurrent-fragments 4 \
         --throttled-rate 1M \
+        "${BW_ARGS[@]}" \
         "$url" \
     && success "[$category] $name done" \
     || warn "[$category] $name had errors (some videos may have been geo-blocked)"
@@ -76,6 +79,8 @@ dl_channel() {
     local max="${4:-100}"  # max videos per channel
 
     info "[$category] Channel: $name (max $max videos)"
+    local BW_ARGS=()
+    [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--limit-rate "${SURVIVE_BANDWIDTH_LIMIT}")
     yt-dlp \
         --format "bestvideo[height<=${QUALITY}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${QUALITY}]/best" \
         --merge-output-format mp4 \
@@ -86,6 +91,7 @@ dl_channel() {
         --playlist-end "$max" \
         --ignore-errors \
         --no-warnings \
+        "${BW_ARGS[@]}" \
         "$url" \
     && success "[$category] $name done" \
     || warn "[$category] $name had some errors"
@@ -119,10 +125,35 @@ dl_medical() {
         "https://www.youtube.com/@WildernessMA/videos" 100
     dl_channel "medical" "Rethink Survival Medical" \
         "https://www.youtube.com/@RethinkSurvival/videos" 50
+    dl_channel "medical" "Doom and Bloom Survival Medicine" \
+        "https://www.youtube.com/@DoomandBloom/videos" 100
+    dl_channel "medical" "The Patriot Nurse" \
+        "https://www.youtube.com/@ThePatriotNurse/videos" 100
+    dl_channel "medical" "Skinny Medic TCCC" \
+        "https://www.youtube.com/@SkinnyMedic/videos" 100
+    dl_channel "medical" "Lone Star Medics" \
+        "https://www.youtube.com/@LoneStarMedics/videos" 50
     dl_playlist "medical" "Stop the Bleed Official" \
         "https://www.youtube.com/playlist?list=PLUHBLmZ-rPXKlFmS7gZO77Lft5WT8DXH4"
     dl_playlist "medical" "FEMA First Aid" \
         "https://www.youtube.com/playlist?list=PL56C96E2FBDB2CCEA"
+}
+
+# Animal Husbandry (chickens, goats, pigs, cattle, rabbits)
+dl_animal_husbandry() {
+    info "=== Animal Husbandry ==="
+    dl_channel "animal_husbandry" "Weed em and Reap (chickens/goats)" \
+        "https://www.youtube.com/@WeedEmandReap/videos" 200
+    dl_channel "animal_husbandry" "Prairie Homestead (goats/cattle)" \
+        "https://www.youtube.com/@theprairiehomestead/videos" 150
+    dl_channel "animal_husbandry" "Jill Winger Old Fashioned On Purpose" \
+        "https://www.youtube.com/@jillwinger/videos" 100
+    dl_channel "animal_husbandry" "Becky's Homestead (rabbits/chickens)" \
+        "https://www.youtube.com/@BeckysHomestead/videos" 100
+    dl_channel "animal_husbandry" "Homestead Corner (goats)" \
+        "https://www.youtube.com/@HomesteadCorner/videos" 100
+    dl_channel "animal_husbandry" "Kathy Voth Small-Scale Grazing" \
+        "https://www.youtube.com/@KathyVoth/videos" 50
 }
 
 # Food Production & Preservation
@@ -214,6 +245,7 @@ main() {
     if [[ "${CONTENT_VIDEOS:-Y}" =~ [Yy] ]]; then
         dl_survival
         dl_medical
+        dl_animal_husbandry
         dl_food
         dl_water
         dl_shelter

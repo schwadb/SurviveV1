@@ -80,19 +80,7 @@ setup_python_env() {
     python3 -m venv "$VENV_DIR"
     source "$VENV_DIR/bin/activate"
     pip install -q --upgrade pip
-    pip install -q \
-        flask \
-        flask-cors \
-        flask-sqlalchemy \
-        flask-login \
-        requests \
-        tqdm \
-        pyyaml \
-        watchdog \
-        send2trash \
-        mutagen \
-        Pillow \
-        markdown2
+    pip install -q -r "$REPO_DIR/requirements.txt"
     success "Python environment ready at $VENV_DIR"
 }
 
@@ -208,15 +196,17 @@ configure_firewall() {
     ufw default deny incoming
     ufw default allow outgoing
     ufw allow ssh
-    ufw allow 80/tcp   # nginx
-    ufw allow 8080/tcp # dashboard
-    ufw allow 8081/tcp # kiwix
-    ufw allow 8082/tcp # kolibri
-    ufw allow 8083/tcp # calibre-web
-    ufw allow 8096/tcp # jellyfin
-    ufw allow 445/tcp  # samba
+    ufw allow 80/tcp   # nginx (primary access point)
+    ufw allow 443/tcp  # nginx TLS
+    ufw allow 8080/tcp # dashboard (direct access)
+    ufw allow 445/tcp  # samba file sharing
+    # Backend services are intentionally NOT opened externally:
+    # 8081 (kiwix), 8082 (kolibri), 8083 (calibre), 8096 (jellyfin),
+    # 3000 (martin maps), 11434 (ollama) — access via nginx reverse proxy only.
+    # Allow from loopback for inter-service communication
+    ufw allow in on lo
     ufw --force enable
-    success "Firewall configured"
+    success "Firewall configured (backend ports locked to localhost)"
 }
 
 # ── Samba share ───────────────────────────────────────────────────────────────
