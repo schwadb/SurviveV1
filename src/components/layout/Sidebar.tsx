@@ -1,24 +1,10 @@
 import React, { useState } from 'react';
 import {
-  Satellite,
-  Plane,
-  Ship,
-  Camera,
-  Radio,
-  Search,
-  Settings,
-  Database,
-  Shield,
-  Menu,
-  X,
-  Eye,
-  Phone,
-  MapPin,
-  User,
-  AlertTriangle,
-  ChevronRight,
-  Zap,
+  Satellite, Plane, Ship, Camera, Radio, Search, Settings, Database,
+  Shield, Menu, X, Eye, Phone, MapPin, User, AlertTriangle, ChevronRight,
+  Zap, Star, Mail, Sun, Moon,
 } from 'lucide-react';
+import { useTheme } from '../../hooks/useLocalStorage';
 
 const navGroups = [
   {
@@ -43,12 +29,14 @@ const navGroups = [
       { id: 'person', label: 'Person Lookup', icon: User, color: 'text-rose-400' },
       { id: 'phone', label: 'Phone Lookup', icon: Phone, color: 'text-yellow-400' },
       { id: 'address', label: 'Address Lookup', icon: MapPin, color: 'text-teal-400' },
+      { id: 'email', label: 'Email & Domain', icon: Mail, color: 'text-blue-300' },
     ],
   },
   {
     title: 'TOOLS',
     items: [
       { id: 'ai-search', label: 'Perplexity AI', icon: Search, color: 'text-violet-400' },
+      { id: 'watchlist', label: 'Watchlist', icon: Star, color: 'text-yellow-400' },
       { id: 'resources', label: 'Resources', icon: Database, color: 'text-gray-400' },
       { id: 'settings', label: 'Settings', icon: Settings, color: 'text-gray-400' },
     ],
@@ -63,20 +51,24 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ activeSection, onNavigate, alertCount = 0 }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { darkMode, toggleTheme } = useTheme();
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="px-4 py-5 border-b border-gray-800">
+      <div className="px-4 py-4 border-b border-gray-800">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Shield size={32} className="text-indigo-500" />
+            <Shield size={30} className="text-indigo-500" />
             <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full live-indicator" />
           </div>
-          <div>
-            <h1 className="text-white font-bold text-lg tracking-tight leading-none">WatcherV1</h1>
-            <p className="text-gray-500 text-xs mt-0.5">OSINT Platform</p>
+          <div className="flex-1">
+            <h1 className="text-white font-bold text-base tracking-tight leading-none">WatcherV1</h1>
+            <p className="text-gray-500 text-xs mt-0.5">OSINT Platform v2.0</p>
           </div>
+          <button onClick={toggleTheme} className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors" title="Toggle theme">
+            {darkMode ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
         </div>
       </div>
 

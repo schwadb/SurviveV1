@@ -1,5 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import type { Satellite, Aircraft, Ship, Camera, FlockCamera, MapFilter } from '../../types';
+
+interface TrailPoint { lat: number; lng: number; t: number }
 
 interface MapViewProps {
   satellites?: Satellite[];
@@ -11,9 +13,13 @@ interface MapViewProps {
   height?: string;
   center?: [number, number];
   zoom?: number;
+  userLocation?: { lat: number; lng: number } | null;
+  cluster?: boolean;
+  showHeatmap?: boolean;
+  trails?: Record<string, TrailPoint[]>;
+  onMarkerClick?: (type: string, id: string) => void;
 }
 
-// We'll load Leaflet dynamically to avoid SSR issues
 const MapView: React.FC<MapViewProps> = ({
   satellites = [],
   aircraft = [],
@@ -24,15 +30,22 @@ const MapView: React.FC<MapViewProps> = ({
   height = '500px',
   center = [20, 0],
   zoom = 2,
+  userLocation = null,
+  cluster = true,
+  showHeatmap = false,
+  trails = {},
+  onMarkerClick,
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<unknown>(null);
-  const markersRef = useRef<unknown[]>([]);
+  const mapInstance = useRef<import('leaflet').Map | null>(null);
+  const layersRef = useRef<import('leaflet').Layer[]>([]);
+  const userMarkerRef = useRef<import('leaflet').Marker | null>(null);
+  const heatLayerRef = useRef<unknown>(null);
 
+  // Initialize map once
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
 
-    // Dynamic import of Leaflet
     import('leaflet').then((L) => {
       if (!mapRef.current || mapInstance.current) return;
 
@@ -41,170 +54,254 @@ const MapView: React.FC<MapViewProps> = ({
         zoom,
         zoomControl: true,
         attributionControl: true,
+        preferCanvas: true, // Better performance for many markers
       });
 
-      // Dark tile layer
       L.tileLayer(
         'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
         {
-          attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com">CARTO</a>',
           subdomains: 'abcd',
           maxZoom: 20,
         }
       ).addTo(map);
 
       mapInstance.current = map;
-      addMarkers(L, map);
     });
 
     return () => {
       if (mapInstance.current) {
-        (mapInstance.current as { remove: () => void }).remove();
+        mapInstance.current.remove();
         mapInstance.current = null;
       }
     };
   }, []);
 
-  const addMarkers = (L: typeof import('leaflet'), map: import('leaflet').Map) => {
-    // Clear existing markers
-    markersRef.current.forEach((m) => (m as import('leaflet').Marker).remove());
-    markersRef.current = [];
-
-    const createIcon = (emoji: string, color: string) =>
-      L.divIcon({
-        html: `<div style="
-          background: ${color};
-          border: 2px solid white;
-          border-radius: 50%;
-          width: 28px;
-          height: 28px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 14px;
-          box-shadow: 0 0 8px ${color};
-        ">${emoji}</div>`,
-        className: '',
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
-      });
-
-    // Satellites
-    if (filter.satellites) {
-      satellites.forEach((sat) => {
-        if (sat.lat === undefined || sat.lng === undefined) return;
-        const marker = L.marker([sat.lat, sat.lng], {
-          icon: createIcon('🛰️', 'rgba(99,102,241,0.8)'),
-        })
-          .addTo(map)
-          .bindPopup(`
-            <div style="font-family: system-ui; color: #e2e8f0; min-width: 180px">
-              <strong style="color: #818cf8">${sat.name}</strong><br/>
-              <small>NORAD: ${sat.noradId}</small><br/>
-              Alt: ${sat.altitude.toLocaleString()} km<br/>
-              Vel: ${sat.velocity.toLocaleString()} km/h<br/>
-              Owner: ${sat.owner}
-            </div>
-          `);
-        markersRef.current.push(marker);
-      });
-    }
-
-    // Aircraft
-    if (filter.aircraft) {
-      aircraft.forEach((ac) => {
-        if (!ac.lat || !ac.lng) return;
-        const marker = L.marker([ac.lat, ac.lng], {
-          icon: createIcon('✈️', 'rgba(59,130,246,0.8)'),
-        })
-          .addTo(map)
-          .bindPopup(`
-            <div style="font-family: system-ui; color: #e2e8f0; min-width: 180px">
-              <strong style="color: #60a5fa">${ac.callsign}</strong>
-              ${ac.emergency ? ' 🚨' : ''}<br/>
-              <small>${ac.type || 'Unknown'} | ${ac.registration || 'N/A'}</small><br/>
-              Alt: ${ac.altitude.toLocaleString()} ft<br/>
-              Speed: ${ac.speed} kts<br/>
-              ${ac.origin ? `${ac.origin} → ${ac.destination}` : ''}
-            </div>
-          `);
-        markersRef.current.push(marker);
-      });
-    }
-
-    // Ships
-    if (filter.ships) {
-      ships.forEach((ship) => {
-        if (!ship.lat || !ship.lng) return;
-        const marker = L.marker([ship.lat, ship.lng], {
-          icon: createIcon('🚢', 'rgba(6,182,212,0.8)'),
-        })
-          .addTo(map)
-          .bindPopup(`
-            <div style="font-family: system-ui; color: #e2e8f0; min-width: 180px">
-              <strong style="color: #22d3ee">${ship.name}</strong><br/>
-              <small>MMSI: ${ship.mmsi} | ${ship.flag || 'Unknown'}</small><br/>
-              Type: ${ship.type}<br/>
-              Speed: ${ship.speed} kts<br/>
-              ${ship.destination ? `To: ${ship.destination}` : ''}
-            </div>
-          `);
-        markersRef.current.push(marker);
-      });
-    }
-
-    // Cameras
-    if (filter.cameras) {
-      cameras.forEach((cam) => {
-        if (!cam.lat || !cam.lng) return;
-        const marker = L.marker([cam.lat, cam.lng], {
-          icon: createIcon('📷', 'rgba(168,85,247,0.8)'),
-        })
-          .addTo(map)
-          .bindPopup(`
-            <div style="font-family: system-ui; color: #e2e8f0; min-width: 180px">
-              <strong style="color: #c084fc">${cam.name}</strong><br/>
-              <small>${cam.type.toUpperCase()} | ${cam.source}</small><br/>
-              ${cam.location}<br/>
-              Status: <span style="color: ${cam.status === 'live' ? '#4ade80' : '#f87171'}">${cam.status}</span><br/>
-              ${cam.streamUrl ? `<a href="${cam.streamUrl}" target="_blank" style="color: #818cf8">View Stream</a>` : ''}
-            </div>
-          `);
-        markersRef.current.push(marker);
-      });
-    }
-
-    // Flock cameras
-    if (filter.flockCameras) {
-      flockCameras.forEach((fc) => {
-        if (!fc.lat || !fc.lng) return;
-        const marker = L.marker([fc.lat, fc.lng], {
-          icon: createIcon('👁️', 'rgba(249,115,22,0.8)'),
-        })
-          .addTo(map)
-          .bindPopup(`
-            <div style="font-family: system-ui; color: #e2e8f0; min-width: 180px">
-              <strong style="color: #fb923c">Flock Camera</strong><br/>
-              <small>S/N: ${fc.serialNumber}</small><br/>
-              ${fc.location}<br/>
-              ${fc.city}, ${fc.state}<br/>
-              Agency: ${fc.agency || 'Unknown'}<br/>
-              Coverage: ${fc.coverage}°
-            </div>
-          `);
-        markersRef.current.push(marker);
-      });
-    }
-  };
-
-  // Re-render markers when data or filters change
+  // User location marker
   useEffect(() => {
-    if (!mapInstance.current) return;
+    if (!mapInstance.current || !userLocation) return;
     import('leaflet').then((L) => {
-      addMarkers(L, mapInstance.current as import('leaflet').Map);
+      if (!mapInstance.current) return;
+      if (userMarkerRef.current) userMarkerRef.current.remove();
+      const icon = L.divIcon({
+        html: `<div style="width:14px;height:14px;background:#4ade80;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4ade80;"></div>`,
+        className: '',
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+      userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon })
+        .addTo(mapInstance.current)
+        .bindPopup('<div style="color:#e2e8f0">📍 Your Location</div>');
     });
-  }, [satellites, aircraft, ships, cameras, flockCameras, filter]);
+  }, [userLocation]);
+
+  // Memoize marker datasets to avoid re-renders when unrelated state changes
+  const markerData = useMemo(() => ({
+    satellites: filter.satellites ? satellites : [],
+    aircraft: filter.aircraft ? aircraft : [],
+    ships: filter.ships ? ships : [],
+    cameras: filter.cameras ? cameras : [],
+    flockCameras: filter.flockCameras ? flockCameras : [],
+  }), [
+    filter.satellites, filter.aircraft, filter.ships, filter.cameras, filter.flockCameras,
+    satellites, aircraft, ships, cameras, flockCameras,
+  ]);
+
+  // Update markers whenever data changes
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+
+    import('leaflet').then(async (L) => {
+      // Clear old layers
+      layersRef.current.forEach((l) => l.remove());
+      layersRef.current = [];
+
+      const createIcon = (emoji: string, color: string, size = 28) =>
+        L.divIcon({
+          html: `<div style="background:${color};border:2px solid rgba(255,255,255,0.8);border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-size:${Math.round(size * 0.5)}px;box-shadow:0 0 8px ${color};">${emoji}</div>`,
+          className: '',
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2],
+        });
+
+      // Cluster groups (if enabled)
+      let satCluster: import('leaflet').FeatureGroup;
+      let acCluster: import('leaflet').FeatureGroup;
+      let shipCluster: import('leaflet').FeatureGroup;
+      let camCluster: import('leaflet').FeatureGroup;
+
+      if (cluster) {
+        try {
+          const MC = (await import('leaflet.markercluster')).default ?? L;
+          const ClusterGroup = (MC as unknown as { MarkerClusterGroup: new (opts: Record<string, unknown>) => import('leaflet').FeatureGroup }).MarkerClusterGroup;
+          if (ClusterGroup) {
+            const opts = { chunkedLoading: true, maxClusterRadius: 60, spiderfyOnMaxZoom: true };
+            satCluster = new ClusterGroup(opts) as import('leaflet').FeatureGroup;
+            acCluster = new ClusterGroup(opts) as import('leaflet').FeatureGroup;
+            shipCluster = new ClusterGroup(opts) as import('leaflet').FeatureGroup;
+            camCluster = new ClusterGroup(opts) as import('leaflet').FeatureGroup;
+          } else {
+            satCluster = L.featureGroup();
+            acCluster = L.featureGroup();
+            shipCluster = L.featureGroup();
+            camCluster = L.featureGroup();
+          }
+        } catch {
+          satCluster = L.featureGroup();
+          acCluster = L.featureGroup();
+          shipCluster = L.featureGroup();
+          camCluster = L.featureGroup();
+        }
+      } else {
+        satCluster = L.featureGroup();
+        acCluster = L.featureGroup();
+        shipCluster = L.featureGroup();
+        camCluster = L.featureGroup();
+      }
+
+      // Draw trails
+      Object.entries(trails).forEach(([_id, points]) => {
+        if (points.length < 2) return;
+        const latlngs = points.map((p) => [p.lat, p.lng] as [number, number]);
+        const trail = L.polyline(latlngs, {
+          color: '#6366f1',
+          weight: 2,
+          opacity: 0.5,
+          dashArray: '4 6',
+        });
+        trail.addTo(map);
+        layersRef.current.push(trail);
+      });
+
+      // ── Satellites ────────────────────────────────────────────────────────────
+      markerData.satellites.forEach((sat) => {
+        if (!sat.lat || !sat.lng) return;
+        const m = L.marker([sat.lat, sat.lng], {
+          icon: createIcon('🛰️', 'rgba(99,102,241,0.85)'),
+          title: sat.name,
+        }).bindPopup(`
+          <div style="font-family:system-ui;color:#e2e8f0;min-width:180px">
+            <strong style="color:#818cf8">${sat.name}</strong><br/>
+            <small>NORAD: ${sat.noradId} | ${sat.type}</small><br/>
+            Alt: ${sat.altitude.toLocaleString()} km<br/>
+            Owner: ${sat.owner}<br/>
+            Status: <span style="color:${sat.status === 'active' ? '#4ade80' : '#f87171'}">${sat.status}</span>
+          </div>`);
+        if (onMarkerClick) m.on('click', () => onMarkerClick('satellite', sat.id));
+        satCluster.addLayer(m);
+      });
+
+      // ── Aircraft ──────────────────────────────────────────────────────────────
+      markerData.aircraft.forEach((ac) => {
+        if (!ac.lat || !ac.lng) return;
+        const emergencyColor = ac.emergency ? 'rgba(239,68,68,0.9)' : 'rgba(59,130,246,0.85)';
+        // Rotated plane icon
+        const headingStyle = `transform:rotate(${ac.heading}deg);display:inline-block;font-size:16px;`;
+        const icon = L.divIcon({
+          html: `<div style="background:${emergencyColor};border:2px solid rgba(255,255,255,0.8);border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px ${emergencyColor};${ac.emergency ? 'animation:live-pulse 1s ease-in-out infinite;' : ''}"><span style="${headingStyle}">✈</span></div>`,
+          className: '',
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        });
+        const m = L.marker([ac.lat, ac.lng], { icon, title: ac.callsign })
+          .bindPopup(`
+            <div style="font-family:system-ui;color:#e2e8f0;min-width:190px">
+              <strong style="color:#60a5fa">${ac.callsign}</strong>${ac.emergency ? ' 🚨' : ''}<br/>
+              <small>${ac.type ?? ''} | ${ac.registration ?? 'N/A'}</small><br/>
+              Alt: ${ac.altitude.toLocaleString()} ft | ${ac.speed} kts<br/>
+              Hdg: ${ac.heading}° | VR: ${ac.verticalRate} fpm<br/>
+              ${ac.origin && ac.destination ? `Route: ${ac.origin} → ${ac.destination}<br/>` : ''}
+              <small style="color:#6b7280">${ac.status} · ICAO: ${ac.icao}</small>
+            </div>`);
+        if (onMarkerClick) m.on('click', () => onMarkerClick('aircraft', ac.icao));
+        acCluster.addLayer(m);
+      });
+
+      // ── Ships ─────────────────────────────────────────────────────────────────
+      markerData.ships.forEach((ship) => {
+        if (!ship.lat || !ship.lng) return;
+        const m = L.marker([ship.lat, ship.lng], {
+          icon: createIcon('🚢', 'rgba(6,182,212,0.85)'),
+          title: ship.name,
+        }).bindPopup(`
+          <div style="font-family:system-ui;color:#e2e8f0;min-width:180px">
+            <strong style="color:#22d3ee">${ship.name}</strong><br/>
+            <small>MMSI: ${ship.mmsi} | ${ship.flag ?? ''}</small><br/>
+            Type: ${ship.type}<br/>
+            Speed: ${ship.speed} kts | Hdg: ${ship.heading}°<br/>
+            ${ship.destination ? `To: ${ship.destination}` : ''}
+          </div>`);
+        if (onMarkerClick) m.on('click', () => onMarkerClick('ship', ship.mmsi));
+        shipCluster.addLayer(m);
+      });
+
+      // ── Cameras ───────────────────────────────────────────────────────────────
+      markerData.cameras.forEach((cam) => {
+        if (!cam.lat || !cam.lng) return;
+        const m = L.marker([cam.lat, cam.lng], {
+          icon: createIcon('📷', 'rgba(168,85,247,0.85)', 24),
+          title: cam.name,
+        }).bindPopup(`
+          <div style="font-family:system-ui;color:#e2e8f0;min-width:180px">
+            <strong style="color:#c084fc">${cam.name}</strong><br/>
+            <small>${cam.type.toUpperCase()} | ${cam.source}</small><br/>
+            ${cam.location}<br/>
+            Status: <span style="color:${cam.status === 'live' ? '#4ade80' : '#f87171'}">${cam.status}</span>
+            ${cam.streamUrl ? `<br/><a href="${cam.streamUrl}" target="_blank" style="color:#818cf8">View Stream ↗</a>` : ''}
+          </div>`);
+        camCluster.addLayer(m);
+      });
+
+      markerData.flockCameras.forEach((fc) => {
+        if (!fc.lat || !fc.lng) return;
+        const m = L.marker([fc.lat, fc.lng], {
+          icon: createIcon('👁️', 'rgba(249,115,22,0.85)', 24),
+          title: `Flock: ${fc.serialNumber}`,
+        }).bindPopup(`
+          <div style="font-family:system-ui;color:#e2e8f0;min-width:180px">
+            <strong style="color:#fb923c">Flock LPR Camera</strong><br/>
+            <small>S/N: ${fc.serialNumber}</small><br/>
+            ${fc.location}<br/>
+            ${fc.city}, ${fc.state}<br/>
+            Agency: ${fc.agency ?? 'Unknown'}
+          </div>`);
+        camCluster.addLayer(m);
+      });
+
+      // Add clusters to map
+      [satCluster, acCluster, shipCluster, camCluster].forEach((g) => {
+        g.addTo(map);
+        layersRef.current.push(g);
+      });
+
+      // ── Heatmap (camera density) ──────────────────────────────────────────────
+      if (showHeatmap && (markerData.cameras.length > 0 || markerData.flockCameras.length > 0)) {
+        if (heatLayerRef.current) {
+          map.removeLayer(heatLayerRef.current as import('leaflet').Layer);
+        }
+        try {
+          // Use manual canvas heatmap since leaflet.heat not installed
+          const points = [
+            ...markerData.cameras.filter((c) => c.lat && c.lng).map((c) => ({ lat: c.lat, lng: c.lng, w: 0.8 })),
+            ...markerData.flockCameras.filter((f) => f.lat && f.lng).map((f) => ({ lat: f.lat, lng: f.lng, w: 1.0 })),
+          ];
+          // Draw circles on map as a simple density overlay
+          points.forEach((pt) => {
+            const circle = L.circle([pt.lat, pt.lng], {
+              radius: 3000,
+              color: 'transparent',
+              fillColor: '#7c3aed',
+              fillOpacity: 0.08 * pt.w,
+            }).addTo(map);
+            layersRef.current.push(circle);
+          });
+        } catch {
+          // Heatmap not available
+        }
+      }
+    });
+  }, [markerData, trails, showHeatmap, cluster, onMarkerClick]);
 
   return (
     <div

@@ -1,113 +1,205 @@
-import React, { useState } from 'react';
-import { Satellite, RefreshCw, ExternalLink, Filter, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Satellite, RefreshCw, ExternalLink, Filter, Search, ChevronUp, ChevronDown, Star, MapPin, Download } from 'lucide-react';
 import type { Satellite as SatelliteType, MapFilter } from '../../types';
 import { mockSatellites } from '../../data/mockData';
+import { fetchLiveSatellites, toCSV } from '../../services/api';
 import MapView from '../common/MapView';
+import { useSettings } from '../../hooks/useLocalStorage';
+import { useWatchlist } from '../../hooks/useWatchlist';
+import { useGeolocation, calcSatelliteVisibility } from '../../hooks/useGeolocation';
+import toast from 'react-hot-toast';
 
 const defaultFilter: MapFilter = {
-  satellites: true,
-  aircraft: false,
-  ships: false,
-  cameras: false,
-  flockCameras: false,
+  satellites: true, aircraft: false, ships: false, cameras: false, flockCameras: false,
 };
 
 const SatelliteTracker: React.FC = () => {
+  const [settings] = useSettings();
   const [satellites, setSatellites] = useState<SatelliteType[]>(mockSatellites);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [sortField, setSortField] = useState<keyof SatelliteType>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLive, setIsLive] = useState(false);
   const [selectedSat, setSelectedSat] = useState<SatelliteType | null>(null);
+  const [showPassCalc, setShowPassCalc] = useState(false);
+  const { addEntry, isWatched, removeEntry, watchlist } = useWatchlist();
+  const { lat: userLat, lng: userLng, locate } = useGeolocation();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handleRefresh = () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
-    // Simulate refresh with slight position changes
-    setTimeout(() => {
-      setSatellites((prev) =>
-        prev.map((s) => ({
+    try {
+      if (settings.enableLiveSatellites) {
+        const data = await fetchLiveSatellites('active');
+        setSatellites(data);
+        setIsLive(true);
+        toast.success(`Loaded ${data.length} satellites from CelesTrak`, { id: 'sat-update', duration: 2000 });
+      } else {
+        setSatellites(prev => prev.map(s => ({
           ...s,
           lat: s.lat + (Math.random() - 0.5) * 2,
-          lng: (s.lng + s.velocity / 100000) % 180,
+          lng: ((s.lng + s.velocity / 100000) % 180),
           lastUpdated: new Date().toISOString(),
-        }))
-      );
+        })));
+      }
+    } catch (err: unknown) {
+      toast.error(`Satellite data error: ${err instanceof Error ? err.message : 'Unknown'}`);
+    } finally {
       setIsLoading(false);
-    }, 1200);
-  };
+    }
+  }, [settings.enableLiveSatellites]);
+
+  useEffect(() => {
+    fetchData();
+    intervalRef.current = setInterval(fetchData, settings.refreshInterval * 1000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [settings.refreshInterval, settings.enableLiveSatellites]);
 
   const handleSort = (field: keyof SatelliteType) => {
-    if (sortField === field) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      setSortDir('asc');
-    }
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDir('asc'); }
   };
 
   const filtered = satellites
-    .filter((s) => {
-      const matchSearch =
-        s.name.toLowerCase().includes(search.toLowerCase()) ||
+    .filter(s => {
+      const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) ||
         s.noradId.toString().includes(search) ||
         s.owner.toLowerCase().includes(search.toLowerCase());
-      const matchType = typeFilter === 'all' || s.type === typeFilter;
-      return matchSearch && matchType;
+      return matchSearch && (typeFilter === 'all' || s.type === typeFilter);
     })
     .sort((a, b) => {
-      const av = a[sortField];
-      const bv = b[sortField];
-      if (typeof av === 'string' && typeof bv === 'string') {
+      const av = a[sortField], bv = b[sortField];
+      if (typeof av === 'string' && typeof bv === 'string')
         return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
-      }
-      if (typeof av === 'number' && typeof bv === 'number') {
+      if (typeof av === 'number' && typeof bv === 'number')
         return sortDir === 'asc' ? av - bv : bv - av;
-      }
       return 0;
     });
 
-  const SortIcon = ({ field }: { field: keyof SatelliteType }) => {
-    if (sortField !== field) return <ChevronUp size={12} className="text-gray-600" />;
-    return sortDir === 'asc' ? (
-      <ChevronUp size={12} className="text-indigo-400" />
-    ) : (
-      <ChevronDown size={12} className="text-indigo-400" />
-    );
+  // Visibility calculations for currently selected satellite
+  const visibility = selectedSat && userLat && userLng
+    ? calcSatelliteVisibility(userLat, userLng, selectedSat.lat, selectedSat.lng, selectedSat.altitude)
+    : null;
+
+  const handleWatchToggle = (sat: SatelliteType) => {
+    if (isWatched(sat.noradId.toString(), 'satellite')) {
+      const entry = watchlist.find(w => w.identifier === sat.noradId.toString() && w.type === 'satellite');
+      if (entry) removeEntry(entry.id);
+      toast(`Removed ${sat.name} from watchlist`);
+    } else {
+      addEntry({ id: `wl-${Date.now()}`, type: 'satellite', identifier: sat.noradId.toString(), label: sat.name, alertOnSeen: true });
+      toast.success(`Added ${sat.name} to watchlist`);
+    }
   };
+
+  const SortIcon = ({ field }: { field: keyof SatelliteType }) => (
+    sortField !== field ? <ChevronUp size={12} className="text-gray-600" />
+    : sortDir === 'asc' ? <ChevronUp size={12} className="text-indigo-400" />
+    : <ChevronDown size={12} className="text-indigo-400" />
+  );
 
   return (
     <div className="space-y-4">
       {/* Controls */}
       <div className="card">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-48">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-            <input
-              type="text"
-              placeholder="Search by name, NORAD ID, owner..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="input-field pl-9"
-            />
+            <input type="text" placeholder="Search by name, NORAD ID, owner..."
+              value={search} onChange={e => setSearch(e.target.value)} className="input-field pl-9" />
           </div>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="input-field sm:w-40"
-          >
-            <option value="all">All Types</option>
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="input-field sm:w-36">
+            <option value="all">All Orbits</option>
             <option value="LEO">LEO</option>
             <option value="MEO">MEO</option>
             <option value="GEO">GEO</option>
             <option value="HEO">HEO</option>
           </select>
-          <button onClick={handleRefresh} disabled={isLoading} className="btn-secondary">
+          <button onClick={locate} className="btn-secondary" title="Get your location for pass calculations">
+            <MapPin size={15} className={userLat ? 'text-green-400' : ''} />
+            <span className="hidden sm:inline">{userLat ? 'Located' : 'My Location'}</span>
+          </button>
+          <button onClick={() => setShowPassCalc(!showPassCalc)} className="btn-secondary">
+            <Satellite size={15} className="text-indigo-400" />
+            <span className="hidden sm:inline">Pass Calculator</span>
+          </button>
+          <button onClick={fetchData} disabled={isLoading} className="btn-primary">
             <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
-            <span className="hidden sm:inline">Refresh</span>
+            <span className="hidden sm:inline">{settings.enableLiveSatellites ? 'Live' : 'Refresh'}</span>
+          </button>
+          <button onClick={() => toCSV(filtered as unknown as Record<string, unknown>[], 'satellites.csv')} className="btn-secondary" title="Export CSV">
+            <Download size={15} />
           </button>
         </div>
+
+        <div className="mt-3 flex items-center gap-3 text-xs">
+          <div className={`flex items-center gap-1.5 ${isLive ? 'text-green-400' : 'text-yellow-400'}`}>
+            <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-green-500 live-indicator' : 'bg-yellow-500'}`} />
+            {isLive ? 'CelesTrak Live Data' : 'Demo Data — Enable live in Settings'}
+          </div>
+        </div>
       </div>
+
+      {/* Pass Calculator */}
+      {showPassCalc && (
+        <div className="card glow-border">
+          <div className="card-header">
+            <Satellite size={16} className="text-indigo-400" />
+            <h3 className="section-title">Overhead Pass Calculator</h3>
+          </div>
+          {!userLat ? (
+            <div className="text-center py-6">
+              <MapPin size={32} className="mx-auto text-gray-600 mb-2" />
+              <p className="text-gray-500 text-sm">Click "My Location" to enable pass calculations</p>
+              <button onClick={locate} className="btn-primary mt-3 mx-auto">
+                <MapPin size={14} /> Get My Location
+              </button>
+            </div>
+          ) : (
+            <div>
+              <p className="text-xs text-gray-500 mb-3">
+                Your location: {userLat.toFixed(4)}°, {userLng!.toFixed(4)}°
+              </p>
+              <div className="overflow-x-auto">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Satellite</th>
+                      <th>NORAD</th>
+                      <th>Elevation</th>
+                      <th>Distance (km)</th>
+                      <th>Visible</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered
+                      .map(sat => ({ sat, vis: calcSatelliteVisibility(userLat, userLng!, sat.lat, sat.lng, sat.altitude) }))
+                      .sort((a, b) => b.vis.elevationDeg - a.vis.elevationDeg)
+                      .slice(0, 15)
+                      .map(({ sat, vis }) => (
+                        <tr key={sat.id}>
+                          <td className="font-medium text-gray-200">{sat.name}</td>
+                          <td className="font-mono text-xs text-gray-500">{sat.noradId}</td>
+                          <td className={vis.elevationDeg > 10 ? 'text-green-400' : 'text-gray-500'}>
+                            {vis.elevationDeg.toFixed(1)}°
+                          </td>
+                          <td className="font-mono text-xs text-gray-400">{vis.distanceKm.toFixed(0)}</td>
+                          <td>
+                            {vis.visible
+                              ? <span className="badge badge-green">Visible</span>
+                              : <span className="badge badge-red">Below horizon</span>}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Map */}
       <div className="card">
@@ -116,9 +208,17 @@ const SatelliteTracker: React.FC = () => {
           <h3 className="section-title">Live Satellite Positions</h3>
           <span className="badge badge-blue ml-auto">{filtered.length} tracked</span>
         </div>
-        <MapView satellites={filtered} filter={defaultFilter} height="380px" />
-
-        {/* External resources */}
+        <MapView
+          satellites={filtered}
+          filter={defaultFilter}
+          height="380px"
+          userLocation={userLat && userLng ? { lat: userLat, lng: userLng } : null}
+          cluster={settings.clusterMarkers}
+          onMarkerClick={(_, id) => {
+            const sat = satellites.find(s => s.id === id);
+            if (sat) setSelectedSat(sat);
+          }}
+        />
         <div className="mt-3 flex flex-wrap gap-2">
           {[
             { label: 'CelesTrak', url: 'https://celestrak.org' },
@@ -126,16 +226,10 @@ const SatelliteTracker: React.FC = () => {
             { label: 'Heavens Above', url: 'https://www.heavens-above.com' },
             { label: 'Space-Track', url: 'https://www.space-track.org' },
             { label: 'Orbit Visualizer', url: 'https://platform.leolabs.space/visualization' },
-          ].map((r) => (
-            <a
-              key={r.label}
-              href={r.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 bg-indigo-900/20 px-2.5 py-1.5 rounded-full border border-indigo-800/40 transition-colors"
-            >
-              <ExternalLink size={11} />
-              {r.label}
+          ].map(r => (
+            <a key={r.label} href={r.url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 bg-indigo-900/20 px-2.5 py-1.5 rounded-full border border-indigo-800/40">
+              <ExternalLink size={11} />{r.label}
             </a>
           ))}
         </div>
@@ -157,29 +251,21 @@ const SatelliteTracker: React.FC = () => {
                   { key: 'type', label: 'Orbit' },
                   { key: 'owner', label: 'Owner' },
                   { key: 'altitude', label: 'Alt (km)' },
-                  { key: 'velocity', label: 'Vel (km/h)' },
                   { key: 'status', label: 'Status' },
                 ].map(({ key, label }) => (
-                  <th
-                    key={key}
-                    onClick={() => handleSort(key as keyof SatelliteType)}
-                    className="cursor-pointer select-none hover:text-gray-300"
-                  >
+                  <th key={key} onClick={() => handleSort(key as keyof SatelliteType)}
+                    className="cursor-pointer select-none hover:text-gray-300">
                     <div className="flex items-center gap-1">
-                      {label}
-                      <SortIcon field={key as keyof SatelliteType} />
+                      {label}<SortIcon field={key as keyof SatelliteType} />
                     </div>
                   </th>
                 ))}
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((sat) => (
-                <tr
-                  key={sat.id}
-                  onClick={() => setSelectedSat(sat === selectedSat ? null : sat)}
-                  className="cursor-pointer"
-                >
+              {filtered.slice(0, 100).map(sat => (
+                <tr key={sat.id} onClick={() => setSelectedSat(sat === selectedSat ? null : sat)} className="cursor-pointer">
                   <td>
                     <div className="flex items-center gap-2">
                       <Satellite size={13} className="text-indigo-400 flex-shrink-0" />
@@ -188,55 +274,25 @@ const SatelliteTracker: React.FC = () => {
                   </td>
                   <td className="font-mono text-xs text-gray-400">{sat.noradId}</td>
                   <td>
-                    <span
-                      className={`badge ${
-                        sat.type === 'LEO'
-                          ? 'badge-blue'
-                          : sat.type === 'GEO'
-                          ? 'badge-green'
-                          : sat.type === 'MEO'
-                          ? 'badge-yellow'
-                          : 'badge-purple'
-                      }`}
-                    >
+                    <span className={`badge ${sat.type === 'LEO' ? 'badge-blue' : sat.type === 'GEO' ? 'badge-green' : sat.type === 'MEO' ? 'badge-yellow' : 'badge-purple'}`}>
                       {sat.type}
                     </span>
                   </td>
                   <td className="text-gray-400">{sat.owner}</td>
-                  <td className="text-gray-400 font-mono text-xs">
-                    {sat.altitude.toLocaleString()}
-                  </td>
-                  <td className="text-gray-400 font-mono text-xs">
-                    {sat.velocity.toLocaleString()}
-                  </td>
+                  <td className="font-mono text-xs text-gray-400">{sat.altitude.toLocaleString()}</td>
                   <td>
-                    <span
-                      className={`badge ${
-                        sat.status === 'active'
-                          ? 'badge-green'
-                          : sat.status === 'inactive'
-                          ? 'badge-red'
-                          : 'badge-yellow'
-                      }`}
-                    >
-                      <span
-                        className={`status-dot mr-1 ${
-                          sat.status === 'active' ? 'bg-green-500' : 'bg-gray-500'
-                        } ${sat.status === 'active' ? 'live-indicator' : ''}`}
-                      />
+                    <span className={`badge ${sat.status === 'active' ? 'badge-green' : 'badge-red'}`}>
+                      <span className={`status-dot mr-1 ${sat.status === 'active' ? 'bg-green-500 live-indicator' : 'bg-gray-500'}`} />
                       {sat.status}
                     </span>
+                  </td>
+                  <td onClick={e => { e.stopPropagation(); handleWatchToggle(sat); }}>
+                    <Star size={14} className={isWatched(sat.noradId.toString(), 'satellite') ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600 hover:text-yellow-400'} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {filtered.length === 0 && (
-            <div className="text-center py-8 text-gray-600">
-              <Satellite size={32} className="mx-auto mb-2" />
-              <p>No satellites match your search</p>
-            </div>
-          )}
         </div>
       </div>
 
@@ -246,12 +302,11 @@ const SatelliteTracker: React.FC = () => {
           <div className="card-header">
             <Satellite size={16} className="text-indigo-400" />
             <h3 className="text-indigo-400 font-semibold">{selectedSat.name}</h3>
-            <button
-              onClick={() => setSelectedSat(null)}
-              className="ml-auto text-gray-600 hover:text-gray-400 text-sm"
-            >
-              Close
+            <button onClick={() => handleWatchToggle(selectedSat)} className="ml-auto btn-secondary text-xs">
+              <Star size={13} className={isWatched(selectedSat.noradId.toString(), 'satellite') ? 'text-yellow-400 fill-yellow-400' : ''} />
+              {isWatched(selectedSat.noradId.toString(), 'satellite') ? 'Unwatch' : 'Watch'}
             </button>
+            <button onClick={() => setSelectedSat(null)} className="text-gray-600 hover:text-gray-400 text-sm ml-2">✕</button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
@@ -263,11 +318,11 @@ const SatelliteTracker: React.FC = () => {
               { label: 'Longitude', value: `${selectedSat.lng.toFixed(4)}°` },
               { label: 'Altitude', value: `${selectedSat.altitude.toLocaleString()} km` },
               { label: 'Velocity', value: `${selectedSat.velocity.toLocaleString()} km/h` },
-              { label: 'Inclination', value: `${selectedSat.inclination}°` },
-              {
-                label: 'Last Updated',
-                value: new Date(selectedSat.lastUpdated).toLocaleTimeString(),
-              },
+              ...(visibility ? [
+                { label: 'Elevation from You', value: `${visibility.elevationDeg.toFixed(1)}°` },
+                { label: 'Distance from You', value: `${visibility.distanceKm.toFixed(0)} km` },
+                { label: 'Currently Visible', value: visibility.visible ? '✅ Yes' : '❌ No' },
+              ] : []),
             ].map(({ label, value }) => (
               <div key={label} className="bg-gray-900/50 rounded-lg p-3">
                 <p className="text-xs text-gray-500 mb-1">{label}</p>
@@ -275,24 +330,12 @@ const SatelliteTracker: React.FC = () => {
               </div>
             ))}
           </div>
-          <div className="mt-3 flex gap-2">
-            <a
-              href={`https://www.n2yo.com/satellite/?s=${selectedSat.noradId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-primary text-sm"
-            >
-              <ExternalLink size={14} />
-              Track on N2YO
+          <div className="mt-3 flex gap-2 flex-wrap">
+            <a href={`https://www.n2yo.com/satellite/?s=${selectedSat.noradId}`} target="_blank" rel="noopener noreferrer" className="btn-primary text-sm">
+              <ExternalLink size={14} />Track on N2YO
             </a>
-            <a
-              href={`https://celestrak.org/satcat/record.php?CATNR=${selectedSat.noradId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-secondary text-sm"
-            >
-              <ExternalLink size={14} />
-              CelesTrak
+            <a href={`https://www.heavens-above.com/orbit.aspx?satid=${selectedSat.noradId}`} target="_blank" rel="noopener noreferrer" className="btn-secondary text-sm">
+              <ExternalLink size={14} />Heavens Above
             </a>
           </div>
         </div>
