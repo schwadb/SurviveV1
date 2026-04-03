@@ -56,13 +56,14 @@ setup_cron() {
     info "Setting up cron schedule..."
 
     # Remove old entries
-    crontab -l 2>/dev/null | grep -v "survive-cloud-sync" > /tmp/crontab_tmp || true
+    CRONTAB_TMP=$(mktemp)
+    crontab -l 2>/dev/null | grep -v "survive-cloud-sync" > "$CRONTAB_TMP" || true
 
     # Add new schedule: every 6 hours
-    echo "0 */6 * * * $SYNC_WRAPPER >> $LOG_DIR/cron_sync.log 2>&1" >> /tmp/crontab_tmp
+    echo "0 */6 * * * $SYNC_WRAPPER >> $LOG_DIR/cron_sync.log 2>&1" >> "$CRONTAB_TMP"
 
-    crontab /tmp/crontab_tmp
-    rm -f /tmp/crontab_tmp
+    crontab "$CRONTAB_TMP"
+    rm -f "$CRONTAB_TMP"
 
     success "Cron job added — syncs every 6 hours when internet available"
 }

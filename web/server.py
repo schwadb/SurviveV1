@@ -16,7 +16,20 @@ from flask import (
 )
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "survive-offline-key-change-me")
+
+# Generate a persistent random secret key on first run
+_KEY_FILE = Path(__file__).parent.parent / "config" / ".secret_key"
+if os.environ.get("SECRET_KEY"):
+    app.secret_key = os.environ["SECRET_KEY"]
+elif _KEY_FILE.exists():
+    app.secret_key = _KEY_FILE.read_text().strip()
+else:
+    import secrets as _secrets
+    _new_key = _secrets.token_hex(32)
+    _KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _KEY_FILE.write_text(_new_key)
+    _KEY_FILE.chmod(0o600)
+    app.secret_key = _new_key
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 REPO_DIR = Path(__file__).parent.parent
@@ -250,7 +263,13 @@ def browse_files():
 @app.route("/serve/<path:filepath>")
 def serve_file(filepath):
     """Serve a file from storage."""
-    full_path = STORAGE_PATH / filepath
+    full_path = (STORAGE_PATH / filepath).resolve()
+    storage_root = STORAGE_PATH.resolve()
+    # Prevent path traversal — ensure the resolved path is inside storage root
+    try:
+        full_path.relative_to(storage_root)
+    except ValueError:
+        return "Forbidden", 403
     if not full_path.exists():
         return "File not found", 404
     return send_from_directory(str(full_path.parent), full_path.name)

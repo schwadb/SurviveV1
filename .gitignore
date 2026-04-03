@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+
+# Secrets / generated keys
+config/.secret_key
+config/*.secret
+.env
+*.env
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data (large files — stored on external drive, not git)
+data/
+/mnt/
+
+# Downloaded content (never commit large media)
+download/*.zim
+download/*.mbtiles
+download/*.pbf
+download/*.mp4
+
+# Temp files
+/tmp/
+*.tmp
+*.bak
+
+# Node
+node_modules/
+
+# rclone secrets
+rclone.conf

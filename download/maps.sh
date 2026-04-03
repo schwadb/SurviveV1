@@ -117,26 +117,33 @@ setup_tile_server() {
     TILES_DIR="$MAP_DIR/tiles"
 
     # Create config for Martin tile server
-    cat > "$MAP_DIR/martin_config.yaml" << EOF
-# Martin Tile Server Configuration for SurviveV1
-listen_addresses:
-  - 0.0.0.0:3000
-
-mbtiles:
-  sources:
-$(ls "$MAP_DIR/mbtiles"/*.mbtiles 2>/dev/null | while read f; do
-    name=$(basename "$f" .mbtiles)
-    echo "    $name: $f"
-done)
-
-sprite:
-  paths:
-    - $MAP_DIR/sprites
-
-font:
-  paths:
-    - $MAP_DIR/fonts
-EOF
+    {
+        echo "# Martin Tile Server Configuration for SurviveV1"
+        echo "listen_addresses:"
+        echo "  - 0.0.0.0:3000"
+        echo ""
+        echo "mbtiles:"
+        echo "  sources:"
+        local found=false
+        for f in "$MAP_DIR/mbtiles"/*.mbtiles; do
+            [[ -e "$f" ]] || continue
+            found=true
+            local name
+            name=$(basename "$f" .mbtiles)
+            echo "    $name: $f"
+        done
+        if [[ "$found" == "false" ]]; then
+            echo "    # No .mbtiles files found yet — re-run after dl_mbtiles completes"
+        fi
+        echo ""
+        echo "sprite:"
+        echo "  paths:"
+        echo "    - $MAP_DIR/sprites"
+        echo ""
+        echo "font:"
+        echo "  paths:"
+        echo "    - $MAP_DIR/fonts"
+    } > "$MAP_DIR/martin_config.yaml"
     success "Martin config: $MAP_DIR/martin_config.yaml"
 }
 
