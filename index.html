@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SurviveV1 — Offline Survival Repository</title>
+<style>
+:root{--bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;--text:#e6edf3;--text-dim:#8b949e;--accent:#3fb950;--accent2:#58a6ff;--danger:#f85149;--warning:#d29922;--radius:8px;--mono:'Courier New',Courier,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6}
+a{color:var(--accent2);text-decoration:none}
+a:hover{text-decoration:underline}
+h1{font-size:28px;font-weight:800;margin-bottom:8px}
+h2{font-size:20px;font-weight:700;margin:28px 0 12px;color:var(--text)}
+h3{font-size:16px;font-weight:600;margin:20px 0 8px;color:var(--accent)}
+p{margin-bottom:12px;color:var(--text)}
+ul,ol{margin:0 0 12px 20px}
+li{margin-bottom:4px}
+code{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-family:var(--mono);font-size:12px;color:var(--accent)}
+nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;position:sticky;top:0;z-index:100}
+.nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;height:56px;gap:16px}
+.logo{font-size:18px;font-weight:800;color:var(--accent);white-space:nowrap}
+.logo span{color:var(--text-dim);font-weight:400;font-size:11px;margin-left:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.tab-nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
+.tab-btn{background:none;border:none;color:var(--text-dim);padding:6px 12px;border-radius:var(--radius);font-size:13px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.tab-btn:hover,.tab-btn.active{color:var(--text);background:var(--surface2)}
+.tab-btn.active{color:var(--accent)}
+.container{max-width:1200px;margin:0 auto;padding:28px 20px}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:20px}
+.card-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:14px}
+table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px}
+th{text-align:left;padding:8px 12px;border-bottom:2px solid var(--border);color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+td{padding:8px 12px;border-bottom:1px solid var(--border)}
+tr:hover td{background:var(--surface2)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-green{background:rgba(63,185,80,.15);color:var(--accent)}
+.badge-blue{background:rgba(88,166,255,.15);color:var(--accent2)}
+.badge-red{background:rgba(248,81,73,.15);color:var(--danger)}
+.badge-yellow{background:rgba(210,153,34,.15);color:var(--warning)}
+.pre-wrap{position:relative;margin:12px 0}
+pre{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.5;color:#c9d1d9}
+.copy-btn{position:absolute;top:8px;right:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;transition:all .15s}
+.copy-btn:hover{color:var(--text);border-color:var(--text-dim)}
+.copy-btn.copied{color:var(--accent);border-color:var(--accent)}
+.progress-wrap{background:var(--surface2);border-radius:4px;height:8px;overflow:hidden;margin:4px 0}
+.progress-bar{height:100%;border-radius:4px;background:var(--accent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.hero{background:linear-gradient(135deg,#0d1117 0%,#161b22 60%,#0d1117 100%);border:1px solid var(--border);border-radius:var(--radius);padding:32px;margin-bottom:24px}
+.hero-title{font-size:38px;font-weight:800;line-height:1.1;margin-bottom:10px}
+.hero-title .g{color:var(--accent)}
+.hero-sub{color:var(--text-dim);font-size:15px;max-width:620px;margin-bottom:22px}
+.hero-stats{display:flex;gap:32px;flex-wrap:wrap}
+.stat-val{font-size:30px;font-weight:700;color:var(--accent);line-height:1}
+.stat-label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+.step{display:flex;gap:16px;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+.step:last-child{border-bottom:none}
+.step-num{width:32px;height:32px;background:var(--accent);color:#000;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0;margin-top:2px}
+.step-content{flex:1}
+.step-title{font-weight:700;font-size:15px;margin-bottom:6px}
+.tier{border-left:3px solid var(--danger);padding-left:14px;margin-bottom:24px}
+.tier.t2{border-color:var(--warning)}
+.tier.t3{border-color:var(--accent2)}
+.gap-title{font-weight:700;font-size:14px;margin-bottom:6px}
+.expert-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px}
+.expert-name{font-weight:700;color:var(--accent);margin-bottom:4px}
+.access-method{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:14px}
+.method-num{font-size:22px;font-weight:800;color:var(--accent);margin-bottom:6px}
+.method-title{font-size:16px;font-weight:700;margin-bottom:10px}
+footer{background:var(--surface);border-top:1px solid var(--border);padding:20px;text-align:center;color:var(--text-dim);font-size:12px;margin-top:48px}
+footer strong{color:var(--accent)}
+@media(max-width:768px){.grid2,.grid3{grid-template-columns:1fr}.tab-nav{gap:1px}.hero-stats{gap:16px}.hero-title{font-size:26px}}
+</style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <div class="dot"></div>
+    <div class="logo">SurviveV1<span>OFFLINE REPO</span></div>
+    <div class="tab-nav">
+      <button class="tab-btn active" onclick="show('overview',this)">Overview</button>
+      <button class="tab-btn" onclick="show('quickstart',this)">Quick Start</button>
+      <button class="tab-btn" onclick="show('catalog',this)">Content Catalog</button>
+      <button class="tab-btn" onclick="show('gaps',this)">Gaps Analysis</button>
+      <button class="tab-btn" onclick="show('licenses',this)">Licenses</button>
+      <button class="tab-btn" onclick="show('aihat',this)">AI Hat</button>
+      <button class="tab-btn" onclick="show('access',this)">How to Access</button>
+    </div>
+  </div>
+</nav>
+<div class="container">
+
+<!-- ═══════════════════════════════ OVERVIEW ════════════════════════════════ -->
+<div id="overview" class="tab-panel active">
+
+  <div class="hero">
+    <div class="hero-title"><span class="g">Survive</span>V1</div>
+    <div class="hero-sub">800 GB offline survival knowledge base — runs on a Raspberry Pi 5 with AI Hat. Wikipedia, videos, medical guides, military manuals, maps, and a local AI assistant. No internet required.</div>
+    <div class="hero-stats">
+      <div><div class="stat-val">800<span style="font-size:18px">GB</span></div><div class="stat-label">Total Content</div></div>
+      <div><div class="stat-val">26</div><div class="stat-label">Categories</div></div>
+      <div><div class="stat-val">7</div><div class="stat-label">Services</div></div>
+      <div><div class="stat-val">100%</div><div class="stat-label">Offline</div></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Hardware Requirements</div>
+      <table>
+        <tr><th>Component</th><th>Minimum</th><th>Recommended</th></tr>
+        <tr><td>Raspberry Pi 5</td><td>4 GB RAM</td><td>8 GB RAM</td></tr>
+        <tr><td>AI Hat</td><td>—</td><td>Hailo-8L (13 TOPS)</td></tr>
+        <tr><td>Storage</td><td>256 GB SSD</td><td>1 TB NVMe/SSD</td></tr>
+        <tr><td>Power Bank</td><td>20,000 mAh</td><td>30,000 mAh + solar</td></tr>
+        <tr><td>Display</td><td>Any HDMI monitor</td><td>Portable HDMI</td></tr>
+        <tr><td>OS</td><td colspan="2">Raspberry Pi OS 64-bit Bookworm</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Services &amp; Ports</div>
+      <table>
+        <tr><th>Service</th><th>Port</th><th>Description</th></tr>
+        <tr><td>Dashboard</td><td><code>8080</code></td><td>Main web UI</td></tr>
+        <tr><td>Kiwix</td><td><code>8081</code></td><td>Wikipedia, books, Stack Exchange</td></tr>
+        <tr><td>Kolibri</td><td><code>8082</code></td><td>Khan Academy, CK-12</td></tr>
+        <tr><td>Calibre-Web</td><td><code>8083</code></td><td>E-book reader</td></tr>
+        <tr><td>Jellyfin</td><td><code>8096</code></td><td>Video player</td></tr>
+        <tr><td>Maps</td><td><code>3000</code></td><td>OpenStreetMap offline tiles</td></tr>
+        <tr><td>Ollama AI</td><td><code>11434</code></td><td>Local LLM API</td></tr>
+        <tr><td>Nginx</td><td><code>80</code></td><td>Reverse proxy</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Storage Budget (~800 GB Total)</div>
+    <table>
+      <tr><th>Content</th><th>Size</th><th>Usage</th></tr>
+      <tr><td>Wikipedia EN (with images)</td><td>~100 GB</td><td><div class="progress-wrap"><div class="progress-bar" style="width:12.5%"></div></div></td></tr>
+      <tr><td>Wikibooks + Wikivoyage</td><td>~5 GB</td><td><div class="progress-wrap"><div class="progress-bar" style="width:0.6%"></div></div></td></tr>
+      <tr><td>Stack Exchange (all topics)</td><td>~80 GB</td><td><div class="progress-wrap"><div class="progress-bar" style="width:10%"></div></div></td></tr>
+      <tr><td>Project Gutenberg (60k+ books)</td><td>~60 GB</td><td><div class="progress-wrap"><div class="progress-bar" style="width:7.5%"></div></div></td></tr>
+      <tr><td>Khan Academy (Kolibri)</td><td>~200 GB</td><td><div class="progress-wrap"><div class="progress-bar" style="width:25%"></div></div></td></tr>
+      <tr><td>Survival &amp; medical videos</td><td>~150 GB</td><td><div class="progress-wrap"><div class="progress-bar" style="width:18.75%"></div></div></td></tr>
+      <tr><td>OpenStreetMap (world)</td><td>~70 GB</td><td><div class="progress-wrap"><div class="progress-bar" style="width:8.75%"></div></div></td></tr>
+      <tr><td>PDFs + military manuals</td><td>~20 GB</td><td><div class="progress-wrap"><div class="progress-bar" style="width:2.5%"></div></div></td></tr>
+      <tr><td>LLM models (Ollama)</td><td>~50 GB</td><td><div class="progress-wrap"><div class="progress-bar" style="width:6.25%"></div></div></td></tr>
+      <tr><td>Buffer / misc</td><td>~65 GB</td><td><div class="progress-wrap"><div class="progress-bar" style="width:8.1%;background:var(--text-dim)"></div></div></td></tr>
+      <tr style="font-weight:700"><td>TOTAL</td><td>~800 GB</td><td></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Directory Layout</div>
+    <div class="pre-wrap">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>SurviveV1/
+├── setup/          # Install scripts (install.sh, first_run.sh, install_ai_hat.sh)
+├── download/       # Content downloaders (kiwix, videos, books, maps, gaps)
+├── web/            # Flask dashboard (server.py + templates/)
+├── ai/             # Ollama + local LLM config and query scripts
+├── sync/           # rclone cloud sync (Google Drive, Dropbox, S3)
+├── scripts/        # start / stop / status / update helpers
+├── systemd/        # Systemd service unit files
+├── config/         # nginx.conf, survive.conf (main config)
+├── docs/           # Documentation (QUICKSTART, gaps_analysis, catalog, licenses)
+└── data/           # Symlink → /mnt/survive (your storage drive)</pre>
+    </div>
+  </div>
+
+</div><!-- /overview -->
+
+<!-- ══════════════════════════════ QUICK START ══════════════════════════════ -->
+<div id="quickstart" class="tab-panel">
+  <h1>Quick Start</h1>
+  <p style="color:var(--text-dim)">From zero to a running offline survival server. Steps 1–4 take ~30 minutes; content download takes days.</p>
+
+  <div class="card">
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <div class="step-title">Prepare the Raspberry Pi</div>
+        <p>Flash Raspberry Pi OS 64-bit (Bookworm) to a microSD using <strong>Raspberry Pi Imager</strong>. Enable SSH in the Imager settings before flashing. Boot and connect via SSH or keyboard/monitor.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <div class="step-title">Clone the Repository &amp; Run the Installer</div>
+        <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre>git clone https://github.com/schwadb/SurviveV1.git ~/SurviveV1
+cd ~/SurviveV1
+sudo bash setup/install.sh</pre></div>
+        <p>The installer (~15–30 min) installs: Kiwix, Kolibri, Jellyfin, Calibre, Ollama, nginx, Samba, avahi-daemon, ufw, rclone, yt-dlp, and all Python dependencies.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <div class="step-title">Mount Your Storage Drive</div>
+        <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Find your drive
+lsblk
+
+# Format if new — WARNING: erases all data
+sudo mkfs.ext4 /dev/sda1   # replace sda1 with your drive
+
+# Mount
+sudo mkdir -p /mnt/survive
+sudo mount /dev/sda1 /mnt/survive
+
+# Auto-mount on boot
+echo "UUID=$(sudo blkid -s UUID -o value /dev/sda1)  /mnt/survive  ext4  defaults,noatime  0  2" \
+  | sudo tee -a /etc/fstab</pre></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <div class="step-title">Configure</div>
+        <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre>nano ~/SurviveV1/config/survive.conf
+
+# Key settings to review:
+SURVIVE_STORAGE_PATH="/mnt/survive"
+MAP_REGION="north-america"    # or: south-america, europe, africa, asia, world
+CONTENT_VIDEOS="Y"            # set N to skip video download
+SKIP_AI_HAT="false"           # set true if you don't have the AI Hat</pre></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-content">
+        <div class="step-title">Download Content <span style="color:var(--warning)">(takes days — let it run)</span></div>
+        <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Download everything
+bash download/download_all.sh
+
+# Or download individual categories:
+bash download/kiwix_content.sh       # Wikipedia, Stack Exchange (~100–180 GB)
+bash download/videos.sh              # Survival video channels (~150 GB)
+bash download/books_pdfs.sh          # Military manuals, medical PDFs (~20 GB)
+bash download/maps.sh --region us    # US maps (~20 GB)
+bash download/kolibri_content.sh     # Khan Academy (~200 GB)
+bash download/gaps_content.sh        # Expert-identified gap-filling content</pre></div>
+        <table style="margin-top:12px">
+          <tr><th>Content</th><th>Size</th><th>Est. Time (100 Mbps)</th></tr>
+          <tr><td>Wikipedia EN (with images)</td><td>~100 GB</td><td>~3 hours</td></tr>
+          <tr><td>Survival videos</td><td>~150 GB</td><td>~4 hours</td></tr>
+          <tr><td>US Maps</td><td>~20 GB</td><td>~30 min</td></tr>
+          <tr><td>Khan Academy</td><td>~200 GB</td><td>~5 hours</td></tr>
+          <tr><td>PDFs &amp; Manuals</td><td>~20 GB</td><td>~30 min</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-content">
+        <div class="step-title">Set Up the AI Assistant</div>
+        <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Pull AI models (choose based on RAM)
+bash ai/setup_ollama.sh
+
+# Or manually:
+ollama pull phi3:mini      # 2.3 GB — recommended for RPi 5
+ollama pull tinyllama      # 637 MB — fastest, basic quality
+ollama pull mistral:7b-q4  # 4.1 GB — best quality, needs 6 GB RAM</pre></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">7</div>
+      <div class="step-content">
+        <div class="step-title">Start Everything</div>
+        <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre>bash scripts/start_services.sh
+
+# Dashboard available at:
+http://localhost:8080
+http://survive.local:8080   # from other devices on same network</pre></div>
+        <div class="pre-wrap" style="margin-top:8px"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Useful management commands:
+bash scripts/status.sh           # check all service status
+bash scripts/stop_services.sh    # stop everything
+bash scripts/update_content.sh   # update downloaded content</pre></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">8</div>
+      <div class="step-content">
+        <div class="step-title">Cloud Backup <span style="color:var(--text-dim)">(optional — do while internet available)</span></div>
+        <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Set up cloud storage (run once)
+bash sync/setup_rclone.sh gdrive     # Google Drive
+bash sync/setup_rclone.sh dropbox    # Dropbox
+
+# Sync content to cloud
+bash sync/sync_to_cloud.sh gdrive
+
+# Schedule nightly sync when internet is available
+sudo bash sync/schedule_sync.sh gdrive
+
+# Restore from cloud (after hardware replacement)
+bash sync/sync_from_cloud.sh gdrive</pre></div>
+      </div>
+    </div>
+
+  </div><!-- /card -->
+
+  <div class="card">
+    <div class="card-title">Accessing Your System</div>
+    <div class="grid2">
+      <div>
+        <h3 style="margin-top:0">From the Pi itself</h3>
+        <ul>
+          <li>Dashboard: <code>http://localhost:8080</code></li>
+          <li>Wikipedia: <code>http://localhost:8081</code></li>
+          <li>Education: <code>http://localhost:8082</code></li>
+          <li>Videos: <code>http://localhost:8096</code></li>
+          <li>Maps: <code>http://localhost:3000</code></li>
+        </ul>
+      </div>
+      <div>
+        <h3 style="margin-top:0">From other devices (same network)</h3>
+        <ul>
+          <li>mDNS: <code>http://survive.local:8080</code></li>
+          <li>By IP: <code>http://192.168.1.X:8080</code></li>
+          <li>File share (Windows): <code>\\survive\survive</code></li>
+          <li>File share (Mac/Linux): <code>smb://survive/survive</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Troubleshooting</div>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Dashboard not loading
+bash scripts/status.sh
+tail -f /tmp/survive_dashboard.log
+
+# Wikipedia empty
+ls /mnt/survive/zim/    # should show .zim files
+
+# AI not responding
+ollama serve &amp;
+ollama list             # verify models installed
+
+# Check disk space
+df -h /mnt/survive
+du -sh /mnt/survive/*
+
+# Check Pi temperature (avoid throttling)
+vcgencmd measure_temp
+sudo cpufreq-set -g powersave  # extend battery life</pre></div>
+  </div>
+
+</div><!-- /quickstart -->
+
+<!-- ══════════════════════════════ CONTENT CATALOG ══════════════════════════ -->
+<div id="catalog" class="tab-panel">
+  <h1>Content Catalog</h1>
+  <p style="color:var(--text-dim)">Complete list of downloadable content. Run <code>bash download/download_all.sh</code> to get everything, or individual scripts for specific categories.</p>
+
+  <div class="card">
+    <div class="card-title">Kiwix ZIM Files — Wikipedia &amp; General Reference</div>
+    <table>
+      <tr><th>Package</th><th>Size</th><th>Download Source</th></tr>
+      <tr><td>Wikipedia EN (full, with images)</td><td><span class="badge badge-yellow">~100 GB</span></td><td>download.kiwix.org/zim/wikipedia</td></tr>
+      <tr><td>Wikipedia EN (no images)</td><td><span class="badge badge-green">~22 GB</span></td><td>download.kiwix.org/zim/wikipedia</td></tr>
+      <tr><td>Wikibooks EN</td><td><span class="badge badge-green">~1.5 GB</span></td><td>download.kiwix.org/zim/wikibooks</td></tr>
+      <tr><td>Wikivoyage EN</td><td><span class="badge badge-green">~600 MB</span></td><td>download.kiwix.org/zim/wikivoyage</td></tr>
+      <tr><td>Wikisource EN</td><td><span class="badge badge-green">~1 GB</span></td><td>download.kiwix.org/zim/wikisource</td></tr>
+      <tr><td>Wiktionary EN</td><td><span class="badge badge-green">~2 GB</span></td><td>download.kiwix.org/zim/wiktionary</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Kiwix ZIM Files — Technical Reference</div>
+    <table>
+      <tr><th>Package</th><th>Size</th><th>Notes</th></tr>
+      <tr><td>iFixit Repair Guides</td><td><span class="badge badge-green">~5 GB</span></td><td>Step-by-step device repair</td></tr>
+      <tr><td>Stack Overflow</td><td><span class="badge badge-yellow">~40 GB</span></td><td>Programming Q&amp;A</td></tr>
+      <tr><td>Super User</td><td><span class="badge badge-green">~2 GB</span></td><td>Computer help</td></tr>
+      <tr><td>Unix/Linux SE</td><td><span class="badge badge-green">~2 GB</span></td><td>Linux system administration</td></tr>
+      <tr><td>DIY Stack Exchange</td><td><span class="badge badge-green">~1 GB</span></td><td>Home repair and construction</td></tr>
+      <tr><td>Cooking SE</td><td><span class="badge badge-green">~500 MB</span></td><td>Food preparation</td></tr>
+      <tr><td>Outdoors SE</td><td><span class="badge badge-green">~200 MB</span></td><td>Hiking, camping, wilderness</td></tr>
+      <tr><td>Ham Radio SE</td><td><span class="badge badge-green">~200 MB</span></td><td>Amateur radio</td></tr>
+      <tr><td>Gardening SE</td><td><span class="badge badge-green">~300 MB</span></td><td>Growing food</td></tr>
+      <tr><td>Medical Sciences SE</td><td><span class="badge badge-green">~200 MB</span></td><td>Medical Q&amp;A</td></tr>
+      <tr><td>Sustainability SE</td><td><span class="badge badge-green">~150 MB</span></td><td>Off-grid living</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Kiwix ZIM Files — Education</div>
+    <table>
+      <tr><th>Package</th><th>Size</th><th>Notes</th></tr>
+      <tr><td>Project Gutenberg (~60k books)</td><td><span class="badge badge-yellow">~60 GB</span></td><td>Public domain literature and reference</td></tr>
+      <tr><td>Khan Academy (ZIM)</td><td><span class="badge badge-green">~5 GB</span></td><td>Condensed Khan Academy</td></tr>
+      <tr><td>Wikimed (medical)</td><td><span class="badge badge-green">~2 GB</span></td><td>Medical Wikipedia subset</td></tr>
+      <tr><td>Medline Plus</td><td><span class="badge badge-green">~1 GB</span></td><td>NIH consumer health information</td></tr>
+      <tr><td>TED Talks</td><td><span class="badge badge-green">~5 GB</span></td><td>Selected TED presentations</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Kolibri Educational Content (Khan Academy Offline)</div>
+    <table>
+      <tr><th>Channel</th><th>Size</th><th>Description</th></tr>
+      <tr><td>Khan Academy Math</td><td><span class="badge badge-yellow">~20 GB</span></td><td>Complete K-12 mathematics</td></tr>
+      <tr><td>Khan Academy Science</td><td><span class="badge badge-yellow">~15 GB</span></td><td>Biology, chemistry, physics</td></tr>
+      <tr><td>Khan Academy Computing</td><td><span class="badge badge-green">~5 GB</span></td><td>Programming, CS fundamentals</td></tr>
+      <tr><td>Khan Academy Medicine</td><td><span class="badge badge-yellow">~10 GB</span></td><td>Health, anatomy, medicine</td></tr>
+      <tr><td>Khan Academy Agriculture</td><td><span class="badge badge-green">~5 GB</span></td><td>Farming basics</td></tr>
+      <tr><td>CK-12 Textbooks</td><td><span class="badge badge-yellow">~10 GB</span></td><td>Free science &amp; math textbooks</td></tr>
+      <tr><td>PhET Simulations</td><td><span class="badge badge-green">~2 GB</span></td><td>Interactive science simulations</td></tr>
+      <tr><td colspan="2" style="font-weight:700">Kolibri Total</td><td><span class="badge badge-yellow">~67 GB</span></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">PDF Books &amp; Military Manuals</div>
+    <div class="grid2">
+      <div>
+        <h3>Military Manuals (Public Domain)</h3>
+        <ul>
+          <li>FM 21-76 US Army Survival Manual</li>
+          <li>ATP 3-50.21 Survival</li>
+          <li>FM 4-25.11 First Aid</li>
+          <li>FM 3-05.70 Special Forces Survival</li>
+          <li>FM 90-5 Jungle Operations</li>
+          <li>FM 21-10 Field Sanitation</li>
+          <li>TM 31-210 Improvised Munitions Handbook</li>
+          <li>FM 7-8 Infantry Rifle Platoon</li>
+          <li>FM 21-60 Visual Signals (hand signals)</li>
+          <li>SH 21-76 Ranger Handbook</li>
+        </ul>
+        <h3>Medical References</h3>
+        <ul>
+          <li>Where There Is No Doctor (Hesperian)</li>
+          <li>Where There Is No Dentist (Hesperian)</li>
+          <li>A Book for Midwives (Hesperian)</li>
+          <li>Where There Is No Psychiatrist (Hesperian)</li>
+          <li>Survival &amp; Austere Medicine 3rd Ed (free)</li>
+          <li>Emergency War Surgery (NATO)</li>
+          <li>SOF Medical Handbook</li>
+          <li>WHO Psychological First Aid</li>
+          <li>CDC/NIOSH Disaster Survival Psychology</li>
+          <li>TCCC Guidelines</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Agriculture &amp; Food</h3>
+        <ul>
+          <li>USDA Home Canning Guide</li>
+          <li>Square Foot Gardening Manual</li>
+          <li>Organic Farming Guide (ATTRA)</li>
+          <li>Wild Edible Plants Guide (USDA)</li>
+          <li>FAO Fermented Foods Guide</li>
+          <li>FAO Goat Production Guide</li>
+          <li>FAO Poultry Production Guide</li>
+          <li>USDA Beekeeping for Beginners</li>
+          <li>Peace Corps Seed Production Guide</li>
+          <li>Southern Exposure Seed Saving Guide</li>
+        </ul>
+        <h3>Engineering &amp; Water</h3>
+        <ul>
+          <li>NREL Solar Power System Design</li>
+          <li>NREL Wind Energy Basics</li>
+          <li>Peace Corps Manual Well Drilling</li>
+          <li>WHO Drinking Water Quality Guidelines</li>
+          <li>EPA Composting Guide</li>
+          <li>The Humanure Handbook (free)</li>
+          <li>Peace Corps Latrine Construction</li>
+          <li>Practical Blacksmithing Vol. 1–4 (1889)</li>
+          <li>Basic Blacksmithing (Harries, free PDF)</li>
+          <li>Art &amp; Skill of Radio Telegraphy (N0HFF)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Survival Videos (via yt-dlp)</div>
+    <table>
+      <tr><th>Channel</th><th>Topic</th><th>Est. Videos</th></tr>
+      <tr><td>Doom and Bloom (Dr. Bones &amp; Nurse Amy)</td><td>Survival medicine, dental, obstetrics</td><td>~200</td></tr>
+      <tr><td>The Patriot Nurse</td><td>Field medicine, triage</td><td>~150</td></tr>
+      <tr><td>Skinny Medic</td><td>TCCC, tourniquet use</td><td>~100</td></tr>
+      <tr><td>Townsends</td><td>18th-century soap, candles, food, tanning</td><td>~300</td></tr>
+      <tr><td>Primitive Technology</td><td>Stone-age skills, charcoal, shelters</td><td>~50</td></tr>
+      <tr><td>MIGardener</td><td>Seed saving, vegetable growing</td><td>~150</td></tr>
+      <tr><td>Weed 'em and Reap</td><td>Animal husbandry, homesteading</td><td>~150</td></tr>
+      <tr><td>Jill Winger (Prairie Homestead)</td><td>Cheese, butter, livestock</td><td>~150</td></tr>
+      <tr><td>Blackbear Forge</td><td>Beginner blacksmithing</td><td>~150</td></tr>
+      <tr><td>Alec Steele</td><td>Advanced blacksmithing</td><td>~100</td></tr>
+      <tr><td>City Steading Brews</td><td>Mead, wine, fermentation</td><td>~150</td></tr>
+      <tr><td>Homesteady</td><td>Fermentation, candles, soap</td><td>~100</td></tr>
+      <tr><td>Ham Radio Crash Course (K0PIR)</td><td>Radio programming, CHIRP, Baofeng</td><td>~200</td></tr>
+      <tr><td>David Casler KE0OG</td><td>Ham radio education</td><td>~150</td></tr>
+      <tr><td>Hoss Tools</td><td>Seed saving, gardening</td><td>~100</td></tr>
+      <tr><td>Geoff Lawton</td><td>Permaculture design</td><td>~100</td></tr>
+      <tr><td>Canadian Prepper</td><td>General preparedness</td><td>~200</td></tr>
+      <tr><td>City Prepping</td><td>Urban survival</td><td>~150</td></tr>
+      <tr><td>Will Prowse</td><td>Solar power, batteries</td><td>~100</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Maps</div>
+    <table>
+      <tr><th>Content</th><th>Size</th><th>Source</th></tr>
+      <tr><td>OpenStreetMap PBF (North America)</td><td>~20 GB</td><td>Geofabrik</td></tr>
+      <tr><td>OpenStreetMap PBF (World)</td><td>~70 GB</td><td>planet.openstreetmap.org</td></tr>
+      <tr><td>USGS Topo Maps (US)</td><td>varies</td><td>nationalmap.gov</td></tr>
+      <tr><td>World overview tiles (z0–z8)</td><td>~500 MB</td><td>protomaps.com</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">AI Models (Ollama)</div>
+    <table>
+      <tr><th>Model</th><th>Size</th><th>Quality</th><th>RAM Required</th></tr>
+      <tr><td>tinyllama</td><td>637 MB</td><td><span class="badge badge-blue">Basic</span></td><td>1 GB</td></tr>
+      <tr><td>phi3:mini</td><td>2.3 GB</td><td><span class="badge badge-green">Good</span></td><td>3 GB</td></tr>
+      <tr><td>llama3.2:3b</td><td>2.0 GB</td><td><span class="badge badge-green">Good</span></td><td>3 GB</td></tr>
+      <tr><td>mistral:7b-q4</td><td>4.1 GB</td><td><span class="badge badge-yellow">Excellent</span></td><td>6 GB</td></tr>
+      <tr><td>survive (custom)</td><td>same as base</td><td><span class="badge badge-green">Survival-tuned</span></td><td>varies</td></tr>
+    </table>
+  </div>
+
+</div><!-- /catalog -->
+
+<!-- ══════════════════════════════ GAPS ANALYSIS ════════════════════════════ -->
+<div id="gaps" class="tab-panel">
+  <h1>Gaps Analysis</h1>
+  <p style="color:var(--text-dim)">Expert-identified content gaps vs. standard prepper repositories. Based on research into Creek Stewart, Cody Lundin, Les Stroud, Dave Canterbury, John "Lofty" Wiseman, James Wesley Rawles, Dr. Joseph Alton (Doom and Bloom), Fernando "Ferfal" Aguirre, Laurence Gonzales, and others.</p>
+
+  <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:6px;font-size:13px"><div style="width:12px;height:12px;background:var(--danger);border-radius:2px"></div> Tier 1 — Critical / Life-or-death</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:13px"><div style="width:12px;height:12px;background:var(--warning);border-radius:2px"></div> Tier 2 — Significant gap</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:13px"><div style="width:12px;height:12px;background:var(--accent2);border-radius:2px"></div> Tier 3 — Present but shallow</div>
+  </div>
+
+  <h2 style="color:var(--danger)">TIER 1 — Critical Gaps (Life-or-Death)</h2>
+
+  <div class="tier">
+    <div class="gap-title">1. Advanced Survival Medicine</div>
+    <p>Standard repos have basic first aid only. Missing: damage control surgery, austere-environment medicine, drug equivalences, antibiotic protocols.</p>
+    <p><strong>Key resources added:</strong></p>
+    <ul>
+      <li><strong>"The Survival Medicine Handbook"</strong> — Dr. Joe &amp; Amy Alton (700+ pages — doomandbloom.net)</li>
+      <li><strong>"Survival and Austere Medicine" 3rd Ed</strong> — FREE PDF at griddownmed.blog</li>
+      <li><strong>"Emergency War Surgery"</strong> — NATO/Borden Institute (public domain)</li>
+      <li><strong>"Wilderness Medicine: Beyond First Aid"</strong> — Dr. William Forgey</li>
+      <li><strong>"Ditch Medicine"</strong> — Hugh Coffee (Bier blocks, IV access in field)</li>
+      <li><strong>"Alton's Antibiotics and Infectious Disease"</strong> — Alton (1st Place Book Excellence Award)</li>
+      <li><strong>Doom and Bloom</strong> podcast + YouTube (@DoomAndBloom) — Dr. Bones &amp; Nurse Amy</li>
+      <li><strong>The Patriot Nurse</strong> + <strong>Skinny Medic</strong> (YouTube) — field medicine, TCCC</li>
+    </ul>
+  </div>
+
+  <div class="tier">
+    <div class="gap-title">2. Emergency Childbirth &amp; Obstetrics</div>
+    <p>Entirely absent from standard repos. One of the highest-stakes grid-down scenarios — postpartum hemorrhage kills in under 90 minutes.</p>
+    <ul>
+      <li><strong>"Emergency Childbirth"</strong> — Gregory White (public domain, archive.org)</li>
+      <li><strong>"A Book for Midwives"</strong> — Hesperian Foundation (FREE at hesperian.org)</li>
+      <li><strong>"Ina May's Guide to Childbirth"</strong> — Ina May Gaskin</li>
+      <li><strong>"Heart &amp; Hands"</strong> — Elizabeth Davis</li>
+      <li>WHO Safe Motherhood Practical Guide (FREE)</li>
+      <li>Peace Corps Maternal Child Health Guide (FREE)</li>
+    </ul>
+  </div>
+
+  <div class="tier">
+    <div class="gap-title">3. Dental Emergency Skills</div>
+    <p>Zero dental content in standard repos. An untreated tooth abscess leads to sepsis → death. This is life-or-death, not cosmetic.</p>
+    <ul>
+      <li><strong>"Where There Is No Dentist"</strong> — Murray Dickson (Hesperian, FREE) — includes Atraumatic Restorative Treatment (ART) for cavity filling without a drill</li>
+      <li>Tooth extraction: teeth are EASED out, not pulled; clear infection with antibiotics first</li>
+      <li>Temporary filling materials: zinc oxide eugenol, Cavit, dental cement</li>
+      <li>Oil of cloves / eugenol — most effective natural dental analgesic</li>
+      <li>Key: offgridweb.com emergency dentistry series</li>
+    </ul>
+  </div>
+
+  <div class="tier">
+    <div class="gap-title">4. Psychiatric &amp; Mental Health in Collapse</div>
+    <p>The single most neglected topic in prepper content. Studies show 65% of disaster survivors develop new-onset depression/anxiety; 45% of OKC bombing survivors had a psychiatric disorder at 6 months.</p>
+    <ul>
+      <li><strong>"Where There Is No Psychiatrist"</strong> — Vikram Patel (Hesperian, FREE)</li>
+      <li><strong>"WHO Psychological First Aid"</strong> — FREE at who.int</li>
+      <li><strong>"SHTF Psychology"</strong> — Michael Harris — collapse-specific mindset preparation</li>
+      <li><strong>"Mental Health Survival Kit and Withdrawal from Psychiatric Drugs"</strong> — Peter Gøtzsche — CRITICAL for patients dependent on psychiatric meds when supply chains fail</li>
+      <li><strong>CDC/NIOSH Disaster Psychology paper</strong> — Everly (FREE at cdc.gov)</li>
+      <li><strong>"Deep Survival"</strong> — Laurence Gonzales — why some live and others die</li>
+      <li><strong>"The Unthinkable"</strong> — Amanda Ripley — disaster psychology</li>
+      <li>The psychological cost of violence — almost never addressed in prepper content</li>
+    </ul>
+  </div>
+
+  <div class="tier">
+    <div class="gap-title">5. Community Organization &amp; Social Survival</div>
+    <p>Individual/family focus only in standard repos. Community is the #1 survival multiplier — lone wolves die first.</p>
+    <ul>
+      <li><strong>"A Paradise Built in Hell"</strong> — Rebecca Solnit — how communities ACTUALLY behave post-disaster (counters the "everyone turns savage" myth with historical evidence)</li>
+      <li><strong>"The Knowledge"</strong> — Lewis Dartnell — rebuilding civilization from scratch</li>
+      <li><strong>"The Modern Survival Manual"</strong> — Fernando Aguirre (Argentina 2001 REAL collapse experience)</li>
+      <li>FEMA Community Resilience Planning Guide (FREE)</li>
+      <li>Sphere Handbook 2018 — humanitarian standards (FREE)</li>
+    </ul>
+  </div>
+
+  <div class="tier">
+    <div class="gap-title">6. Sanitation Without Infrastructure</div>
+    <p>Sewage failure causes disease outbreaks within 72 hours. This kills more people than violence after disasters.</p>
+    <ul>
+      <li><strong>"The Humanure Handbook"</strong> — Joseph Jenkins (FREE at humanurehandbook.com — full book)</li>
+      <li>Peace Corps Latrine Construction Guide (FREE)</li>
+      <li>WHO Sanitation and Health Guide (FREE)</li>
+      <li>Greywater design: Create an Oasis with Greywater — Art Ludwig</li>
+    </ul>
+  </div>
+
+  <div class="tier">
+    <div class="gap-title">7. Animal Husbandry</div>
+    <p>Zero livestock content in standard repos. Long-term food security requires animals — gardens alone cannot sustain protein needs.</p>
+    <ul>
+      <li><strong>Storey's Guide series</strong> — Chickens, Dairy Goats, Pigs, Rabbits (the definitive standard; Amazon #1 bestseller)</li>
+      <li><strong>"The Backyard Homestead Guide to Raising Farm Animals"</strong> — Gail Damerow</li>
+      <li><strong>"Secret Livestock of Survival"</strong> — Rick Austin (specifically for retreat/homestead)</li>
+      <li><strong>"Butchering Poultry, Rabbit, Lamb, Goat, and Pork"</strong> — Adam Danforth</li>
+      <li>FAO Goat, Poultry, Pig production guides (FREE at fao.org)</li>
+      <li><strong>Weed 'em and Reap</strong> + <strong>Jill Winger</strong> (YouTube)</li>
+    </ul>
+  </div>
+
+  <h2 style="color:var(--warning);margin-top:32px">TIER 2 — Significant Gaps</h2>
+
+  <div class="tier t2">
+    <div class="gap-title">8. Seed Saving (not just buying seeds)</div>
+    <p>Most repos mention buying seeds, not saving them. After Year 1, bought seeds run out — seed saving is essential for food security beyond the first growing season.</p>
+    <ul>
+      <li><strong>"Seed to Seed"</strong> — Suzanne Ashworth (THE definitive reference — isolation distances, fermentation, biennials)</li>
+      <li><strong>"The Seed Garden"</strong> — Seed Savers Exchange (seedsavers.org)</li>
+      <li>Best beginner crops: beans, peas, tomatoes, lettuce (self-pollinating, no cross-pollination risk)</li>
+      <li>Storage rule: temperature(°F) + relative humidity ≤ 100</li>
+      <li>Mylar bags + oxygen absorbers + silica gel = 10+ year storage</li>
+      <li>Southern Exposure Seed Saving Guide (FREE PDF)</li>
+    </ul>
+  </div>
+
+  <div class="tier t2">
+    <div class="gap-title">9. Beekeeping</div>
+    <p>Not in standard repos at all. Critical for pollination (food production), honey (wound treatment), beeswax (candles, waterproofing), and mead (alcohol/medicine).</p>
+    <ul>
+      <li><strong>"The Beekeeper's Handbook"</strong> — Diana Sammataro</li>
+      <li><strong>"Natural Beekeeping"</strong> — Ross Conrad</li>
+      <li><strong>"Top-Bar Beekeeping"</strong> — Les Crowder (low-cost equipment)</li>
+      <li>Varroa mite management — #1 cause of colony collapse</li>
+      <li>Honey as wound treatment: hygroscopic, antibacterial, antifungal</li>
+      <li>FAO Beekeeping Guide (FREE)</li>
+      <li>Penn State Beekeeping Guide (FREE)</li>
+    </ul>
+  </div>
+
+  <div class="tier t2">
+    <div class="gap-title">10. Blacksmithing &amp; Metalwork</div>
+    <ul>
+      <li><strong>"The Complete Modern Blacksmith"</strong> — Alexander Weygers</li>
+      <li><strong>"Basic Blacksmithing"</strong> — D. Harries (FREE PDF at northernbush.com)</li>
+      <li><strong>"Practical Blacksmithing"</strong> — M.T. Richardson (4 vols, public domain, archive.org)</li>
+      <li><strong>"The Home Blacksmith"</strong> — Ryan Ridgway (40 step-by-step projects)</li>
+      <li>Improvised forge: brake drum + hair dryer + coal</li>
+      <li><strong>Blackbear Forge</strong> + <strong>Alec Steele</strong> (YouTube)</li>
+    </ul>
+  </div>
+
+  <div class="tier t2">
+    <div class="gap-title">11. Leather Brain Tanning</div>
+    <ul>
+      <li><strong>"Deerskins into Buckskins"</strong> — Matt Richards (the definitive guide)</li>
+      <li>Brain tanning: every animal has enough brain to tan its own hide</li>
+      <li>Bark/vegetable tanning with natural tannins (oak bark, sumac)</li>
+      <li>Rawhide vs. buckskin — different properties and uses</li>
+      <li><strong>Townsends</strong> (YouTube) — 18th century leather techniques</li>
+    </ul>
+  </div>
+
+  <div class="tier t2">
+    <div class="gap-title">12. Soap Making from Wood Ash</div>
+    <ul>
+      <li><strong>"The Soapmaker's Companion"</strong> — Susan Miller Cavitch</li>
+      <li>Lye extraction from wood ash leaching (potassium hydroxide)</li>
+      <li>Saponification ratios for animal fats vs. vegetable oils</li>
+      <li>Cold process vs. hot process</li>
+      <li>Soft soap (KOH/potassium) vs. hard soap (NaOH/sodium)</li>
+    </ul>
+  </div>
+
+  <div class="tier t2">
+    <div class="gap-title">13. Fermentation &amp; Brewing</div>
+    <ul>
+      <li><strong>"The Art of Fermentation"</strong> — Sandor Katz (the definitive text)</li>
+      <li><strong>"Wild Fermentation"</strong> — Sandor Katz</li>
+      <li>Lacto-fermentation: preserves without canning equipment (sauerkraut, kimchi)</li>
+      <li>Vinegar making (acetic acid for cleaning, preservation, cooking)</li>
+      <li>Mead, kefir, kvass, kombucha, medicinal tinctures</li>
+      <li>Alcohol as fuel, antiseptic, and barter item</li>
+      <li><strong>City Steading Brews</strong> + <strong>Homesteady</strong> (YouTube)</li>
+    </ul>
+  </div>
+
+  <div class="tier t2">
+    <div class="gap-title">14. Water Well Construction</div>
+    <ul>
+      <li><strong>"Hand-Dug Wells and Their Construction"</strong> — Watt &amp; Wood (IT Publications)</li>
+      <li>Peace Corps Manual Well Drilling guide (FREE)</li>
+      <li>WHO Drinking Water Quality Guidelines (FREE)</li>
+      <li>Site selection, water table reading, concrete ring casing</li>
+      <li>Contamination prevention (sanitary seal), hand pump installation</li>
+    </ul>
+  </div>
+
+  <div class="tier t2">
+    <div class="gap-title">15. Security &amp; Perimeter Defense</div>
+    <ul>
+      <li><strong>"Contact!"</strong> — Max Velocity (post-collapse tactical)</li>
+      <li><strong>"Holding Your Ground"</strong> — Joe Nobody</li>
+      <li>FM 7-8 Infantry Rifle Platoon (public domain) — layered defense concepts</li>
+      <li>FM 21-60 Visual Signals — hand signals (public domain, FREE)</li>
+      <li>SH 21-76 Ranger Handbook (FREE PDF)</li>
+      <li>Dogs and livestock as early warning systems</li>
+      <li>Noise / light / litter discipline</li>
+    </ul>
+  </div>
+
+  <h2 style="color:var(--accent2);margin-top:32px">TIER 3 — Shallow Coverage</h2>
+
+  <div class="tier t3">
+    <div class="gap-title">16. Morse Code / CW</div>
+    <ul>
+      <li><strong>"The Art and Skill of Radio-Telegraphy"</strong> — W. Pierpont N0HFF (FREE PDF at qsl.net/n9bor/n0hff.pdf)</li>
+      <li>LCWO.net — Learn CW Online (browser-based, free)</li>
+      <li>CW works at signal levels where voice fails; can run on milliwatts</li>
+      <li>SOS (... --- ...) — universally recognized, no radio required (mirror, flashlight)</li>
+    </ul>
+  </div>
+
+  <div class="tier t3">
+    <div class="gap-title">17. Radio Programming (CHIRP / Baofeng)</div>
+    <ul>
+      <li>CHIRP software — free, open-source, standard for Baofeng UV-5R programming</li>
+      <li>RepeaterBook.com — find local repeaters</li>
+      <li>Key pre-programmed frequencies: MURS, GMRS, 146.520 MHz (2m calling), NOAA weather</li>
+      <li><strong>Ham Radio Crash Course (K0PIR)</strong> + <strong>David Casler KE0OG</strong> (YouTube)</li>
+    </ul>
+  </div>
+
+  <div class="tier t3">
+    <div class="gap-title">18. Pressure Canning Safety</div>
+    <ul>
+      <li>NCHFP (nchfp.uga.edu) — authoritative USDA-funded tested recipes</li>
+      <li>Botulism mechanism: only pressure canning (240°F/116°C) kills <em>C. botulinum</em> spores in low-acid foods</li>
+      <li>Altitude adjustment tables (every 1,000 ft above sea level changes processing time)</li>
+      <li>Common failure modes: false seals, under-processing, inadequate headspace</li>
+    </ul>
+  </div>
+
+  <div class="tier t3">
+    <div class="gap-title">19. Permaculture Design</div>
+    <ul>
+      <li><strong>"Gaia's Garden"</strong> — Toby Hemenway (best accessible permaculture book)</li>
+      <li><strong>"Permaculture: A Designers' Manual"</strong> — Bill Mollison (technical bible)</li>
+      <li>Zone design (0–5) for energy efficiency</li>
+      <li>Food forest: 7 layers (canopy, sub-canopy, shrub, herbaceous, ground cover, root, vine)</li>
+      <li>Water harvesting earthworks: swales, berms, ponds</li>
+    </ul>
+  </div>
+
+  <div class="card" style="margin-top:24px">
+    <div class="card-title">Key Free Resources — Confirmed URLs</div>
+    <table>
+      <tr><th>Resource</th><th>URL</th><th>Size</th></tr>
+      <tr><td>Humanure Handbook (full book)</td><td><code>humanurehandbook.com/downloads/H2.pdf</code></td><td>&lt;5 MB</td></tr>
+      <tr><td>Hesperian Health Guides (all)</td><td><code>hesperian.org</code></td><td>&lt;100 MB</td></tr>
+      <tr><td>Survival &amp; Austere Medicine 3rd Ed</td><td><code>griddownmed.blog/wp-content/uploads/2018/11/austmed.pdf</code></td><td>&lt;5 MB</td></tr>
+      <tr><td>Emergency Childbirth (Gregory White)</td><td><code>archive.org/download/EmergencyChildbirth</code></td><td>&lt;5 MB</td></tr>
+      <tr><td>CDC NIOSH Disaster Psychology</td><td><code>cdc.gov/niosh/docket/archive/pdfs/NIOSH-154/...</code></td><td>&lt;1 MB</td></tr>
+      <tr><td>WHO Psychological First Aid</td><td><code>apps.who.int/iris</code></td><td>&lt;5 MB</td></tr>
+      <tr><td>Art &amp; Skill of Radio Telegraphy (N0HFF)</td><td><code>qsl.net/n9bor/n0hff.pdf</code></td><td>&lt;5 MB</td></tr>
+      <tr><td>Basic Blacksmithing (Harries, 1993)</td><td><code>northernbush.com/wp-content/downloads/woodcraft/...</code></td><td>&lt;5 MB</td></tr>
+      <tr><td>Practical Blacksmithing Vol 1–4 (1889)</td><td><code>archive.org</code></td><td>&lt;20 MB</td></tr>
+      <tr><td>FM 21-60 Visual Signals (hand signals)</td><td><code>armypubs.army.mil</code></td><td>&lt;5 MB</td></tr>
+      <tr><td>Southern Exposure Seed Saving Guide</td><td><code>southernexposure.com/growing-guides/saving-seeds...</code></td><td>&lt;2 MB</td></tr>
+      <tr><td>Peace Corps Technical Library (15 manuals)</td><td><code>files.peacecorps.gov/multimedia/pdf/library/</code></td><td>~500 MB</td></tr>
+      <tr><td>NCHFP Canning Guides</td><td><code>nchfp.uga.edu</code></td><td>&lt;50 MB</td></tr>
+      <tr><td>ACEP Austere Medicine Reading List</td><td><code>acep.org (disaster section)</code></td><td>&lt;1 MB</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Expert Summaries</div>
+    <div class="grid2">
+      <div class="expert-card">
+        <div class="expert-name">Creek Stewart — Weather the Storm</div>
+        <ul><li>Will to Survive = #1 skill</li><li>Priority order: Shelter → Water → Fire → Food</li><li>Improvisation over gear dependency</li></ul>
+      </div>
+      <div class="expert-card">
+        <div class="expert-name">Dave Canterbury — Pathfinder School</div>
+        <ul><li>10 Cs of Survivability framework</li><li>Cutting, Combustion, Cover, Container, Cordage, Cotton, Cargo tape, Compass, Candling, Canvas</li><li>Heavy emphasis on primitive skills</li></ul>
+      </div>
+      <div class="expert-card">
+        <div class="expert-name">Cody Lundin — Aboriginal Living Skills</div>
+        <ul><li>Thermoregulation = #1 priority</li><li>Primitive living: brain tanning, earth ovens, hide shelters</li><li>Calm mindset over equipment</li></ul>
+      </div>
+      <div class="expert-card">
+        <div class="expert-name">Les Stroud — Survivorman</div>
+        <ul><li>Psychological preparedness over gear</li><li>Signaling and rescue as primary priorities when lost</li><li>Urban survival often more dangerous than wilderness</li></ul>
+      </div>
+      <div class="expert-card">
+        <div class="expert-name">James Wesley Rawles — SurvivalBlog</div>
+        <ul><li>"Beans, Bullets, Band-Aids" framework</li><li>Community retreat model vs. lone wolf</li><li>Amateur radio as essential communications</li><li>Legal and financial preparedness alongside physical</li></ul>
+      </div>
+      <div class="expert-card">
+        <div class="expert-name">Fernando "Ferfal" Aguirre — Argentina 2001</div>
+        <ul><li>Real collapse experience — not theoretical</li><li>Cities did NOT empty — rural isolation was MORE dangerous</li><li>Security was the #1 daily concern, not food or water</li><li>Keep skills marketable; economic collapse ≠ zombie apocalypse</li></ul>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /gaps -->
+
+<!-- ════════════════════════════════ LICENSES ════════════════════════════════ -->
+<div id="licenses" class="tab-panel">
+  <h1>Licenses</h1>
+  <p style="color:var(--text-dim)">SurviveV1 downloads freely available content from authoritative sources. It does not redistribute copyrighted material. All content is subject to its original license.</p>
+
+  <div class="card">
+    <div class="card-title">Public Domain</div>
+    <table>
+      <tr><th>Content</th><th>Notes</th></tr>
+      <tr><td>US Army Field Manuals (FM series)</td><td>US Government works — no copyright</td></tr>
+      <tr><td>US Army Technical Manuals (TM series)</td><td>US Government works</td></tr>
+      <tr><td>Peace Corps Technical Manuals</td><td>US Government works</td></tr>
+      <tr><td>USDA guides and publications</td><td>US Government works</td></tr>
+      <tr><td>CDC/NIOSH publications</td><td>US Government works</td></tr>
+      <tr><td>Project Gutenberg books</td><td>Pre-1928 works — see gutenberg.org/policy/license.html</td></tr>
+      <tr><td>Emergency Childbirth (Gregory White)</td><td>Public domain</td></tr>
+      <tr><td>Practical Blacksmithing Vol 1–4 (1889)</td><td>Public domain</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Creative Commons</div>
+    <table>
+      <tr><th>Content</th><th>License</th><th>Source</th></tr>
+      <tr><td>Wikipedia, Wikibooks, Wikivoyage, Wikisource</td><td><span class="badge badge-blue">CC BY-SA 4.0</span></td><td>wikimedia.org</td></tr>
+      <tr><td>Hesperian Health Guides</td><td><span class="badge badge-blue">CC BY-NC-SA 4.0</span></td><td>hesperian.org</td></tr>
+      <tr><td>Khan Academy</td><td><span class="badge badge-blue">CC BY-NC-SA 4.0</span></td><td>khanacademy.org</td></tr>
+      <tr><td>CK-12 Textbooks</td><td><span class="badge badge-blue">CC BY-NC 3.0</span></td><td>ck12.org</td></tr>
+      <tr><td>OpenStreetMap tiles</td><td><span class="badge badge-blue">ODbL 1.0</span></td><td>openstreetmap.org/copyright</td></tr>
+      <tr><td>iFixit guides</td><td><span class="badge badge-blue">CC BY-NC-SA 3.0</span></td><td>ifixit.com</td></tr>
+      <tr><td>Stack Exchange content</td><td><span class="badge badge-blue">CC BY-SA 4.0</span></td><td>stackoverflow.com</td></tr>
+      <tr><td>FAO publications</td><td><span class="badge badge-blue">CC BY-NC-SA 3.0 IGO</span></td><td>fao.org</td></tr>
+      <tr><td>WHO publications</td><td><span class="badge badge-blue">CC BY-NC-SA 3.0 IGO</span></td><td>who.int</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Freely Distributed by Authors</div>
+    <table>
+      <tr><th>Content</th><th>Source</th><th>Notes</th></tr>
+      <tr><td>The Humanure Handbook</td><td>humanurehandbook.com</td><td>Free download authorized by author Joseph Jenkins</td></tr>
+      <tr><td>Survival &amp; Austere Medicine 3rd Ed</td><td>griddownmed.blog</td><td>Free distribution authorized</td></tr>
+      <tr><td>Art and Skill of Radio-Telegraphy (N0HFF)</td><td>qsl.net/n9bor/n0hff.pdf</td><td>Free distribution authorized</td></tr>
+      <tr><td>Basic Blacksmithing (Harries &amp; Heer)</td><td>northernbush.com</td><td>Open-access technical publication</td></tr>
+      <tr><td>NOLS Wilderness Medicine Field Guide</td><td>nols.edu</td><td>Free for educational use</td></tr>
+      <tr><td>Southern Exposure Seed Saving Guide</td><td>southernexposure.com</td><td>Free for personal use</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Copyrighted — Recommended Purchase Only (NOT Downloaded)</div>
+    <p style="color:var(--text-dim);margin-bottom:12px">These titles are referenced in the gaps analysis as essential reading. SurviveV1 does not download or redistribute them. Purchase links provided for reference.</p>
+    <div class="grid2">
+      <ul>
+        <li>"The Survival Medicine Handbook" — Alton (store.doomandbloom.net)</li>
+        <li>"Alton's Antibiotics and Infectious Disease" — Alton</li>
+        <li>"Seed to Seed" — Suzanne Ashworth (seedsavers.org)</li>
+        <li>"The Art of Fermentation" — Sandor Katz</li>
+        <li>"The Backyard Homestead Guide to Raising Farm Animals" — Gail Damerow</li>
+        <li>Storey's Guide series (storey.com)</li>
+        <li>"Deerskins into Buckskins" — Matt Richards</li>
+        <li>"Root Cellaring" — Mike &amp; Nancy Bubel</li>
+        <li>"Create an Oasis with Greywater" — Art Ludwig (oasisdesign.net)</li>
+        <li>"Ina May's Guide to Childbirth" — Ina May Gaskin</li>
+      </ul>
+      <ul>
+        <li>"Deep Survival" — Laurence Gonzales</li>
+        <li>"A Paradise Built in Hell" — Rebecca Solnit</li>
+        <li>"The Knowledge" — Lewis Dartnell</li>
+        <li>"The Modern Survival Manual" — Fernando Aguirre</li>
+        <li>"SHTF Psychology" — Michael Harris (Amazon Kindle)</li>
+        <li>"Mental Health Survival Kit" — Peter Gøtzsche</li>
+        <li>"The Beekeeper's Handbook" — Diana Sammataro</li>
+        <li>"Home Cheese Making" — Ricki Carroll</li>
+        <li>"The Complete Modern Blacksmith" — Alexander Weygers</li>
+        <li>"Contact!" — Max Velocity</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">YouTube Videos</div>
+    <p>Videos downloaded via yt-dlp are subject to YouTube's Terms of Service and each channel's copyright. Downloaded for <strong>personal, offline, educational use only</strong>. Do not redistribute.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">AI Models</div>
+    <table>
+      <tr><th>Model</th><th>License</th></tr>
+      <tr><td>TinyLlama</td><td>Apache 2.0</td></tr>
+      <tr><td>Phi-3 (Microsoft)</td><td>MIT</td></tr>
+      <tr><td>Llama 3.2 (Meta)</td><td>Meta Llama Community License</td></tr>
+      <tr><td>Mistral</td><td>Apache 2.0</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Software Components</div>
+    <table>
+      <tr><th>Component</th><th>License</th></tr>
+      <tr><td>Kiwix</td><td>GPL-3.0</td></tr>
+      <tr><td>Kolibri</td><td>MIT</td></tr>
+      <tr><td>Jellyfin</td><td>GPL-2.0</td></tr>
+      <tr><td>Calibre</td><td>GPL-3.0</td></tr>
+      <tr><td>Ollama</td><td>MIT</td></tr>
+      <tr><td>Flask</td><td>BSD-3-Clause</td></tr>
+      <tr><td>yt-dlp</td><td>Unlicense</td></tr>
+      <tr><td>nginx</td><td>BSD-2-Clause</td></tr>
+      <tr><td>rclone</td><td>MIT</td></tr>
+    </table>
+  </div>
+
+</div><!-- /licenses -->
+
+<!-- ════════════════════════════════ AI HAT ══════════════════════════════════ -->
+<div id="aihat" class="tab-panel">
+  <h1>Hailo AI Hat Setup</h1>
+  <p style="color:var(--text-dim)">The Hailo-8L AI Hat provides up to <strong>13 TOPS</strong> of neural processing acceleration, significantly speeding up local AI inference on the Raspberry Pi 5.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Performance Benchmarks — RPi 5 + Hailo-8L</div>
+      <table>
+        <tr><th>Task</th><th>CPU Only</th><th>With AI Hat</th></tr>
+        <tr><td>Image classification</td><td>~400 ms</td><td><span class="badge badge-green">~15 ms</span></td></tr>
+        <tr><td>Object detection</td><td>~1,200 ms</td><td><span class="badge badge-green">~30 ms</span></td></tr>
+        <tr><td>Text generation (7B model)</td><td>~2 tok/s</td><td><span class="badge badge-green">~8 tok/s</span></td></tr>
+        <tr><td>Question answering</td><td>~3 s</td><td><span class="badge badge-green">~0.8 s</span></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Running WITHOUT the AI Hat</div>
+      <p>The system falls back to CPU inference automatically:</p>
+      <ul>
+        <li>tinyllama: ~2–3 tokens/second on RPi 5</li>
+        <li>phi3:mini: ~1–2 tokens/second</li>
+        <li>Still very usable for survival queries</li>
+      </ul>
+      <p>Set in config:</p>
+      <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre>SKIP_AI_HAT="true"</pre></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Hardware Setup</div>
+    <ol style="line-height:2">
+      <li>Power off your Raspberry Pi 5 completely</li>
+      <li>Attach the Hailo AI Hat to the <strong>M.2 HAT+ connector</strong> on the Pi 5</li>
+      <li>Secure with the included standoffs</li>
+      <li>The Hailo chip appears as a PCIe device at boot</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Verify Hardware</div>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Check PCIe device
+lspci | grep -i hailo
+# Expected: Hailo Technologies Ltd. Hailo-8L AI Processor
+
+# Check device node
+ls /dev/hailo*
+# Expected: /dev/hailo0</pre></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Software Installation</div>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Automated (recommended)
+sudo bash setup/install_ai_hat.sh
+
+# Manual install
+pip3 install hailort
+sudo apt-get install hailort hailort-dev
+
+# Verify Ollama detects the Hat
+ollama serve &amp;
+# Check logs for Hailo acceleration messages</pre></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Compatible Models</div>
+    <p>The Hailo-8L works best with quantized models compiled for the Hailo architecture. For LLM inference, Ollama handles the AI Hat automatically when detected.</p>
+    <p>Pre-compiled models:</p>
+    <ul>
+      <li><a href="https://github.com/hailo-ai/hailo_model_zoo">github.com/hailo-ai/hailo_model_zoo</a></li>
+      <li><a href="https://github.com/hailo-ai/hailo-rpi5-examples">github.com/hailo-ai/hailo-rpi5-examples</a></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Troubleshooting</div>
+    <h3>AI Hat not detected</h3>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Check PCIe is enabled
+grep -i pcie /boot/config.txt
+# Should have: dtparam=pciex1_gen=3
+
+# Enable PCIe if missing
+echo "dtparam=pciex1_gen=3" | sudo tee -a /boot/config.txt
+sudo reboot</pre></div>
+
+    <h3>Slow inference despite AI Hat</h3>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Check Hailo is being used
+hailortcli fw-control identify
+# Should show device info
+
+# Check Ollama is configured for Hailo
+systemctl cat ollama | grep HAILO</pre></div>
+
+    <h3>Power issues (thermal throttling)</h3>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Check throttle status
+sudo vcgencmd get_throttled
+# 0x0 = no throttling; anything else = power or temp issue
+
+# Reduce CPU frequency to extend battery
+sudo cpufreq-set -g powersave
+
+# Monitor temperature
+watch -n 2 vcgencmd measure_temp</pre></div>
+  </div>
+
+</div><!-- /aihat -->
+
+<!-- ══════════════════════════════ HOW TO ACCESS ════════════════════════════ -->
+<div id="access" class="tab-panel">
+  <h1>How to Access</h1>
+  <p style="color:var(--text-dim)">Four ways to view this repository — from a quick local preview to a public URL accessible from anywhere in the world.</p>
+
+  <div class="access-method">
+    <div class="method-num">1</div>
+    <div class="method-title">Open Directly in Browser <span class="badge badge-green">No setup required</span></div>
+    <p>The simplest method. Just open <code>index.html</code> in any browser — no server, no internet, no dependencies.</p>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># macOS
+open /path/to/SurviveV1/index.html
+
+# Windows (Command Prompt)
+start C:\path\to\SurviveV1\index.html
+
+# Linux
+xdg-open /path/to/SurviveV1/index.html</pre></div>
+    <p>Or: in any browser, go to <strong>File &rarr; Open File</strong> and navigate to <code>SurviveV1/index.html</code>.</p>
+    <p style="color:var(--text-dim);font-size:12px">Note: The <code>file://</code> protocol works for all tabs. Copy-to-clipboard buttons require a browser (not a text editor preview).</p>
+  </div>
+
+  <div class="access-method">
+    <div class="method-num">2</div>
+    <div class="method-title">Local Development Server <span class="badge badge-blue">Shareable on LAN</span></div>
+    <p>Serve from your computer — accessible from any device on the same Wi-Fi network.</p>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre>cd /path/to/SurviveV1
+python3 -m http.server 8000</pre></div>
+    <p>Then open: <code>http://localhost:8000</code></p>
+    <p>Other devices on the same network can access via your IP: <code>http://192.168.1.X:8000</code></p>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Find your IP address:
+# macOS / Linux:
+hostname -I   # or: ifconfig | grep inet
+
+# Windows:
+ipconfig | findstr IPv4</pre></div>
+  </div>
+
+  <div class="access-method">
+    <div class="method-num">3</div>
+    <div class="method-title">From Your Raspberry Pi <span class="badge badge-yellow">Full system running</span></div>
+    <p>When the Pi is running, all services are available on the local network via mDNS hostname <code>survive.local</code>.</p>
+    <table>
+      <tr><th>Service</th><th>URL</th></tr>
+      <tr><td>Main Dashboard (Flask)</td><td><code>http://survive.local:8080</code></td></tr>
+      <tr><td>This HTML repo doc</td><td><code>http://survive.local:8080/repo</code> <span class="badge badge-blue">served by Flask</span></td></tr>
+      <tr><td>Wikipedia / Kiwix</td><td><code>http://survive.local:8081</code></td></tr>
+      <tr><td>Khan Academy / Kolibri</td><td><code>http://survive.local:8082</code></td></tr>
+      <tr><td>E-Books / Calibre</td><td><code>http://survive.local:8083</code></td></tr>
+      <tr><td>Videos / Jellyfin</td><td><code>http://survive.local:8096</code></td></tr>
+      <tr><td>Offline Maps</td><td><code>http://survive.local:3000</code></td></tr>
+      <tr><td>AI Assistant</td><td><code>http://survive.local:8080/ai</code></td></tr>
+      <tr><td>File Browser</td><td><code>http://survive.local:8080/files</code></td></tr>
+    </table>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Start the Pi system
+bash scripts/start_services.sh
+
+# Check all service status
+bash scripts/status.sh</pre></div>
+    <p>File access from other devices:</p>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Windows Explorer
+\\survive\survive
+
+# macOS Finder (Cmd+K)
+smb://survive/survive
+
+# Linux
+smb://survive/survive</pre></div>
+  </div>
+
+  <div class="access-method">
+    <div class="method-num">4</div>
+    <div class="method-title">GitHub Pages <span class="badge badge-green">Public URL — accessible from anywhere</span></div>
+    <p>Host this HTML file for free on GitHub Pages. Once set up, anyone with the URL can view the repository documentation — no Pi required, accessible globally.</p>
+    <h3>Setup (one-time, takes 2 minutes)</h3>
+    <ol style="line-height:2.2">
+      <li>Push this repository to GitHub (if not already there)</li>
+      <li>Go to your repo on GitHub</li>
+      <li>Click <strong>Settings</strong> &rarr; <strong>Pages</strong> (left sidebar)</li>
+      <li>Under <em>Source</em>, select <strong>Deploy from a branch</strong></li>
+      <li>Branch: <strong>main</strong> (or your branch) &rarr; Folder: <strong>/ (root)</strong></li>
+      <li>Click <strong>Save</strong></li>
+      <li>Wait ~2 minutes for deployment</li>
+    </ol>
+    <p>Your site will be live at:</p>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre>https://schwadb.github.io/SurviveV1/</pre></div>
+    <p style="color:var(--text-dim);font-size:12px">The URL format is: <code>https://YOUR_GITHUB_USERNAME.github.io/REPO_NAME/</code></p>
+
+    <h3>Manual deploy via CLI</h3>
+    <div class="pre-wrap"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre># Make sure index.html is committed
+git add index.html
+git commit -m "Update static HTML site"
+git push origin main
+
+# GitHub Pages will auto-deploy within ~2 minutes</pre></div>
+  </div>
+
+  <div class="card" style="margin-top:24px">
+    <div class="card-title">Quick Reference — All Access Methods</div>
+    <table>
+      <tr><th>Method</th><th>URL / Command</th><th>Internet Needed?</th><th>Best For</th></tr>
+      <tr><td>Direct file open</td><td><code>open index.html</code></td><td><span class="badge badge-green">No</span></td><td>Quick local review</td></tr>
+      <tr><td>Python server</td><td><code>python3 -m http.server 8000</code></td><td><span class="badge badge-green">No</span></td><td>Sharing on LAN</td></tr>
+      <tr><td>Pi dashboard</td><td><code>http://survive.local:8080</code></td><td><span class="badge badge-green">No</span></td><td>Full system access</td></tr>
+      <tr><td>GitHub Pages</td><td><code>https://schwadb.github.io/SurviveV1/</code></td><td><span class="badge badge-yellow">To set up only</span></td><td>Remote access anywhere</td></tr>
+    </table>
+  </div>
+
+</div><!-- /access -->
+
+</div><!-- /container -->
+
+<footer>
+  <strong>SurviveV1</strong> &mdash; Offline Survival Knowledge Repository &bull;
+  Raspberry Pi 5 + Hailo AI Hat &bull;
+  View source: <code>index.html</code> &bull;
+  <a href="https://github.com/schwadb/SurviveV1">github.com/schwadb/SurviveV1</a>
+</footer>
+
+<script>
+function show(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  window.location.hash = id;
+}
+
+function copyCode(btn) {
+  const pre = btn.parentElement.querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  }).catch(() => {
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(pre);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+}
+
+// Restore tab from URL hash
+(function() {
+  const hash = window.location.hash.replace('#','');
+  const valid = ['overview','quickstart','catalog','gaps','licenses','aihat','access'];
+  if (hash && valid.includes(hash)) {
+    const btn = document.querySelector('.tab-btn[onclick*="' + hash + '"]');
+    if (btn) show(hash, btn);
+  }
+})();
+</script>
+</body>
+</html>
