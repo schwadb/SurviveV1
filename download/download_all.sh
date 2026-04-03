@@ -6,7 +6,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$REPO_DIR/config/survive.conf" 2>/dev/null || true
+_CONF="$REPO_DIR/config/survive.conf"
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
@@ -62,8 +63,19 @@ check_disk_space() {
 
 # ── Progress tracking ─────────────────────────────────────────────────────────
 PROGRESS_FILE="$STORAGE_PATH/.download_progress"
-mark_done() { echo "$1" >> "$PROGRESS_FILE"; }
-is_done()   { grep -qxF "$1" "$PROGRESS_FILE" 2>/dev/null; }
+PROGRESS_LOCK="${PROGRESS_FILE}.lock"
+mark_done() {
+    (
+        flock -x 200
+        echo "$1" >> "$PROGRESS_FILE"
+    ) 200>"$PROGRESS_LOCK"
+}
+is_done() {
+    (
+        flock -s 200
+        grep -qxF "$1" "$PROGRESS_FILE" 2>/dev/null
+    ) 200>"$PROGRESS_LOCK"
+}
 
 # ── Content size estimates ────────────────────────────────────────────────────
 print_budget() {
@@ -102,9 +114,11 @@ main() {
 
     # Download each category if enabled and not done
     if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "kiwix" ]]; then
+        RESUME_FLAG=()
+        [[ "$RESUME" == "true" ]] && RESUME_FLAG=(--resume)
         run_or_dry bash "$REPO_DIR/download/kiwix_content.sh" \
             --storage "$STORAGE_PATH" \
-            $([ "$RESUME" == "true" ] && echo "--resume")
+            "${RESUME_FLAG[@]}"
     fi
 
     if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "videos" ]]; then

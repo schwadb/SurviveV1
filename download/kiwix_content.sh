@@ -6,7 +6,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$REPO_DIR/config/survive.conf" 2>/dev/null || true
+_CONF="$REPO_DIR/config/survive.conf"
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
 
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 ZIM_DIR="$STORAGE_PATH/zim"
@@ -31,7 +32,7 @@ info()    { echo -e "${BLUE}[KIWIX]${NC} $*"; }
 success() { echo -e "${GREEN}[KIWIX]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[KIWIX]${NC} $*"; }
 
-# ── Download function with resume ──────────────────────────────────────────────
+# ── Download function with resume and optional checksum verification ───────────
 download_zim() {
     local name="$1"
     local url="$2"
@@ -50,7 +51,25 @@ download_zim() {
         --console-log-level=warn \
         --summary-interval=60 \
         "$url" \
-    && success "[$name] Done: $filename" \
+    && {
+        success "[$name] Done: $filename"
+        # Optional: verify SHA-256 if a .sha256 sidecar exists on the server
+        local sha_url="${url%.zim}.sha256"
+        if wget -q --spider "$sha_url" 2>/dev/null; then
+            local sha_file
+            sha_file=$(mktemp)
+            if wget -q -O "$sha_file" "$sha_url" 2>/dev/null; then
+                # Rewrite path in checksum file to match local filename
+                sed -i "s|.*|$(awk '{print $1}' "$sha_file")  $dest|" "$sha_file"
+                if sha256sum -c "$sha_file" &>/dev/null; then
+                    success "[$name] Checksum OK"
+                else
+                    warn "[$name] Checksum MISMATCH — file may be corrupt, re-download recommended"
+                fi
+            fi
+            rm -f "$sha_file"
+        fi
+    } \
     || warn "[$name] Failed — will retry next run (--resume)"
 }
 

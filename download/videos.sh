@@ -6,7 +6,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$REPO_DIR/config/survive.conf" 2>/dev/null || true
+_CONF="$REPO_DIR/config/survive.conf"
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
 
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 VIDEO_DIR="$STORAGE_PATH/videos"
@@ -24,10 +25,22 @@ done
 mkdir -p "$VIDEO_DIR"/{survival,medical,food,water,shelter,energy,tools,farming,skills,preparedness}
 mkdir -p "$LOG_DIR"
 
-BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[VIDEO]${NC} $*"; }
 success() { echo -e "${GREEN}[VIDEO]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[VIDEO]${NC} $*"; }
+error()   { echo -e "${RED}[VIDEO]${NC} $*" >&2; }
+
+check_disk_space() {
+    local required_gb="${1:-50}"
+    local available_gb
+    available_gb=$(df -BG "$STORAGE_PATH" | tail -1 | awk '{print $4}' | tr -d 'G')
+    info "Disk space: ${available_gb}GB available (need at least ${required_gb}GB)"
+    if [[ "$available_gb" -lt "$required_gb" ]]; then
+        error "Less than ${required_gb}GB free on $STORAGE_PATH. Aborting video downloads."
+        exit 1
+    fi
+}
 
 # ── yt-dlp download function ──────────────────────────────────────────────────
 dl_playlist() {
@@ -196,6 +209,7 @@ dl_preparedness() {
 main() {
     info "Starting video downloads to $VIDEO_DIR"
     info "Quality: ${QUALITY}p"
+    check_disk_space 50
 
     if [[ "${CONTENT_VIDEOS:-Y}" =~ [Yy] ]]; then
         dl_survival

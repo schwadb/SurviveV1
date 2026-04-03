@@ -75,9 +75,9 @@
     </form>
     <div class="search-also">
       Also search in:
-      <a href="http://localhost:8081/search?lang=eng&pattern={{ query }}" target="_blank">Wikipedia</a> •
-      <a href="http://localhost:8082/en/search?query={{ query }}" target="_blank">Khan Academy</a> •
-      <a href="http://localhost:8083/search?query={{ query }}" target="_blank">E-Books</a>
+      <a href="http://localhost:8081/search?lang=eng&pattern={{ query|urlencode }}" target="_blank">Wikipedia</a> •
+      <a href="http://localhost:8082/en/search?query={{ query|urlencode }}" target="_blank">Khan Academy</a> •
+      <a href="http://localhost:8083/search?query={{ query|urlencode }}" target="_blank">E-Books</a>
     </div>
   </div>
 

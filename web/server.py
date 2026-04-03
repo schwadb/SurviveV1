@@ -36,6 +36,11 @@ REPO_DIR = Path(__file__).parent.parent
 DATA_DIR = Path(os.environ.get("SURVIVE_DATA_DIR", REPO_DIR / "data"))
 STORAGE_PATH = Path(os.environ.get("SURVIVE_STORAGE_PATH", "/mnt/survive"))
 
+# Tunable timeouts (seconds) — override via environment or survive.conf
+TIMEOUT_SERVICE_CHECK = float(os.environ.get("SURVIVE_SERVICE_CHECK_TIMEOUT", "1"))
+TIMEOUT_OLLAMA_LIST   = float(os.environ.get("SURVIVE_OLLAMA_LIST_TIMEOUT", "2"))
+TIMEOUT_AI_CHAT       = float(os.environ.get("SURVIVE_AI_CHAT_TIMEOUT", "60"))
+
 # Fall back to repo data dir if storage not mounted
 if not STORAGE_PATH.exists():
     STORAGE_PATH = DATA_DIR
@@ -131,7 +136,7 @@ def check_service(port: int) -> bool:
     """Check if a service is running on given port."""
     import socket
     try:
-        with socket.create_connection(("localhost", port), timeout=1):
+        with socket.create_connection(("localhost", port), timeout=TIMEOUT_SERVICE_CHECK):
             return True
     except (ConnectionRefusedError, OSError):
         return False
@@ -277,7 +282,7 @@ def serve_file(filepath):
 
 @app.route("/search")
 def search():
-    query = request.args.get("q", "").strip()
+    query = request.args.get("q", "").strip()[:200]  # cap at 200 chars to prevent ReDoS
     results = []
 
     if query and len(query) >= 2:
@@ -313,7 +318,7 @@ def ai_page():
     if ai_running:
         try:
             import urllib.request
-            with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2) as r:
+            with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=TIMEOUT_OLLAMA_LIST) as r:
                 data = json.loads(r.read())
                 models = [m["name"] for m in data.get("models", [])]
         except Exception:
@@ -354,7 +359,7 @@ def ai_chat():
             data=payload,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=60) as r:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_AI_CHAT) as r:
             result = json.loads(r.read())
             return jsonify({
                 "response": result.get("message", {}).get("content", "No response"),
@@ -399,6 +404,23 @@ def status_page():
         categories=CATEGORIES,
         recent=get_recent_downloads(),
     )
+
+
+@app.errorhandler(404)
+def not_found(e):
+    return render_template("error.html", code=404, message="Page not found"), 404
+
+
+@app.errorhandler(403)
+def forbidden(e):
+    return render_template("error.html", code=403, message="Access forbidden"), 403
+
+
+@app.errorhandler(500)
+def server_error(e):
+    import logging
+    logging.exception("Internal server error")
+    return render_template("error.html", code=500, message="Internal server error"), 500
 
 
 if __name__ == "__main__":

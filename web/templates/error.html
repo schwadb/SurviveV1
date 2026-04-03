@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Error {{ code }}{% endblock %}
+
+{% block content %}
+<div class="container" style="text-align:center; padding: 80px 20px;">
+  <div style="font-size: 72px; margin-bottom: 16px;">
+    {% if code == 404 %}🔍{% elif code == 403 %}🚫{% else %}⚠️{% endif %}
+  </div>
+  <div style="font-size: 48px; font-weight: 700; color: var(--danger); margin-bottom: 8px;">{{ code }}</div>
+  <div style="font-size: 18px; color: var(--text); margin-bottom: 24px;">{{ message }}</div>
+  <a href="/" class="btn btn-primary">← Back to Dashboard</a>
+</div>
+{% endblock %}

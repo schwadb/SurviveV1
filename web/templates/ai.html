@@ -300,10 +300,17 @@ function scrollToBottom() {
 function addMessage(role, content) {
   const div = document.createElement('div');
   div.className = `message ${role === 'user' ? 'user' : ''}`;
-  div.innerHTML = `
-    <div class="message-avatar">${role === 'user' ? '👤' : '🤖'}</div>
-    <div class="message-bubble">${escapeHtml(content)}</div>
-  `;
+
+  const avatar = document.createElement('div');
+  avatar.className = 'message-avatar';
+  avatar.textContent = role === 'user' ? '👤' : '🤖';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'message-bubble';
+  bubble.textContent = content;  // textContent — no XSS possible
+
+  div.appendChild(avatar);
+  div.appendChild(bubble);
   chatMessages.appendChild(div);
   scrollToBottom();
   return div;
@@ -330,11 +337,6 @@ function addTyping() {
 function removeTyping() {
   const t = document.getElementById('typingIndicator');
   if (t) t.remove();
-}
-
-function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/\n/g, '<br>');
 }
 
 async function sendMessage() {

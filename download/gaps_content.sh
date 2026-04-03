@@ -8,7 +8,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$REPO_DIR/config/survive.conf" 2>/dev/null || true
+_CONF="$REPO_DIR/config/survive.conf"
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
 
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 PDF_DIR="$STORAGE_PATH/pdfs"
@@ -34,6 +35,8 @@ info()    { echo -e "${BLUE}[GAPS]${NC} $*"; }
 success() { echo -e "${GREEN}[GAPS]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[GAPS]${NC} $*"; }
 
+FAILED_LOG="$LOG_DIR/failed_downloads.log"
+
 dl_file() {
     local name="$1"
     local url="$2"
@@ -45,7 +48,10 @@ dl_file() {
     wget -q --show-progress --tries=3 --timeout=60 \
         -O "$dest/$filename" "$url" \
         && success "$name saved" \
-        || warn "$name failed — see docs/gaps_analysis.md for manual download"
+        || {
+            warn "$name failed — see docs/gaps_analysis.md for manual download"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') FAILED [$name] $url" >> "$FAILED_LOG"
+        }
 }
 
 dl_channel() {

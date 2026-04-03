@@ -6,7 +6,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$REPO_DIR/config/survive.conf" 2>/dev/null || true
+_CONF="$REPO_DIR/config/survive.conf"
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
 
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 MAP_DIR="$STORAGE_PATH/maps"
@@ -20,12 +21,30 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate region against known-good values
+case "$REGION" in
+    north-america|south-america|europe|africa|asia|australia-oceania|us|us-northeast|world) ;;
+    *) echo "Unknown region '$REGION'. Valid: north-america south-america europe africa asia australia-oceania us us-northeast world" >&2; exit 1 ;;
+esac
+
 mkdir -p "$MAP_DIR"/{tiles,mbtiles,pbf,apps,USGS}
 
-BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[MAPS]${NC} $*"; }
 success() { echo -e "${GREEN}[MAPS]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[MAPS]${NC} $*"; }
+error()   { echo -e "${RED}[MAPS]${NC} $*" >&2; }
+
+check_disk_space() {
+    local required_gb="${1:-20}"
+    local available_gb
+    available_gb=$(df -BG "$STORAGE_PATH" | tail -1 | awk '{print $4}' | tr -d 'G')
+    info "Disk space: ${available_gb}GB available (need at least ${required_gb}GB)"
+    if [[ "$available_gb" -lt "$required_gb" ]]; then
+        error "Less than ${required_gb}GB free on $STORAGE_PATH. Aborting map downloads."
+        exit 1
+    fi
+}
 
 # ── Install map tools ─────────────────────────────────────────────────────────
 install_map_tools() {
@@ -215,6 +234,7 @@ EOF
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
     info "Starting map downloads for region: $REGION"
+    check_disk_space 20
 
     install_map_tools
     install_map_server

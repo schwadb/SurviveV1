@@ -6,21 +6,26 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$REPO_DIR/config/survive.conf" 2>/dev/null || true
+_CONF="$REPO_DIR/config/survive.conf"
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
 
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 BOOKS_DIR="$STORAGE_PATH/books"
 PDF_DIR="$STORAGE_PATH/pdfs"
+LOG_DIR="$STORAGE_PATH/.logs"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --storage) STORAGE_PATH="$2"; BOOKS_DIR="$2/books"; PDF_DIR="$2/pdfs"; shift 2 ;;
+        --storage) STORAGE_PATH="$2"; BOOKS_DIR="$2/books"; PDF_DIR="$2/pdfs"; LOG_DIR="$2/.logs"; shift 2 ;;
         *) shift ;;
     esac
 done
 
 mkdir -p "$BOOKS_DIR"/{medicine,survival,agriculture,engineering,reference,fiction,skills}
 mkdir -p "$PDF_DIR"/{military_manuals,homesteading,medicine,construction,farming,radio,legal}
+mkdir -p "$LOG_DIR"
+
+FAILED_LOG="$LOG_DIR/failed_downloads.log"
 
 BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[BOOKS]${NC} $*"; }
@@ -46,7 +51,10 @@ dl_file() {
         -O "$dest/$filename" \
         "$url" \
     && success "$name → $dest/$filename" \
-    || warn "$name download failed — may require manual download"
+    || {
+        warn "$name download failed — may require manual download"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') FAILED [$name] $url" >> "$FAILED_LOG"
+    }
 }
 
 # ── US Military Survival Manuals (Public Domain) ──────────────────────────────

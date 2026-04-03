@@ -101,7 +101,8 @@ install_ytdlp() {
     info "Installing yt-dlp..."
     curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
     chmod +x /usr/local/bin/yt-dlp
-    success "yt-dlp installed"
+    command -v yt-dlp &>/dev/null || { error "yt-dlp install failed"; exit 1; }
+    success "yt-dlp installed ($(yt-dlp --version))"
 }
 
 # ── Kiwix tools ───────────────────────────────────────────────────────────────
@@ -119,6 +120,8 @@ install_kiwix() {
     cp "$TMP_DIR"/kiwix-tools_*/kiwix-search /usr/local/bin/ 2>/dev/null || true
     chmod +x /usr/local/bin/kiwix-*
     rm -rf "$TMP_DIR"
+    command -v kiwix-serve &>/dev/null || { error "kiwix-serve install failed"; exit 1; }
+    command -v kiwix-manage &>/dev/null || { error "kiwix-manage install failed"; exit 1; }
     success "Kiwix tools installed"
 }
 
@@ -166,6 +169,7 @@ install_jellyfin() {
 install_ollama() {
     info "Installing Ollama for local AI..."
     curl -fsSL https://ollama.ai/install.sh | sh
+    command -v ollama &>/dev/null || { error "Ollama install failed"; exit 1; }
     success "Ollama installed"
 }
 
