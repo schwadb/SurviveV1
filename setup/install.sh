@@ -11,9 +11,11 @@ SURVIVE_CONFIG="$REPO_DIR/config/survive.conf"
 
 # Load or create config
 if [[ -f "$SURVIVE_CONFIG" ]]; then
+    # shellcheck source=/dev/null
     source "$SURVIVE_CONFIG"
 else
     bash "$SCRIPT_DIR/first_run.sh"
+    # shellcheck source=/dev/null
     source "$SURVIVE_CONFIG"
 fi
 

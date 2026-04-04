@@ -7,7 +7,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _CONF="$REPO_DIR/config/survive.conf"
-if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF -- using defaults" >&2; else source "$_CONF"; fi
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
@@ -25,7 +25,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-DOWNLOAD_DIR="$STORAGE_PATH"
 LOG_DIR="$STORAGE_PATH/.logs"
 mkdir -p "$LOG_DIR"
 

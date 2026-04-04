@@ -7,10 +7,9 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _CONF="$REPO_DIR/config/survive.conf"
-if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF -- using defaults" >&2; else source "$_CONF"; fi
 
 REMOTE="${1:-gdrive}"
-SYNC_SCRIPT="$REPO_DIR/sync/sync_to_cloud.sh"
 LOG_DIR="${SURVIVE_STORAGE_PATH:-/mnt/survive}/.logs"
 
 BLUE='\033[0;34m'; GREEN='\033[0;32m'; NC='\033[0m'

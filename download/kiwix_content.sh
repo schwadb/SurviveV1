@@ -7,19 +7,17 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _CONF="$REPO_DIR/config/survive.conf"
-if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF -- using defaults" >&2; else source "$_CONF"; fi
 
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 ZIM_DIR="$STORAGE_PATH/zim"
-RESUME=false
-UPDATE=false
 ONLY_PACKAGE=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --storage) STORAGE_PATH="$2"; ZIM_DIR="$2/zim"; shift 2 ;;
-        --resume)  RESUME=true; shift ;;
-        --update)  UPDATE=true; shift ;;
+        --resume)  shift ;;  # aria2c --continue=true handles resume automatically
+        --update)  shift ;;
         --only)    ONLY_PACKAGE="$2"; shift 2 ;;
         *) shift ;;
     esac

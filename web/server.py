@@ -8,6 +8,8 @@ import os
 import json
 import logging
 import shutil
+import socket
+import urllib.request
 from pathlib import Path
 from datetime import datetime
 from flask import (
@@ -144,7 +146,6 @@ def get_storage_info():
 
 def check_service(port: int) -> bool:
     """Check if a service is running on given port."""
-    import socket
     try:
         with socket.create_connection(("localhost", port), timeout=TIMEOUT_SERVICE_CHECK):
             return True
@@ -339,8 +340,9 @@ def ai_page():
     models = []
     if ai_running:
         try:
-            import urllib.request
-            with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=TIMEOUT_OLLAMA_LIST) as r:
+            with urllib.request.urlopen(
+                f"http://localhost:{PORT_OLLAMA}/api/tags", timeout=TIMEOUT_OLLAMA_LIST
+            ) as r:
                 data = json.loads(r.read())
                 models = [m["name"] for m in data.get("models", [])]
         except (OSError, json.JSONDecodeError) as e:
@@ -359,7 +361,6 @@ def ai_chat():
     message = data["message"]
 
     try:
-        import urllib.request
         payload = json.dumps({
             "model": model,
             "messages": [
@@ -387,7 +388,7 @@ def ai_chat():
                 "response": result.get("message", {}).get("content", "No response"),
                 "model": model,
             })
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
         return jsonify({"error": str(e)}), 500
 
 
@@ -429,18 +430,17 @@ def status_page():
 
 
 @app.errorhandler(404)
-def not_found(e):
+def not_found(_e):
     return render_template("error.html", code=404, message="Page not found"), 404
 
 
 @app.errorhandler(403)
-def forbidden(e):
+def forbidden(_e):
     return render_template("error.html", code=403, message="Access forbidden"), 403
 
 
 @app.errorhandler(500)
-def server_error(e):
-    import logging
+def server_error(_e):
     logging.exception("Internal server error")
     return render_template("error.html", code=500, message="Internal server error"), 500
 

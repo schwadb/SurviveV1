@@ -7,7 +7,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _CONF="$REPO_DIR/config/survive.conf"
-if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF -- using defaults" >&2; else source "$_CONF"; fi
 
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 KOLIBRI_HOME="$STORAGE_PATH/kolibri"
@@ -28,22 +28,6 @@ success() { echo -e "${GREEN}[KOLIBRI]${NC} $*"; }
 
 # ── Kolibri channel IDs ──────────────────────────────────────────────────────
 # Find channel IDs at: https://kolibri-demo.learningequality.org
-declare -A CHANNELS=(
-    # Khan Academy (main survival-relevant subjects)
-    ["Khan Academy (English)"]="khan_academy"
-    # Science & Medicine
-    ["CK-12 Textbooks"]="c89efbfd13ae437bb62b7ae7fd826cc4"
-    # Practical Skills
-    ["MIT OpenCourseWare"]="org.mitopencourseware"
-    # Basic literacy
-    ["African Storybook"]="f9d3e0e46e3c4890816e4b4b8c45b7b2"
-    # STEM
-    ["PhET Simulations"]="ad25730a52814f10b98d09a8f5bde26e"
-    # Health
-    ["HealthNudge"]="health"
-    # General reference
-    ["Wikipedia for Schools"]="wikipedia_for_schools"
-)
 
 # Khan Academy specific channels
 KHAN_CHANNELS=(

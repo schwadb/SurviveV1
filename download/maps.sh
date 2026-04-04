@@ -7,7 +7,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _CONF="$REPO_DIR/config/survive.conf"
-if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF -- using defaults" >&2; else source "$_CONF"; fi
 
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 MAP_DIR="$STORAGE_PATH/maps"
@@ -115,13 +115,8 @@ dl_osm_pbf() {
 dl_mbtiles() {
     info "=== Pre-rendered MBTiles (vector tiles) ==="
 
-    # Versatiles.org provides free, pre-rendered vector tile packages
-    declare -A MBTILE_REGIONS=(
-        ["north-america"]="https://download.versatiles.org/osm-2023-07-22.versatiles"
-        ["world-z0-z6"]="https://download.versatiles.org/osm-z6.versatiles"
-    )
-
     # Download low-zoom world overview (always useful, small)
+    # Full region tiles via Versatiles: https://download.versatiles.org/
     info "Downloading world overview tiles (zoom 0-8)..."
     wget -q --show-progress \
         --continue \
@@ -133,7 +128,6 @@ dl_mbtiles() {
 # ── OpenMapTiles schema setup ──────────────────────────────────────────────────
 setup_tile_server() {
     info "=== Setting up tile server ==="
-    TILES_DIR="$MAP_DIR/tiles"
 
     # Create config for Martin tile server
     {

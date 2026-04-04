@@ -7,7 +7,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _CONF="$REPO_DIR/config/survive.conf"
-if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF — using defaults" >&2; else source "$_CONF"; fi
+if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF -- using defaults" >&2; else source "$_CONF"; fi
 
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 PDF_DIR="$STORAGE_PATH/pdfs/psychology"
@@ -45,7 +45,7 @@ dl_file() {
 }
 
 dl_channel() {
-    local category="$1" name="$2" url="$3" max="${4:-100}"
+    local name="$1" url="$2" max="${3:-100}"
     info "[VIDEO] $name (max $max)"
     local BW_ARGS=()
     [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--limit-rate "${SURVIVE_BANDWIDTH_LIMIT}")
@@ -131,13 +131,13 @@ dl_grief() {
 dl_psych_videos() {
     info "=== Psychology & Mental Health Videos ==="
 
-    dl_channel "psychology" "Psych2Go Resilience" \
+    dl_channel "Psych2Go Resilience" \
         "https://www.youtube.com/@Psych2Go/videos" 100
 
-    dl_channel "psychology" "The School of Life" \
+    dl_channel "The School of Life" \
         "https://www.youtube.com/@theschooloflifetv/videos" 100
 
-    dl_channel "psychology" "Medscape Psychology" \
+    dl_channel "Medscape Psychology" \
         "https://www.youtube.com/@MedscapeCME/search?query=disaster+psychology" 30
 }
 

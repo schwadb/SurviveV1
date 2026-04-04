@@ -10,7 +10,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${TEST_PORT:-18080}"  # use non-standard port to avoid conflicts
 SERVER_PID=""
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
 pass()  { echo -e "  ${GREEN}[PASS]${NC}  $*"; PASSED=$((PASSED+1)); }
 fail()  { echo -e "  ${RED}[FAIL]${NC}  $*"; FAILED=$((FAILED+1)); }
 info()  { echo -e "  ${BLUE}[INFO]${NC}  $*"; }
@@ -74,7 +74,6 @@ check_http() {
 check_json() {
     local name="$1"
     local url="$2"
-    local jq_filter="${3:-.}"
 
     local body
     body=$(curl -sf "http://localhost:$PORT$url" 2>/dev/null || echo "CURL_FAILED")
@@ -109,7 +108,7 @@ run_tests() {
 
     echo ""
     echo -e "${BLUE}── Security tests ───────────────────────────────────${NC}"
-    check_http "Path traversal blocked"  "/serve/../etc/passwd"    "403"
+    check_http "Symlink escape blocked"   "/serve/escape_link/passwd" "403"
     check_http "404 handler works"       "/nonexistent-page-12345" "404"
 
     echo ""
@@ -131,8 +130,9 @@ echo -e "${BLUE}═════════════════════�
 echo -e "${BLUE}  SurviveV1 Smoke Tests${NC}"
 echo -e "${BLUE}════════════════════════════════════════${NC}"
 
-# Create minimal test storage dir
+# Create minimal test storage dir and a symlink that escapes it (used in security test)
 mkdir -p /tmp/survive_test
+ln -sfn /etc /tmp/survive_test/escape_link
 
 start_server
 run_tests
