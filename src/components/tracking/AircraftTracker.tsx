@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plane, AlertTriangle, RefreshCw, ExternalLink, Search, Filter, Star, MapPin, Download } from 'lucide-react';
+import { Plane, AlertTriangle, RefreshCw, ExternalLink, Search, Filter, Star, MapPin, Download, Zap, Navigation } from 'lucide-react';
 import type { Aircraft, MapFilter } from '../../types';
 import { mockAircraft } from '../../data/mockData';
 import { fetchLiveAircraft, toCSV } from '../../services/api';
@@ -8,6 +8,10 @@ import { useSettings } from '../../hooks/useLocalStorage';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import { useGeolocation } from '../../hooks/useGeolocation';
 import { useNotifications } from '../../hooks/useNotifications';
+import { detectJammingZones } from '../../services/jammingDetector';
+import { useAirspaceZones } from './AirspaceLayer';
+import IntelSummary from '../ai/IntelSummary';
+import { RenderModeToggle, RenderModeProvider } from '../common/RenderModeToggle';
 import toast from 'react-hot-toast';
 
 const defaultFilter: MapFilter = {
@@ -27,10 +31,15 @@ const AircraftTracker: React.FC = () => {
   const [trails, setTrails] = useState<TrailMap>({});
   const [selectedAc, setSelectedAc] = useState<Aircraft | null>(null);
   const { addEntry, isWatched, removeEntry, watchlist } = useWatchlist();
+  const [showJamming, setShowJamming] = useState(true);
+  const [showAirspace, setShowAirspace] = useState(false);
   const { lat: userLat, lng: userLng, locate } = useGeolocation();
   const { notifyEmergency } = useNotifications();
+  useAirspaceZones(showAirspace);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const knownEmergencies = useRef<Set<string>>(new Set());
+
+  const jammingZones = showJamming ? detectJammingZones(aircraft) : [];
 
   const updateTrails = useCallback((newAircraft: Aircraft[]) => {
     if (!settings.showTrails) return;
@@ -125,6 +134,7 @@ const AircraftTracker: React.FC = () => {
   };
 
   return (
+    <RenderModeProvider>
     <div className="space-y-4">
       {emergencyCount > 0 && (
         <div className="bg-red-900/30 border border-red-700 rounded-xl p-3 flex items-center gap-3 animate-pulse">
@@ -159,6 +169,23 @@ const AircraftTracker: React.FC = () => {
           </button>
           <button onClick={() => toCSV(filtered as unknown as Record<string, unknown>[], 'aircraft.csv')} className="btn-secondary" title="Export to CSV">
             <Download size={15} />
+          </button>
+          <RenderModeToggle />
+          <button
+            onClick={() => setShowJamming(v => !v)}
+            className={`btn-secondary text-xs ${showJamming ? 'border-orange-600 text-orange-400' : ''}`}
+            title="Toggle GPS jamming overlay"
+          >
+            <Zap size={13} />
+            <span className="hidden sm:inline">Jamming</span>
+          </button>
+          <button
+            onClick={() => setShowAirspace(v => !v)}
+            className={`btn-secondary text-xs ${showAirspace ? 'border-blue-600 text-blue-400' : ''}`}
+            title="Toggle airspace restrictions"
+          >
+            <Navigation size={13} />
+            <span className="hidden sm:inline">TFRs</span>
           </button>
         </div>
 
@@ -338,7 +365,11 @@ const AircraftTracker: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Event Correlation Intelligence */}
+      <IntelSummary aircraft={aircraft} jammingZones={jammingZones} />
     </div>
+    </RenderModeProvider>
   );
 };
 

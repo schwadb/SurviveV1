@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Satellite, Plane, Ship, Camera, Radio, Search, Settings, Database,
   Shield, Menu, X, Eye, Phone, MapPin, User, AlertTriangle, ChevronRight,
-  Zap, Star, Mail, Sun, Moon,
+  Zap, Star, Mail, Sun, Moon, Anchor, Bot,
 } from 'lucide-react';
 import { useTheme } from '../../hooks/useLocalStorage';
 
@@ -13,6 +13,7 @@ const navGroups = [
       { id: 'satellites', label: 'Satellites', icon: Satellite, color: 'text-indigo-400' },
       { id: 'aircraft', label: 'Aircraft', icon: Plane, color: 'text-blue-400' },
       { id: 'ships', label: 'Ships', icon: Ship, color: 'text-cyan-400' },
+      { id: 'chokepoints', label: 'Chokepoints', icon: Anchor, color: 'text-orange-400' },
     ],
   },
   {
@@ -36,6 +37,7 @@ const navGroups = [
     title: 'TOOLS',
     items: [
       { id: 'ai-search', label: 'Perplexity AI', icon: Search, color: 'text-violet-400' },
+      { id: 'agents', label: 'Agent Recorder', icon: Bot, color: 'text-emerald-400' },
       { id: 'watchlist', label: 'Watchlist', icon: Star, color: 'text-yellow-400' },
       { id: 'resources', label: 'Resources', icon: Database, color: 'text-gray-400' },
       { id: 'settings', label: 'Settings', icon: Settings, color: 'text-gray-400' },

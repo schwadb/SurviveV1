@@ -24,6 +24,7 @@
     "react-hot-toast": "^2.6.0",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.14.0",
+    "satellite.js": "^4.1.4",
     "vite-plugin-pwa": "^1.2.0",
     "workbox-window": "^7.4.0"
   },

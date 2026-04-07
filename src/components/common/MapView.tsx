@@ -18,6 +18,7 @@ interface MapViewProps {
   showHeatmap?: boolean;
   trails?: Record<string, TrailPoint[]>;
   onMarkerClick?: (type: string, id: string) => void;
+  onMapClick?: (lat: number, lng: number) => void;
 }
 
 const MapView: React.FC<MapViewProps> = ({
@@ -35,6 +36,7 @@ const MapView: React.FC<MapViewProps> = ({
   showHeatmap = false,
   trails = {},
   onMarkerClick,
+  onMapClick,
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<import('leaflet').Map | null>(null);
@@ -67,6 +69,13 @@ const MapView: React.FC<MapViewProps> = ({
       ).addTo(map);
 
       mapInstance.current = map;
+
+      // Map click handler for correlation
+      if (onMapClick) {
+        map.on('click', (e) => {
+          onMapClick(e.latlng.lat, e.latlng.lng);
+        });
+      }
     });
 
     return () => {

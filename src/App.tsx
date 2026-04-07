@@ -16,9 +16,11 @@ import AddressLookup from './components/lookup/AddressLookup';
 import EmailDomainOSINT from './components/lookup/EmailDomainOSINT';
 import ScannerAccess from './components/scanners/ScannerAccess';
 import PerplexitySearch from './components/ai/PerplexitySearch';
+import AgentRecorder from './components/ai/AgentRecorder';
 import ResourceManager from './components/resources/ResourceManager';
 import Settings from './components/resources/Settings';
 import WatchlistPanel from './components/common/WatchlistPanel';
+import Chokepoints from './pages/Chokepoints';
 import { useTheme } from './hooks/useLocalStorage';
 import type { Alert } from './types';
 import { mockAlerts } from './data/mockData';
@@ -36,6 +38,8 @@ const ROUTE_META: Record<string, { title: string; subtitle: string }> = {
   '/email': { title: 'Email & Domain OSINT', subtitle: 'Breach checks, WHOIS, DNS, Shodan, IP intel' },
   '/scanners': { title: 'Scanner Access', subtitle: 'Live police, fire, EMS & ATC radio feeds' },
   '/ai-search': { title: 'Perplexity AI Search', subtitle: 'AI-powered OSINT research with real-time web search' },
+  '/agents': { title: 'OSINT Agent Recorder', subtitle: 'Auto-capture and replay live intelligence data' },
+  '/chokepoints': { title: 'Strategic Chokepoints', subtitle: 'Pre-configured monitoring for critical global corridors' },
   '/watchlist': { title: 'Watchlist', subtitle: 'Monitor specific targets across all data sources' },
   '/resources': { title: 'Resource Manager', subtitle: 'Manage OSINT tools, APIs & data sources' },
   '/settings': { title: 'Settings', subtitle: 'Configure API keys, live data & preferences' },
@@ -101,6 +105,8 @@ const App: React.FC = () => {
             <Route path="/email" element={<ErrorBoundary fallbackTitle="Email/Domain OSINT Error"><EmailDomainOSINT /></ErrorBoundary>} />
             <Route path="/scanners" element={<ErrorBoundary fallbackTitle="Scanner Error"><ScannerAccess /></ErrorBoundary>} />
             <Route path="/ai-search" element={<ErrorBoundary fallbackTitle="AI Search Error"><PerplexitySearch /></ErrorBoundary>} />
+            <Route path="/agents" element={<ErrorBoundary fallbackTitle="Agent Recorder Error"><AgentRecorder /></ErrorBoundary>} />
+            <Route path="/chokepoints" element={<ErrorBoundary fallbackTitle="Chokepoints Error"><Chokepoints /></ErrorBoundary>} />
             <Route path="/watchlist" element={<ErrorBoundary fallbackTitle="Watchlist Error"><WatchlistPanel /></ErrorBoundary>} />
             <Route path="/resources" element={<ErrorBoundary fallbackTitle="Resources Error"><ResourceManager /></ErrorBoundary>} />
             <Route path="/settings" element={<ErrorBoundary fallbackTitle="Settings Error"><Settings /></ErrorBoundary>} />

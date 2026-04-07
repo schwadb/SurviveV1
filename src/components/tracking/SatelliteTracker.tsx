@@ -7,6 +7,9 @@ import MapView from '../common/MapView';
 import { useSettings } from '../../hooks/useLocalStorage';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import { useGeolocation, calcSatelliteVisibility } from '../../hooks/useGeolocation';
+import { computePositionFromTLE, preloadSatLib } from '../../services/orbitEngine';
+import SatelliteCorrelation from './SatelliteCorrelation';
+import { RenderModeToggle, RenderModeProvider } from '../common/RenderModeToggle';
 import toast from 'react-hot-toast';
 
 const defaultFilter: MapFilter = {
@@ -24,6 +27,8 @@ const SatelliteTracker: React.FC = () => {
   const [isLive, setIsLive] = useState(false);
   const [selectedSat, setSelectedSat] = useState<SatelliteType | null>(null);
   const [showPassCalc, setShowPassCalc] = useState(false);
+  const [correlationLat, setCorrelationLat] = useState<number | null>(null);
+  const [correlationLng, setCorrelationLng] = useState<number | null>(null);
   const { addEntry, isWatched, removeEntry, watchlist } = useWatchlist();
   const { lat: userLat, lng: userLng, locate } = useGeolocation();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -33,16 +38,29 @@ const SatelliteTracker: React.FC = () => {
     try {
       if (settings.enableLiveSatellites) {
         const data = await fetchLiveSatellites('active');
-        setSatellites(data);
+        // Apply real TLE position calculations where TLE data available
+        const updated = data.map(sat => {
+          const s = sat as SatelliteType & { tleLine1?: string; tleLine2?: string };
+          if (s.tleLine1 && s.tleLine2) {
+            const pos = computePositionFromTLE(s.tleLine1, s.tleLine2);
+            if (pos) return { ...sat, lat: pos.lat, lng: pos.lng, altitude: pos.altitudeKm, velocity: pos.velocity };
+          }
+          return sat;
+        });
+        setSatellites(updated);
         setIsLive(true);
-        toast.success(`Loaded ${data.length} satellites from CelesTrak`, { id: 'sat-update', duration: 2000 });
+        toast.success(`Loaded ${updated.length} satellites from CelesTrak`, { id: 'sat-update', duration: 2000 });
       } else {
-        setSatellites(prev => prev.map(s => ({
-          ...s,
-          lat: s.lat + (Math.random() - 0.5) * 2,
-          lng: ((s.lng + s.velocity / 100000) % 180),
-          lastUpdated: new Date().toISOString(),
-        })));
+        // Simulate orbital motion using TLE math when live is off
+        setSatellites(prev => prev.map(s => {
+          const sat = s as SatelliteType & { tleLine1?: string; tleLine2?: string };
+          if (sat.tleLine1 && sat.tleLine2) {
+            const pos = computePositionFromTLE(sat.tleLine1, sat.tleLine2);
+            if (pos) return { ...s, lat: pos.lat, lng: pos.lng, altitude: pos.altitudeKm };
+          }
+          // Fallback random drift for demo
+          return { ...s, lat: s.lat + (Math.random() - 0.5) * 2, lng: ((s.lng + s.velocity / 100000) % 180), lastUpdated: new Date().toISOString() };
+        }));
       }
     } catch (err: unknown) {
       toast.error(`Satellite data error: ${err instanceof Error ? err.message : 'Unknown'}`);
@@ -52,7 +70,8 @@ const SatelliteTracker: React.FC = () => {
   }, [settings.enableLiveSatellites]);
 
   useEffect(() => {
-    fetchData();
+    // Preload satellite.js library so sync computePositionFromTLE calls work
+    preloadSatLib().then(fetchData);
     intervalRef.current = setInterval(fetchData, settings.refreshInterval * 1000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [settings.refreshInterval, settings.enableLiveSatellites]);
@@ -101,6 +120,7 @@ const SatelliteTracker: React.FC = () => {
   );
 
   return (
+    <RenderModeProvider>
     <div className="space-y-4">
       {/* Controls */}
       <div className="card">
@@ -132,6 +152,7 @@ const SatelliteTracker: React.FC = () => {
           <button onClick={() => toCSV(filtered as unknown as Record<string, unknown>[], 'satellites.csv')} className="btn-secondary" title="Export CSV">
             <Download size={15} />
           </button>
+          <RenderModeToggle />
         </div>
 
         <div className="mt-3 flex items-center gap-3 text-xs">
@@ -218,6 +239,7 @@ const SatelliteTracker: React.FC = () => {
             const sat = satellites.find(s => s.id === id);
             if (sat) setSelectedSat(sat);
           }}
+          onMapClick={(lat, lng) => { setCorrelationLat(lat); setCorrelationLng(lng); }}
         />
         <div className="mt-3 flex flex-wrap gap-2">
           {[
@@ -296,6 +318,14 @@ const SatelliteTracker: React.FC = () => {
         </div>
       </div>
 
+      {/* Satellite Correlation */}
+      <SatelliteCorrelation
+        satellites={satellites}
+        eventLat={correlationLat}
+        eventLng={correlationLng}
+        onClear={() => { setCorrelationLat(null); setCorrelationLng(null); }}
+      />
+
       {/* Detail panel */}
       {selectedSat && (
         <div className="card glow-border">
@@ -341,6 +371,7 @@ const SatelliteTracker: React.FC = () => {
         </div>
       )}
     </div>
+    </RenderModeProvider>
   );
 };
 
