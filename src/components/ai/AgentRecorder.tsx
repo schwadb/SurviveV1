@@ -43,14 +43,25 @@ export default function AgentRecorder() {
       setShowForm(false)
       setNewName('')
 
-      // Start auto-capture with a mock capture function
-      // In a real implementation, this would call fetchLiveAircraft(), etc.
+      // Build a real capture function from the selected target types
       const stop = startAutoCapture(
         session.id,
         targets,
         async () => {
-          // Placeholder — real data would come from api.ts
-          return { captured_at: [new Date().toISOString()] }
+          const { fetchLiveAircraft, fetchLiveSatellites } = await import('../../services/api')
+          const snapshot: Record<string, unknown[]> = {
+            capturedAt: [new Date().toISOString()],
+          }
+          await Promise.allSettled([
+            targets.some(t => t.type === 'aircraft')
+              ? fetchLiveAircraft().then(data => { snapshot.aircraft = data }).catch(() => {})
+              : Promise.resolve(),
+            targets.some(t => t.type === 'satellites')
+              ? fetchLiveSatellites('active').then(data => { snapshot.satellites = data }).catch(() => {})
+              : Promise.resolve(),
+            // ships: AISStream is WebSocket-based; snapshot the last received state if available
+          ])
+          return snapshot
         },
         newInterval
       )

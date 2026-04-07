@@ -32,6 +32,8 @@ export interface Aircraft {
   status: 'airborne' | 'ground' | 'unknown';
   lastContact: string;
   emergency?: boolean;
+  /** OpenSky position_source: 0=ADS-B (GPS), 1=ASTERIX (radar), 2=MLAT, 3=FLARM */
+  positionSource?: number;
 }
 
 // Ship types

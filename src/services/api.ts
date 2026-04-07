@@ -109,6 +109,7 @@ export const fetchLiveAircraft = async (
           status: s.on_ground ? 'ground' : 'airborne',
           lastContact: new Date(s.last_contact * 1000).toISOString(),
           emergency: s.squawk === '7700' || s.squawk === '7600' || s.squawk === '7500',
+          positionSource: s.position_source,
           registration: undefined,
           airline: s.origin_country,
           type: undefined,

@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import type { Satellite, Aircraft, Ship, Camera, FlockCamera, MapFilter } from '../../types';
+import type { JammingZone } from '../../services/jammingDetector';
+import type { AirspaceZone } from '../../services/airspaceApi';
+import { AIRSPACE_COLORS } from '../../services/airspaceApi';
 
 interface TrailPoint { lat: number; lng: number; t: number }
 
@@ -19,6 +22,8 @@ interface MapViewProps {
   trails?: Record<string, TrailPoint[]>;
   onMarkerClick?: (type: string, id: string) => void;
   onMapClick?: (lat: number, lng: number) => void;
+  jammingZones?: JammingZone[];
+  airspaceZones?: AirspaceZone[];
 }
 
 const MapView: React.FC<MapViewProps> = ({
@@ -37,6 +42,8 @@ const MapView: React.FC<MapViewProps> = ({
   trails = {},
   onMarkerClick,
   onMapClick,
+  jammingZones = [],
+  airspaceZones = [],
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<import('leaflet').Map | null>(null);
@@ -311,6 +318,53 @@ const MapView: React.FC<MapViewProps> = ({
       }
     });
   }, [markerData, trails, showHeatmap, cluster, onMarkerClick]);
+
+  // ── Jamming + Airspace overlay layers ──────────────────────────────────────
+  const overlayLayersRef = useRef<import('leaflet').Layer[]>([]);
+
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+
+    import('leaflet').then((L) => {
+      // Clear previous overlay layers
+      overlayLayersRef.current.forEach(l => l.remove());
+      overlayLayersRef.current = [];
+
+      // GPS Jamming zones
+      for (const zone of jammingZones) {
+        const color = zone.confidence > 0.7 ? '#ef4444' : zone.confidence > 0.4 ? '#f97316' : '#facc15';
+        const circle = L.circle([zone.lat, zone.lng], {
+          radius: zone.radiusKm * 1000,
+          color,
+          fillColor: color,
+          fillOpacity: 0.12 + zone.confidence * 0.18,
+          weight: 1,
+          dashArray: '4 4',
+        }).bindTooltip(
+          `<b style="color:${color}">GPS Jamming</b><br>Confidence: ${Math.round(zone.confidence * 100)}%<br>Source: ${zone.source}`,
+          { sticky: true }
+        ).addTo(map);
+        overlayLayersRef.current.push(circle);
+      }
+
+      // Airspace restriction zones
+      for (const zone of airspaceZones) {
+        const color = AIRSPACE_COLORS[zone.type] ?? '#6b7280';
+        const poly = L.polygon(zone.coordinates, {
+          color,
+          fillColor: color,
+          fillOpacity: 0.1,
+          weight: 1.5,
+          dashArray: zone.type === 'tfr' ? '6 3' : undefined,
+        }).bindTooltip(
+          `<b style="color:${color}">${zone.name}</b><br>${zone.type.toUpperCase()}${zone.altitudeLowerFt != null ? `<br>Alt: ${zone.altitudeLowerFt.toLocaleString()}–${zone.altitudeUpperFt?.toLocaleString() ?? '∞'} ft` : ''}`,
+          { sticky: true }
+        ).addTo(map);
+        overlayLayersRef.current.push(poly);
+      }
+    });
+  }, [jammingZones, airspaceZones]);
 
   return (
     <div

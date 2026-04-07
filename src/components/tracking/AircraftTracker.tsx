@@ -235,6 +235,7 @@ const AircraftTracker: React.FC = () => {
           userLocation={userLat && userLng ? { lat: userLat, lng: userLng } : null}
           cluster={settings.clusterMarkers}
           trails={settings.showTrails ? trails : {}}
+          jammingZones={showJamming ? jammingZones : []}
           onMarkerClick={(_, id) => {
             const ac = aircraft.find((a) => a.icao === id);
             if (ac) setSelectedAc(ac);

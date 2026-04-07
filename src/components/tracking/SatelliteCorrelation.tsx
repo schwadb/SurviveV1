@@ -53,7 +53,15 @@ export default function SatelliteCorrelation({
       const time = eventTime ?? new Date()
       const results: CorrelatedSatellite[] = []
 
-      for (const sat of satellites) {
+      // Pre-filter: only check satellites within geometric horizon distance.
+      // Max LEO horizon ~2800 km; skip anything farther to avoid O(n×steps) TLE math.
+      const candidates = satellites.filter(sat => {
+        const altKm = sat.altitude || 400
+        const horizonKm = Math.sqrt(2 * 6371 * altKm + altKm * altKm) * 1.1 // 10% margin
+        return haversineKm(eventLat!, eventLng!, sat.lat, sat.lng) < horizonKm
+      })
+
+      for (const sat of candidates) {
         if (cancelled) break
         const tleLine1 = (sat as SatelliteType & { tleLine1?: string }).tleLine1
         const tleLine2 = (sat as SatelliteType & { tleLine2?: string }).tleLine2

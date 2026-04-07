@@ -21,6 +21,8 @@ import ResourceManager from './components/resources/ResourceManager';
 import Settings from './components/resources/Settings';
 import WatchlistPanel from './components/common/WatchlistPanel';
 import Chokepoints from './pages/Chokepoints';
+import TimelineScrubber from './components/common/TimelineScrubber';
+import { useTimeline } from './hooks/useTimeline';
 import { useTheme } from './hooks/useLocalStorage';
 import type { Alert } from './types';
 import { mockAlerts } from './data/mockData';
@@ -51,7 +53,9 @@ const App: React.FC = () => {
   const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
   const [showAlerts, setShowAlerts] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
   const { darkMode } = useTheme();
+  const timeline = useTimeline();
 
   // Apply dark/light class on body
   useEffect(() => {
@@ -87,7 +91,26 @@ const App: React.FC = () => {
           isRefreshing={isRefreshing}
         />
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        {/* Timeline toggle button — shown on tracking pages */}
+        {['/satellites', '/aircraft', '/ships', '/chokepoints'].includes(location.pathname) && (
+          <div className="flex items-center gap-2 px-4 py-1 border-b border-gray-800 bg-gray-900/50">
+            <button
+              onClick={() => setShowTimeline(v => !v)}
+              className={`text-xs px-2 py-0.5 rounded transition-colors flex items-center gap-1 ${
+                showTimeline ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              ⏱ Timeline
+            </button>
+            {showTimeline && (
+              <span className="text-xs text-gray-600">
+                {timeline.isLive ? 'Live' : timeline.currentTime.toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+        )}
+
+        <main className={`flex-1 overflow-y-auto p-4 sm:p-6 ${showTimeline ? 'pb-16' : ''}`}>
           <Routes>
             <Route path="/" element={
               <ErrorBoundary fallbackTitle="Dashboard Error">
@@ -122,6 +145,9 @@ const App: React.FC = () => {
             onMarkRead={markAlertRead} onClearAll={() => setAlerts([])} />
         </>
       )}
+
+      {/* Global 4D Timeline Scrubber — shown when toggled on tracking pages */}
+      {showTimeline && <TimelineScrubber {...timeline} />}
     </div>
   );
 };
