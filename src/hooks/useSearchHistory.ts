@@ -3,7 +3,7 @@ import { useLocalStorage } from './useLocalStorage';
 export interface SearchHistoryEntry {
   id: string;
   query: string;
-  type: 'person' | 'phone' | 'address' | 'email' | 'domain' | 'ai' | 'username';
+  type: 'person' | 'phone' | 'address' | 'email' | 'domain' | 'ai' | 'username' | 'dork';
   timestamp: string;
   resultCount?: number;
 }

@@ -17,6 +17,7 @@ const TYPE_LABELS: Record<string, string> = {
   domain: '🌐 Domain',
   ai: '🤖 AI',
   username: '🔍 Username',
+  dork: '🎯 Dork',
 };
 
 const SearchHistory: React.FC<SearchHistoryProps> = ({ typeFilter, onSelect, compact = false }) => {
