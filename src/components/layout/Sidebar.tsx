@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Satellite, Plane, Ship, Camera, Radio, Search, Settings, Database,
   Shield, Menu, X, Eye, Phone, MapPin, User, AlertTriangle, ChevronRight,
-  Zap, Star, Mail, Sun, Moon, Anchor, Bot,
+  Zap, Star, Mail, Sun, Moon, Anchor, Bot, FileSearch,
 } from 'lucide-react';
 import { useTheme } from '../../hooks/useLocalStorage';
 
@@ -31,6 +31,7 @@ const navGroups = [
       { id: 'phone', label: 'Phone Lookup', icon: Phone, color: 'text-yellow-400' },
       { id: 'address', label: 'Address Lookup', icon: MapPin, color: 'text-teal-400' },
       { id: 'email', label: 'Email & Domain', icon: Mail, color: 'text-blue-300' },
+      { id: 'dorks', label: 'Dork Builder', icon: FileSearch, color: 'text-red-400' },
     ],
   },
   {
