@@ -73,11 +73,12 @@
         </button>
       </div>
     </form>
+    {% set host = request.host.split(':')[0] %}
     <div class="search-also">
       Also search in:
-      <a href="http://localhost:8081/search?lang=eng&pattern={{ query|urlencode }}" target="_blank">Wikipedia</a> •
-      <a href="http://localhost:8082/en/search?query={{ query|urlencode }}" target="_blank">Khan Academy</a> •
-      <a href="http://localhost:8083/search?query={{ query|urlencode }}" target="_blank">E-Books</a>
+      <a href="http://{{ host }}:{{ PORT_KIWIX }}/search?lang=eng&pattern={{ query|urlencode }}" target="_blank">Wikipedia</a> •
+      <a href="http://{{ host }}:{{ PORT_KOLIBRI }}/en/search?query={{ query|urlencode }}" target="_blank">Khan Academy</a> •
+      <a href="http://{{ host }}:{{ PORT_CALIBRE }}/search?query={{ query|urlencode }}" target="_blank">E-Books</a>
     </div>
   </div>
 

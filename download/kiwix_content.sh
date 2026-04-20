@@ -30,7 +30,15 @@ info()    { echo -e "${BLUE}[KIWIX]${NC} $*"; }
 success() { echo -e "${GREEN}[KIWIX]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[KIWIX]${NC} $*"; }
 
-# ── Download function with resume and optional checksum verification ───────────
+# Failed-downloads log: listed at the end and honoured by the exit code so
+# the user/ci notices silent corruption rather than trusting a "done" marker.
+FAILED_LOG="$ZIM_DIR/.failed_downloads.log"
+: > "$FAILED_LOG" 2>/dev/null || true
+
+mark_failed() { echo "$(date -Iseconds) $1 :: $2" >> "$FAILED_LOG"; }
+
+# Download a ZIM, then validate size and checksum BEFORE treating the download
+# as successful. A partial/corrupt file is removed so the next run re-fetches.
 download_zim() {
     local name="$1"
     local url="$2"
@@ -42,36 +50,60 @@ download_zim() {
     info "[$name] Downloading to $dest..."
     local BW_ARGS=()
     [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--max-overall-download-limit="${SURVIVE_BANDWIDTH_LIMIT}")
-    aria2c \
-        --continue=true \
-        --max-connection-per-server=4 \
-        --split=4 \
-        --dir="$dest_dir" \
-        --out="$filename" \
-        --console-log-level=warn \
-        --summary-interval=60 \
-        "${BW_ARGS[@]}" \
-        "$url" \
-    && {
-        success "[$name] Done: $filename"
-        # Optional: verify SHA-256 if a .sha256 sidecar exists on the server
-        local sha_url="${url%.zim}.sha256"
-        if wget -q --spider "$sha_url" 2>/dev/null; then
-            local sha_file
-            sha_file=$(mktemp)
-            if wget -q -O "$sha_file" "$sha_url" 2>/dev/null; then
-                # Rewrite path in checksum file to match local filename
-                sed -i "s|.*|$(awk '{print $1}' "$sha_file")  $dest|" "$sha_file"
-                if sha256sum -c "$sha_file" &>/dev/null; then
-                    success "[$name] Checksum OK"
-                else
-                    warn "[$name] Checksum MISMATCH — file may be corrupt, re-download recommended"
-                fi
-            fi
-            rm -f "$sha_file"
-        fi
-    } \
-    || warn "[$name] Failed — will retry next run (--resume)"
+
+    if ! aria2c \
+            --continue=true \
+            --max-connection-per-server=4 \
+            --split=4 \
+            --dir="$dest_dir" \
+            --out="$filename" \
+            --console-log-level=warn \
+            --summary-interval=60 \
+            "${BW_ARGS[@]}" \
+            "$url"; then
+        warn "[$name] aria2c exited non-zero -- will retry next run"
+        mark_failed "$name" "aria2c exit"
+        return 1
+    fi
+
+    # Minimum plausible ZIM is ~1 MB -- anything smaller is a 404 page
+    # or a truncated download masquerading as success.
+    local sz
+    sz=$(stat -c %s "$dest" 2>/dev/null || echo 0)
+    if (( sz < 1048576 )); then
+        warn "[$name] File too small (${sz} bytes) -- removing stub"
+        rm -f "$dest"
+        mark_failed "$name" "size=$sz"
+        return 1
+    fi
+
+    # Checksum validation: ZIM mirrors publish .sha256 sidecars. A missing
+    # sidecar is logged as a warning (network or mirror issue), but a
+    # MISMATCH deletes the file so the next run re-downloads cleanly.
+    local sha_url="${url%.zim}.sha256"
+    local sha_file
+    sha_file=$(mktemp)
+    if ! wget -q -O "$sha_file" "$sha_url" 2>/dev/null || ! [[ -s "$sha_file" ]]; then
+        warn "[$name] No checksum sidecar at $sha_url -- size check only"
+        rm -f "$sha_file"
+        success "[$name] Done: $filename (size OK, no checksum available)"
+        return 0
+    fi
+    # Replace the path in the sidecar with our local filename so sha256sum
+    # can find the target file regardless of what the mirror labelled it.
+    local expected
+    expected=$(awk '{print $1; exit}' "$sha_file")
+    echo "$expected  $dest" > "$sha_file"
+    if sha256sum -c "$sha_file" &>/dev/null; then
+        success "[$name] Checksum OK"
+        rm -f "$sha_file"
+        return 0
+    else
+        warn "[$name] Checksum MISMATCH -- deleting corrupt file"
+        rm -f "$dest" "$sha_file"
+        mark_failed "$name" "checksum mismatch"
+        return 1
+    fi
 }
 
 # ── Kiwix catalog (use latest available) ─────────────────────────────────────
@@ -232,6 +264,16 @@ main() {
     dl_ted
 
     register_zims
+
+    if [[ -s "$FAILED_LOG" ]]; then
+        warn "Some downloads failed -- see $FAILED_LOG"
+        echo "---"
+        cat "$FAILED_LOG"
+        echo "---"
+        info "Re-run this script to retry failed items."
+        du -sh "$ZIM_DIR" 2>/dev/null || true
+        exit 2
+    fi
 
     success "Kiwix content download complete"
     info "ZIM files: $ZIM_DIR"

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
 # SurviveV1 — Ollama setup and model management
-# Optimized for Raspberry Pi 5 + Hailo AI Hat
+# Optimized for Raspberry Pi 5 (4 GB default). Hailo-8L does NOT accelerate
+# LLMs -- only Hailo-10H (AI HAT+ 2) does. Ollama always runs on CPU here.
 # =============================================================================
 set -euo pipefail
 
@@ -20,6 +21,26 @@ warn()    { echo -e "${YELLOW}[OLLAMA]${NC} $*"; }
 
 mkdir -p "$MODELS_DIR"
 
+# ── Detect total RAM in MB (used to gate model selection) ─────────────────────
+total_ram_mb() {
+    awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0
+}
+
+# ── Warn if Hailo hardware is present but cannot accelerate LLMs ──────────────
+detect_hailo() {
+    if command -v hailortcli &>/dev/null; then
+        local hw
+        hw=$(hailortcli fw-control identify 2>/dev/null | awk -F: '/Device Architecture/ {print $2}' | tr -d ' ')
+        if [[ -n "$hw" ]]; then
+            info "Detected Hailo device: $hw"
+            if [[ "$hw" == *"HAILO8"* ]] && [[ "$hw" != *"HAILO10"* ]]; then
+                warn "Hailo-8L cannot accelerate LLMs (vision-only, 13 TOPS)."
+                warn "Ollama will run on CPU. See docs/ai_hat_setup.md."
+            fi
+        fi
+    fi
+}
+
 # ── Ensure Ollama is running ──────────────────────────────────────────────────
 start_ollama() {
     if ! pgrep -x ollama &>/dev/null; then
@@ -30,81 +51,74 @@ start_ollama() {
     if curl -s http://localhost:11434 &>/dev/null; then
         success "Ollama is running"
     else
-        warn "Ollama may not be ready yet — waiting..."
+        warn "Ollama may not be ready yet -- waiting..."
         sleep 5
     fi
 }
 
-# ── Pull models ───────────────────────────────────────────────────────────────
+# ── Pull models sized to the available RAM ────────────────────────────────────
 pull_models() {
-    info "Pulling recommended models for Raspberry Pi..."
+    local ram_mb
+    ram_mb=$(total_ram_mb)
+    info "Detected ${ram_mb} MB total RAM"
 
-    declare -A MODELS=(
-        # Model            Size    Description
-        ["tinyllama"]="637MB   - Fastest, ~1GB RAM, good for quick Q&A"
-        ["phi3:mini"]="2.3GB  - Microsoft Phi-3, excellent at reasoning"
-        ["llama3.2:3b"]="2.0GB  - Meta Llama 3.2 3B, best balance for RPi5"
-        ["mistral:7b-q4_0"]="4.1GB  - Best quality 7B, needs 6GB+ RAM"
-    )
+    # Always-safe baseline: ~1 GB models for any Pi.
+    local PRIORITY_MODELS=("tinyllama" "llama3.2:1b")
+    # Mid tier: adds ~2-3 GB models, requires 6 GB+ total RAM.
+    local MID_MODELS=("phi3:mini" "llama3.2:3b")
+    # Large tier: 7B quantized models, requires 8 GB+ total RAM.
+    local LARGE_MODELS=("mistral:7b-q4_0")
 
-    # Always pull the smallest model first
-    PRIORITY_MODELS=("tinyllama" "phi3:mini" "llama3.2:3b")
-
+    info "Pulling small models (safe on any Pi)..."
     for model in "${PRIORITY_MODELS[@]}"; do
-        info "Pulling $model (${MODELS[$model]:-})..."
+        info "Pulling $model..."
         OLLAMA_MODELS="$MODELS_DIR" ollama pull "$model" \
             && success "$model downloaded" \
-            || warn "$model failed — check disk space"
+            || warn "$model failed -- check disk space"
     done
 
-    # Pull larger model only if sufficient disk space
-    FREE_GB=$(df -BG "$MODELS_DIR" | tail -1 | awk '{print $4}' | tr -d 'G')
-    if [[ "$FREE_GB" -gt 10 ]]; then
-        info "Sufficient space — pulling mistral:7b..."
-        OLLAMA_MODELS="$MODELS_DIR" ollama pull "mistral:7b-q4_0" \
-            && success "mistral:7b downloaded" \
-            || warn "mistral:7b failed"
+    if (( ram_mb >= 6144 )); then
+        info "6 GB+ RAM -- pulling mid-tier models..."
+        for model in "${MID_MODELS[@]}"; do
+            info "Pulling $model..."
+            OLLAMA_MODELS="$MODELS_DIR" ollama pull "$model" \
+                && success "$model downloaded" \
+                || warn "$model failed"
+        done
     else
-        warn "Less than 10GB free — skipping large models"
+        warn "< 6 GB RAM -- skipping phi3:mini and llama3.2:3b (would OOM)."
+    fi
+
+    if (( ram_mb >= 8192 )); then
+        local free_gb
+        free_gb=$(df -BG "$MODELS_DIR" | tail -1 | awk '{print $4}' | tr -d 'G')
+        if [[ "$free_gb" =~ ^[0-9]+$ ]] && (( free_gb >= 10 )); then
+            info "8 GB+ RAM and ${free_gb} GB free -- pulling 7B model..."
+            for model in "${LARGE_MODELS[@]}"; do
+                OLLAMA_MODELS="$MODELS_DIR" ollama pull "$model" \
+                    && success "$model downloaded" \
+                    || warn "$model failed"
+            done
+        else
+            warn "< 10 GB free -- skipping 7B models"
+        fi
+    else
+        warn "< 8 GB RAM -- skipping 7B models (will OOM)."
     fi
 }
 
-# ── Create survival-optimized Modelfiles ─────────────────────────────────────
+# ── Create survival-optimized Modelfile ──────────────────────────────────────
+# shellcheck disable=SC2120  # optional arg kept for future base-model overrides
 create_survival_model() {
-    info "Creating survival-optimized model..."
-    MODELFILE="$REPO_DIR/ai/Modelfile.survival"
-
-    cat > "$MODELFILE" << 'EOF'
-FROM llama3.2:3b
-
-SYSTEM """
-You are SURVIVE, an offline AI assistant running on a Raspberry Pi 5 in a
-post-apocalyptic, grid-down scenario. You have no internet access.
-
-Your role is to help with practical survival knowledge:
-- WATER: Purification, sourcing, storage
-- FOOD: Foraging, farming, preservation, hunting
-- MEDICAL: Emergency first aid, wound care, natural medicine
-- SHELTER: Construction, insulation, fire
-- ENERGY: Solar, wind, batteries, fuel conservation
-- COMMUNICATION: Ham radio, signals, navigation
-- TOOLS: Repair, improvised tools, metalwork
-- SKILLS: Bushcraft, wilderness survival
-
-Guidelines:
-- Be CONCISE and PRACTICAL — no fluff
-- Prioritize safety when giving medical advice
-- When unsure, say so clearly
-- Reference exact steps when explaining procedures
-- Assume no power grid, no internet, limited resources
-- Imperial AND metric measurements
-"""
-
-PARAMETER temperature 0.7
-PARAMETER top_p 0.9
-PARAMETER num_ctx 4096
-EOF
-
+    local base_model="${1:-llama3.2:1b}"
+    info "Creating survival-optimized model from $base_model..."
+    # The Modelfile is stored alongside the repo so it is version-controlled.
+    # num_ctx=2048 keeps RAM use sane on 4 GB devices.
+    local MODELFILE="$REPO_DIR/ai/Modelfile.survival"
+    if [[ ! -f "$MODELFILE" ]]; then
+        warn "Modelfile not found at $MODELFILE -- skipping survive model creation"
+        return
+    fi
     OLLAMA_MODELS="$MODELS_DIR" ollama create survive -f "$MODELFILE" \
         && success "Custom 'survive' model created" \
         || warn "Custom model creation failed"
@@ -123,7 +137,6 @@ test_models() {
     echo "Installed models:"
     OLLAMA_MODELS="$MODELS_DIR" ollama list
 
-    # Quick test
     info "Quick test with tinyllama..."
     RESPONSE=$(OLLAMA_MODELS="$MODELS_DIR" ollama run tinyllama \
         "In one sentence: how do you purify water by boiling?" 2>/dev/null || echo "FAILED")
@@ -147,6 +160,7 @@ print_usage() {
 main() {
     case "${1:-setup}" in
         setup)
+            detect_hailo
             start_ollama
             pull_models
             create_survival_model

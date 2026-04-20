@@ -14,10 +14,22 @@ from pathlib import Path
 from datetime import datetime
 from flask import (
     Flask, render_template, jsonify, request,
-    send_from_directory, redirect, url_for
+    send_from_directory, redirect, url_for, abort
 )
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
-from constants import SERVICES, PORT_OLLAMA  # noqa: E402
+from constants import (  # noqa: E402
+    SERVICES,
+    PORT_OLLAMA,
+    PORT_DASHBOARD,
+    PORT_KIWIX,
+    PORT_KOLIBRI,
+    PORT_CALIBRE,
+    PORT_JELLYFIN,
+    PORT_MAPS,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,6 +37,34 @@ logging.basicConfig(
 )
 
 app = Flask(__name__)
+
+# CSRF is enabled for HTML form POSTs. JSON APIs are exempted individually
+# and defended by a strict application/json Content-Type check instead --
+# browsers cannot send that cross-origin without a CORS preflight.
+csrf = CSRFProtect(app)
+
+# Per-IP rate limiting; protects /api/ai/chat (which proxies to Ollama and
+# can pin the Pi's CPU) and /search (which walks the 800 GB storage tree).
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["120 per minute"],
+    storage_uri="memory://",
+)
+
+
+# Single source of truth for service ports in all templates.
+@app.context_processor
+def _inject_ports():
+    return {
+        "PORT_DASHBOARD": PORT_DASHBOARD,
+        "PORT_KIWIX": PORT_KIWIX,
+        "PORT_KOLIBRI": PORT_KOLIBRI,
+        "PORT_CALIBRE": PORT_CALIBRE,
+        "PORT_JELLYFIN": PORT_JELLYFIN,
+        "PORT_MAPS": PORT_MAPS,
+        "PORT_OLLAMA": PORT_OLLAMA,
+    }
 
 # Generate a persistent random secret key on first run
 _KEY_FILE = Path(__file__).parent.parent / "config" / ".secret_key"
@@ -257,7 +297,16 @@ def category(cat_id):
 def browse_files():
     """File browser for all content."""
     rel_path = request.args.get("path", "")
-    browse_dir = STORAGE_PATH / rel_path if rel_path else STORAGE_PATH
+    # Path traversal guard: resolve the requested path and refuse anything
+    # that escapes the storage root.
+    storage_root = STORAGE_PATH.resolve()
+    try:
+        browse_dir = (STORAGE_PATH / rel_path).resolve() if rel_path else storage_root
+        browse_dir.relative_to(storage_root)
+    except (ValueError, OSError):
+        abort(403)
+    if not browse_dir.exists() or not browse_dir.is_dir():
+        abort(404)
 
     items = []
     try:
@@ -302,6 +351,7 @@ def serve_file(filepath):
 
 
 @app.route("/search")
+@limiter.limit("30 per minute")
 def search():
     query = request.args.get("q", "").strip()[:200]  # cap at 200 chars to prevent ReDoS
     results = []
@@ -351,9 +401,17 @@ def ai_page():
 
 
 @app.route("/api/ai/chat", methods=["POST"])
+@csrf.exempt
+@limiter.limit("5 per minute")
 def ai_chat():
     """Proxy to local Ollama API."""
-    data = request.get_json()
+    # Strict Content-Type check: browsers cannot send application/json
+    # cross-origin without a CORS preflight, so this blocks CSRF-style
+    # form POSTs from a malicious page while the user is on the dashboard.
+    if (request.content_type or "").split(";")[0].strip() != "application/json":
+        return jsonify({"error": "Content-Type must be application/json"}), 415
+
+    data = request.get_json(silent=True)
     if not data or "message" not in data:
         return jsonify({"error": "No message"}), 400
 
@@ -378,7 +436,7 @@ def ai_chat():
         }).encode()
 
         req = urllib.request.Request(
-            "http://localhost:11434/api/chat",
+            f"http://localhost:{PORT_OLLAMA}/api/chat",
             data=payload,
             headers={"Content-Type": "application/json"},
         )
@@ -388,8 +446,17 @@ def ai_chat():
                 "response": result.get("message", {}).get("content", "No response"),
                 "model": model,
             })
-    except (OSError, json.JSONDecodeError) as e:
-        return jsonify({"error": str(e)}), 500
+    except (OSError, json.JSONDecodeError):
+        # Log the real error server-side; never leak internals to the client.
+        logging.exception("AI chat proxy error")
+        return jsonify({"error": "AI service unavailable"}), 502
+
+
+@app.route("/health")
+@limiter.exempt
+def health():
+    """Lightweight liveness probe for systemd ExecStartPost and external checks."""
+    return jsonify({"status": "ok"}), 200
 
 
 @app.route("/api/status")

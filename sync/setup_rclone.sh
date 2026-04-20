@@ -14,11 +14,22 @@ info()    { echo -e "${BLUE}[SYNC]${NC} $*"; }
 success() { echo -e "${GREEN}[SYNC]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[SYNC]${NC} $*"; }
 
-# ── Ensure rclone is installed ────────────────────────────────────────────────
+# ── Ensure rclone is installed and meets minimum version ─────────────────────
+# 1.73.5 fixes CVE-2026-41179 (unauthenticated backend creation via RC API).
+# 1.68.2 fixes symlink privilege escalation with --links + --metadata.
+MIN_RCLONE_VERSION="1.73.5"
+
+version_ge() { [ "$(printf '%s\n%s' "$1" "$2" | sort -V | head -1)" = "$2" ]; }
+
 install_rclone() {
     if ! command -v rclone &>/dev/null; then
         info "Installing rclone..."
         curl -fsSL https://rclone.org/install.sh | bash
+    fi
+    local current
+    current=$(rclone version | head -1 | awk '{print $2}' | tr -d 'v')
+    if [[ -n "$current" ]] && ! version_ge "$current" "$MIN_RCLONE_VERSION"; then
+        warn "rclone $current < $MIN_RCLONE_VERSION; upgrade recommended (CVE-2026-41179)."
     fi
     success "rclone $(rclone version | head -1)"
 }
@@ -60,12 +71,31 @@ setup_provider() {
             read -rp "  Region [us-east-1]: " AWS_REGION
             AWS_REGION="${AWS_REGION:-us-east-1}"
 
-            rclone config create s3 s3 \
-                provider=AWS \
-                access_key_id="$AWS_KEY" \
-                secret_access_key="$AWS_SECRET" \
-                region="$AWS_REGION" \
-                && success "S3 configured as 'S3'"
+            # Secrets passed via a 0600 temp file and --config-str, never on
+            # the command line (would leak via ps / shell history / errors).
+            local secret_file
+            secret_file=$(mktemp) && chmod 600 "$secret_file"
+            trap 'shred -u "$secret_file" 2>/dev/null || rm -f "$secret_file"' RETURN
+            cat > "$secret_file" <<EOF
+[s3]
+type = s3
+provider = AWS
+access_key_id = $AWS_KEY
+secret_access_key = $AWS_SECRET
+region = $AWS_REGION
+EOF
+            # Append to rclone's config (keeps existing remotes).
+            local rclone_conf
+            rclone_conf="$(rclone config file 2>/dev/null | tail -1)"
+            rclone_conf="${rclone_conf:-$HOME/.config/rclone/rclone.conf}"
+            mkdir -p "$(dirname "$rclone_conf")"
+            touch "$rclone_conf" && chmod 600 "$rclone_conf"
+            cat "$secret_file" >> "$rclone_conf"
+            # Clear the plaintext secrets from the calling shell.
+            unset AWS_KEY AWS_SECRET
+            success "S3 configured as 's3' in $rclone_conf (mode 0600)"
+            warn "Config is only obfuscated by default. Run 'rclone config' and"
+            warn "choose 's' (Set config password) to encrypt credentials at rest."
             ;;
         backblaze|b2)
             info "Setting up Backblaze B2..."
@@ -73,10 +103,24 @@ setup_provider() {
             read -rp "  Application Key ID: " B2_KEY
             read -rsp "  Application Key: " B2_SECRET
             echo ""
-            rclone config create b2 b2 \
-                account="$B2_KEY" \
-                key="$B2_SECRET" \
-                && success "Backblaze B2 configured"
+            local secret_file
+            secret_file=$(mktemp) && chmod 600 "$secret_file"
+            trap 'shred -u "$secret_file" 2>/dev/null || rm -f "$secret_file"' RETURN
+            cat > "$secret_file" <<EOF
+[b2]
+type = b2
+account = $B2_KEY
+key = $B2_SECRET
+EOF
+            local rclone_conf
+            rclone_conf="$(rclone config file 2>/dev/null | tail -1)"
+            rclone_conf="${rclone_conf:-$HOME/.config/rclone/rclone.conf}"
+            mkdir -p "$(dirname "$rclone_conf")"
+            touch "$rclone_conf" && chmod 600 "$rclone_conf"
+            cat "$secret_file" >> "$rclone_conf"
+            unset B2_KEY B2_SECRET
+            success "Backblaze B2 configured (mode 0600)"
+            warn "Run 'rclone config' -> 's' to encrypt this config at rest."
             ;;
         onedrive)
             info "Setting up Microsoft OneDrive..."

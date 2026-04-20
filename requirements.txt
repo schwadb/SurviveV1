@@ -2,11 +2,14 @@ Flask==3.0.3
 flask-cors==4.0.1
 flask-sqlalchemy==3.1.1
 flask-login==0.6.3
+flask-wtf==1.2.1
+flask-limiter==3.8.0
+gunicorn==22.0.0
 requests==2.31.0
 tqdm==4.66.2
 pyyaml==6.0.1
 watchdog==4.0.0
 send2trash==1.8.3
 mutagen==1.47.0
-Pillow==10.3.0
+Pillow==12.2.0
 markdown2==2.4.13

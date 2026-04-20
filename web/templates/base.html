@@ -282,10 +282,10 @@
       <a href="/files" class="{{ 'active' if request.endpoint == 'browse_files' }}">Browse</a>
       <a href="/ai" class="{{ 'active' if request.endpoint == 'ai_page' }}">AI Assistant</a>
       <a href="/status" class="{{ 'active' if request.endpoint == 'status_page' }}">Status</a>
-      <a href="http://localhost:8081" target="_blank">Wikipedia</a>
-      <a href="http://localhost:8082" target="_blank">Education</a>
-      <a href="http://localhost:8096" target="_blank">Videos</a>
-      <a href="http://localhost:3000" target="_blank">Maps</a>
+      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KIWIX }}" target="_blank">Wikipedia</a>
+      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KOLIBRI }}" target="_blank">Education</a>
+      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_JELLYFIN }}" target="_blank">Videos</a>
+      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_MAPS }}" target="_blank">Maps</a>
     </div>
     <form class="nav-search" action="/search" method="get">
       <input type="text" name="q" placeholder="Search knowledge base..."

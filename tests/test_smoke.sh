@@ -110,6 +110,15 @@ run_tests() {
     echo -e "${BLUE}── Security tests ───────────────────────────────────${NC}"
     check_http "Symlink escape blocked"   "/serve/escape_link/passwd" "403"
     check_http "404 handler works"       "/nonexistent-page-12345" "404"
+    check_http "Path traversal blocked on /files"  "/files?path=../../etc" "403"
+    # Flask normalizes `..` in URL paths before routing, so /serve/..x becomes
+    # a non-existent resource (404). The real traversal defence is covered by
+    # the symlink-escape test above.
+
+    echo ""
+    echo -e "${BLUE}── Health endpoint ──────────────────────────────────${NC}"
+    check_http "GET /health"      "/health"
+    check_json "GET /health body" "/health"
 
     echo ""
     echo -e "${BLUE}── AI chat API ──────────────────────────────────────${NC}"
@@ -118,9 +127,19 @@ run_tests() {
         -H "Content-Type: application/json" \
         -d '{}')
     if [[ "$STATUS" == "400" ]]; then
-        pass "POST /api/ai/chat (empty body) → HTTP 400 (correct)"
+        pass "POST /api/ai/chat (empty JSON body) → HTTP 400 (correct)"
     else
-        fail "POST /api/ai/chat (empty body) → expected 400, got $STATUS"
+        fail "POST /api/ai/chat (empty JSON body) → expected 400, got $STATUS"
+    fi
+    # Content-Type guard: form-encoded POST must be rejected with 415.
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+        -X POST "http://localhost:$PORT/api/ai/chat" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d 'message=hi')
+    if [[ "$STATUS" == "415" ]]; then
+        pass "POST /api/ai/chat (form-encoded) → HTTP 415 (blocked)"
+    else
+        fail "POST /api/ai/chat (form-encoded) → expected 415, got $STATUS"
     fi
 }
 

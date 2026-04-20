@@ -3,6 +3,17 @@
 The Hailo-8L AI Hat provides up to **13 TOPS** of neural processing acceleration,
 significantly speeding up AI inference tasks.
 
+> **Important — Hailo-8L does NOT accelerate LLMs.** The 8L is a *vision*
+> accelerator (object detection, segmentation, pose). It cannot run the
+> decoder-only transformer kernels that Ollama needs, so `ollama run …` on
+> SurviveV1 executes **100% on the Pi's CPU** regardless of whether the 8L
+> is installed. Only the newer **Hailo-10H** on the AI HAT+ 2 (40 TOPS,
+> 8 GB onboard RAM) supports LLM acceleration, via the `hailo-ollama`
+> community backend.
+>
+> If you have an 8L, keep it for camera / vision workloads; pick smaller
+> models (`tinyllama`, `llama3.2:1b`) for the AI assistant.
+
 ---
 
 ## Hardware Setup
