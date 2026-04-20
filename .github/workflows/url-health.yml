@@ -1,0 +1,85 @@
+name: url-health
+
+# Weekly check that every download URL baked into our shell scripts is still
+# reachable. Catches link-rot long before a user runs download_all.sh and
+# finds that half the Kiwix/Gutenberg mirrors moved. Also runnable on demand.
+on:
+  schedule:
+    - cron: "0 5 * * 1"   # Mondays 05:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-urls:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract and HEAD every http(s) URL in download/, setup/, sync/
+        id: check
+        shell: bash
+        run: |
+          set -u
+          mkdir -p .url_health
+          # Pull every http/https URL from scripts; strip quotes/backticks.
+          grep -rhoE 'https?://[A-Za-z0-9._~:/?#\[\]@!$&'"'"'()*+,;=%-]+' \
+              download/ setup/ sync/ scripts/ config/ 2>/dev/null \
+            | sed -E 's/[")''`]+$//' \
+            | sort -u > .url_health/urls.txt
+          wc -l .url_health/urls.txt
+          fail=0
+          : > .url_health/failed.txt
+          while IFS= read -r url; do
+            # Some hosts reject HEAD -- fall back to a range GET of 1 byte.
+            code=$(curl -sS -o /dev/null -A "SurviveV1-URL-Health" \
+                    -w "%{http_code}" -L --max-time 20 -I "$url" || echo 000)
+            if [[ "$code" != 2* && "$code" != 3* ]]; then
+              code=$(curl -sS -o /dev/null -A "SurviveV1-URL-Health" \
+                      -w "%{http_code}" -L --max-time 20 \
+                      -H "Range: bytes=0-0" "$url" || echo 000)
+            fi
+            if [[ "$code" != 2* && "$code" != 3* ]]; then
+              echo "$code  $url" | tee -a .url_health/failed.txt
+              fail=$((fail + 1))
+            fi
+          done < .url_health/urls.txt
+          echo "failures=$fail" >> "$GITHUB_OUTPUT"
+          if (( fail > 0 )); then
+            echo "::warning::$fail URL(s) failed reachability check"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: url-health-report
+          path: .url_health/
+          retention-days: 30
+
+      - name: Open / update tracking issue on failure
+        if: steps.check.outputs.failures != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = "Automated weekly URL health check found dead mirrors:\n\n```\n"
+              + fs.readFileSync('.url_health/failed.txt', 'utf8')
+              + "\n```\n\nSee the `url-health-report` artifact for the full URL list.";
+            const title = "URL health: dead mirrors detected";
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'url-health'
+            });
+            if (issues.length) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issues[0].number, body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['url-health', 'reliability']
+              });
+            }

@@ -34,12 +34,38 @@ error()   { echo -e "${RED}[VIDEO]${NC} $*" >&2; }
 check_disk_space() {
     local required_gb="${1:-50}"
     local available_gb
-    available_gb=$(df -BG "$STORAGE_PATH" | tail -1 | awk '{print $4}' | tr -d 'G')
+    if ! available_gb=$(df -BG "$STORAGE_PATH" 2>/dev/null | tail -1 | awk '{print $4}' | tr -d 'G'); then
+        error "Failed to check disk space at $STORAGE_PATH"; exit 1
+    fi
+    if ! [[ "$available_gb" =~ ^[0-9]+$ ]]; then
+        error "Unexpected df output: '$available_gb'"; exit 1
+    fi
     info "Disk space: ${available_gb}GB available (need at least ${required_gb}GB)"
-    if [[ "$available_gb" -lt "$required_gb" ]]; then
+    if (( available_gb < required_gb )); then
         error "Less than ${required_gb}GB free on $STORAGE_PATH. Aborting video downloads."
         exit 1
     fi
+}
+
+# Verify downloaded videos have non-trivial size; record broken/empty files
+# to the failed log so the user knows which channels/playlists need a re-run.
+check_downloads() {
+    local failed_log="$LOG_DIR/videos_failed.log"
+    : > "$failed_log"
+    local broken=0
+    # Treat files < 100 KB as broken (trailing .part leftovers, 0-byte stubs).
+    while IFS= read -r -d '' f; do
+        local sz
+        sz=$(stat -c %s "$f" 2>/dev/null || echo 0)
+        if (( sz < 102400 )); then
+            echo "$(date -Iseconds) SIZE=$sz $f" >> "$failed_log"
+            broken=$((broken + 1))
+        fi
+    done < <(find "$VIDEO_DIR" -type f \( -name "*.mp4" -o -name "*.part" \) -print0)
+    if (( broken > 0 )); then
+        warn "$broken broken/partial video file(s) detected. See $failed_log"
+    fi
+    return 0
 }
 
 # ── yt-dlp download function ──────────────────────────────────────────────────
@@ -52,6 +78,14 @@ dl_playlist() {
     info "[$category] $name"
     local BW_ARGS=()
     [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--limit-rate "${SURVIVE_BANDWIDTH_LIMIT}")
+    # Security flags:
+    # --restrict-filenames : strip path separators / specials from remote-controlled
+    #                        %(playlist_title)s / %(title)s before they hit disk.
+    # --no-exec            : ignore any remote-injected post-processor commands.
+    # --no-config          : ignore attacker-plantable config files in the cwd.
+    # --no-overwrites      : never overwrite existing files (prevents clobber).
+    # --socket-timeout     : unblock hung sockets so the script can continue.
+    # Per-file success is verified downstream by check_downloads().
     yt-dlp \
         --format "bestvideo[height<=${QUALITY}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${QUALITY}][ext=mp4]/best" \
         --merge-output-format mp4 \
@@ -60,6 +94,11 @@ dl_playlist() {
         --add-metadata \
         --write-info-json \
         --write-thumbnail \
+        --restrict-filenames \
+        --no-exec \
+        --no-config \
+        --no-overwrites \
+        --socket-timeout 30 \
         --download-archive "$LOG_DIR/${category}_archive.txt" \
         --output "$dest/%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s" \
         --ignore-errors \
@@ -86,6 +125,11 @@ dl_channel() {
         --merge-output-format mp4 \
         --embed-metadata \
         --write-info-json \
+        --restrict-filenames \
+        --no-exec \
+        --no-config \
+        --no-overwrites \
+        --socket-timeout 30 \
         --download-archive "$LOG_DIR/${category}_archive.txt" \
         --output "$VIDEO_DIR/$category/%(channel)s/%(title)s.%(ext)s" \
         --playlist-end "$max" \
@@ -254,6 +298,7 @@ main() {
         dl_preparedness
     fi
 
+    check_downloads
     success "Video download complete"
     du -sh "$VIDEO_DIR" 2>/dev/null || true
     info "Note: Rerun to download new videos (archive file prevents duplicates)"

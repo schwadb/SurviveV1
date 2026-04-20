@@ -30,12 +30,15 @@
     {% endfor %}
   </div>
 
-  <!-- Quick links to services for this category -->
+  <!-- Quick links to services for this category. Host comes from the current
+       request so the page works whether accessed via localhost, LAN IP, or
+       survive.local; ports come from constants.py via context processor. -->
+  {% set host = request.host.split(':')[0] %}
   {% set service_links = {
-    'reference': [('Wikipedia', 'http://localhost:8081', '📚'), ('E-Books', 'http://localhost:8083', '📖')],
-    'education': [('Khan Academy', 'http://localhost:8082', '🎓'), ('Wikipedia', 'http://localhost:8081', '📚')],
-    'videos': [('Video Player', 'http://localhost:8096', '🎬')],
-    'maps': [('Map Server', 'http://localhost:3000', '🗺️')],
+    'reference': [('Wikipedia', 'http://' ~ host ~ ':' ~ PORT_KIWIX, '📚'), ('E-Books', 'http://' ~ host ~ ':' ~ PORT_CALIBRE, '📖')],
+    'education': [('Khan Academy', 'http://' ~ host ~ ':' ~ PORT_KOLIBRI, '🎓'), ('Wikipedia', 'http://' ~ host ~ ':' ~ PORT_KIWIX, '📚')],
+    'videos': [('Video Player', 'http://' ~ host ~ ':' ~ PORT_JELLYFIN, '🎬')],
+    'maps': [('Map Server', 'http://' ~ host ~ ':' ~ PORT_MAPS, '🗺️')],
   } %}
 
   {% if cat.id in service_links %}

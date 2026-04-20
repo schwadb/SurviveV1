@@ -4,77 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SurviveV1 — Offline Survival Repository</title>
-<style>
-:root{--bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;--text:#e6edf3;--text-dim:#8b949e;--accent:#3fb950;--accent2:#58a6ff;--danger:#f85149;--warning:#d29922;--radius:8px;--mono:'Courier New',Courier,monospace}
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6}
-a{color:var(--accent2);text-decoration:none}
-a:hover{text-decoration:underline}
-h1{font-size:28px;font-weight:800;margin-bottom:8px}
-h2{font-size:20px;font-weight:700;margin:28px 0 12px;color:var(--text)}
-h3{font-size:16px;font-weight:600;margin:20px 0 8px;color:var(--accent)}
-p{margin-bottom:12px;color:var(--text)}
-ul,ol{margin:0 0 12px 20px}
-li{margin-bottom:4px}
-code{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-family:var(--mono);font-size:12px;color:var(--accent)}
-nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;position:sticky;top:0;z-index:100}
-.nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;height:56px;gap:16px}
-.logo{font-size:18px;font-weight:800;color:var(--accent);white-space:nowrap}
-.logo span{color:var(--text-dim);font-weight:400;font-size:11px;margin-left:6px}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite;flex-shrink:0}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
-.tab-nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
-.tab-btn{background:none;border:none;color:var(--text-dim);padding:6px 12px;border-radius:var(--radius);font-size:13px;cursor:pointer;transition:all .15s;white-space:nowrap}
-.tab-btn:hover,.tab-btn.active{color:var(--text);background:var(--surface2)}
-.tab-btn.active{color:var(--accent)}
-.container{max-width:1200px;margin:0 auto;padding:28px 20px}
-.tab-panel{display:none}
-.tab-panel.active{display:block}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:20px}
-.card-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:14px}
-table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px}
-th{text-align:left;padding:8px 12px;border-bottom:2px solid var(--border);color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-td{padding:8px 12px;border-bottom:1px solid var(--border)}
-tr:hover td{background:var(--surface2)}
-.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
-.badge-green{background:rgba(63,185,80,.15);color:var(--accent)}
-.badge-blue{background:rgba(88,166,255,.15);color:var(--accent2)}
-.badge-red{background:rgba(248,81,73,.15);color:var(--danger)}
-.badge-yellow{background:rgba(210,153,34,.15);color:var(--warning)}
-.pre-wrap{position:relative;margin:12px 0}
-pre{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.5;color:#c9d1d9}
-.copy-btn{position:absolute;top:8px;right:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;transition:all .15s}
-.copy-btn:hover{color:var(--text);border-color:var(--text-dim)}
-.copy-btn.copied{color:var(--accent);border-color:var(--accent)}
-.progress-wrap{background:var(--surface2);border-radius:4px;height:8px;overflow:hidden;margin:4px 0}
-.progress-bar{height:100%;border-radius:4px;background:var(--accent)}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-.hero{background:linear-gradient(135deg,#0d1117 0%,#161b22 60%,#0d1117 100%);border:1px solid var(--border);border-radius:var(--radius);padding:32px;margin-bottom:24px}
-.hero-title{font-size:38px;font-weight:800;line-height:1.1;margin-bottom:10px}
-.hero-title .g{color:var(--accent)}
-.hero-sub{color:var(--text-dim);font-size:15px;max-width:620px;margin-bottom:22px}
-.hero-stats{display:flex;gap:32px;flex-wrap:wrap}
-.stat-val{font-size:30px;font-weight:700;color:var(--accent);line-height:1}
-.stat-label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
-.step{display:flex;gap:16px;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)}
-.step:last-child{border-bottom:none}
-.step-num{width:32px;height:32px;background:var(--accent);color:#000;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0;margin-top:2px}
-.step-content{flex:1}
-.step-title{font-weight:700;font-size:15px;margin-bottom:6px}
-.tier{border-left:3px solid var(--danger);padding-left:14px;margin-bottom:24px}
-.tier.t2{border-color:var(--warning)}
-.tier.t3{border-color:var(--accent2)}
-.gap-title{font-weight:700;font-size:14px;margin-bottom:6px}
-.expert-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px}
-.expert-name{font-weight:700;color:var(--accent);margin-bottom:4px}
-.access-method{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:14px}
-.method-num{font-size:22px;font-weight:800;color:var(--accent);margin-bottom:6px}
-.method-title{font-size:16px;font-weight:700;margin-bottom:10px}
-footer{background:var(--surface);border-top:1px solid var(--border);padding:20px;text-align:center;color:var(--text-dim);font-size:12px;margin-top:48px}
-footer strong{color:var(--accent)}
-@media(max-width:768px){.grid2,.grid3{grid-template-columns:1fr}.tab-nav{gap:1px}.hero-stats{gap:16px}.hero-title{font-size:26px}}
-</style>
+<link rel="stylesheet" href="assets/landing.css">
 </head>
 <body>
 <nav>
@@ -1198,39 +1128,6 @@ git push origin main
   <a href="https://github.com/schwadb/SurviveV1">github.com/schwadb/SurviveV1</a>
 </footer>
 
-<script>
-function show(id, btn) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  btn.classList.add('active');
-  window.location.hash = id;
-}
-
-function copyCode(btn) {
-  const pre = btn.parentElement.querySelector('pre');
-  navigator.clipboard.writeText(pre.innerText).then(() => {
-    btn.textContent = 'Copied!';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
-  }).catch(() => {
-    const sel = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(pre);
-    sel.removeAllRanges();
-    sel.addRange(range);
-  });
-}
-
-// Restore tab from URL hash
-(function() {
-  const hash = window.location.hash.replace('#','');
-  const valid = ['overview','quickstart','catalog','gaps','licenses','aihat','access'];
-  if (hash && valid.includes(hash)) {
-    const btn = document.querySelector('.tab-btn[onclick*="' + hash + '"]');
-    if (btn) show(hash, btn);
-  }
-})();
-</script>
+<script src="assets/landing.js" defer></script>
 </body>
 </html>

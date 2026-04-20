@@ -1,6 +1,8 @@
 [Unit]
 Description=Kolibri Educational Server (Khan Academy)
 After=network.target local-fs.target
+Wants=local-fs.target
+RequiresMountsFor=/mnt/survive
 
 [Service]
 Type=simple
@@ -9,10 +11,13 @@ Environment="KOLIBRI_HOME=/mnt/survive/kolibri"
 ExecStart=/usr/local/bin/kolibri start --foreground --port=8082
 Restart=on-failure
 RestartSec=15
+StartLimitIntervalSec=120
+StartLimitBurst=3
 TimeoutStartSec=120
 TimeoutStopSec=30
-StandardOutput=append:/var/log/survive_kolibri.log
-StandardError=append:/var/log/survive_kolibri.log
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=survive-kolibri
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,27 @@
+[Unit]
+Description=Calibre-Web (Offline Ebook Library)
+After=network.target local-fs.target
+Wants=local-fs.target
+RequiresMountsFor=/mnt/survive
+
+[Service]
+Type=simple
+User=pi
+Environment="CALIBRE_DBPATH=/mnt/survive/books"
+# --dry-run off; bind to localhost and expose via nginx at /books/.
+ExecStartPre=/bin/mkdir -p /mnt/survive/books
+ExecStart=/opt/survive/venv/bin/cps \
+    -p /mnt/survive/.calibre-web.db \
+    -i 127.0.0.1 \
+    -g /var/log/survive_calibre.log
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=3
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=survive-calibre
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,8 @@
 [Unit]
 Description=Martin Tile Server (Offline Maps)
 After=network.target local-fs.target
+Wants=local-fs.target
+RequiresMountsFor=/mnt/survive
 
 [Service]
 Type=simple
@@ -10,9 +12,12 @@ ExecStart=/usr/local/bin/martin \
     --listen-addresses 0.0.0.0:3000
 Restart=on-failure
 RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=3
 TimeoutStopSec=30
-StandardOutput=append:/var/log/survive_maps.log
-StandardError=append:/var/log/survive_maps.log
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=survive-maps
 
 [Install]
 WantedBy=multi-user.target

@@ -1,19 +1,33 @@
 [Unit]
 Description=Ollama Local AI Server
-After=network.target
+After=network.target local-fs.target
+Wants=local-fs.target
+RequiresMountsFor=/mnt/survive
 
 [Service]
 Type=simple
 User=pi
+# Limit loaded models + parallelism to prevent OOM on a 4 GB Pi 5
+# (Ollama default OLLAMA_MAX_LOADED_MODELS=3 will OOM on 4 GB).
 Environment="OLLAMA_MODELS=/mnt/survive/ai_models/ollama"
 Environment="OLLAMA_HOST=0.0.0.0:11434"
+Environment="OLLAMA_MAX_LOADED_MODELS=1"
+Environment="OLLAMA_NUM_PARALLEL=1"
+Environment="OLLAMA_FLASH_ATTENTION=1"
+Environment="OLLAMA_MAX_QUEUE=5"
+ExecStartPre=/bin/mkdir -p /mnt/survive/ai_models/ollama
 ExecStart=/usr/local/bin/ollama serve
 Restart=on-failure
 RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=3
 TimeoutStopSec=30
-ExecStartPre=/bin/mkdir -p /mnt/survive/ai_models/ollama
-StandardOutput=append:/var/log/survive_ollama.log
-StandardError=append:/var/log/survive_ollama.log
+# Leave ~500 MB headroom for OS + Kiwix + dashboard on 4 GB Pi 5.
+MemoryHigh=3G
+MemoryMax=3500M
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=survive-ollama
 
 [Install]
 WantedBy=multi-user.target

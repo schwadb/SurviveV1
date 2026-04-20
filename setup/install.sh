@@ -87,12 +87,25 @@ setup_python_env() {
 }
 
 # ── yt-dlp ────────────────────────────────────────────────────────────────────
+# Minimum version covers:
+#   CVE-2024-38519  — output-template extension bypass (fixed 2024.07.01)
+#   CVE-2025-54072  — --exec injection
+#   CVE-2026-26331  — --netrc-cmd command injection (fixed 2026.02.21)
+MIN_YTDLP_VERSION="2026.02.21"
+
 install_ytdlp() {
     info "Installing yt-dlp..."
-    curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-    chmod +x /usr/local/bin/yt-dlp
+    curl -sL -o /usr/local/bin/yt-dlp \
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+    chmod 0755 /usr/local/bin/yt-dlp
     command -v yt-dlp &>/dev/null || { error "yt-dlp install failed"; exit 1; }
-    success "yt-dlp installed ($(yt-dlp --version))"
+    local ver
+    ver="$(yt-dlp --version 2>/dev/null)"
+    if [[ "$(printf '%s\n%s\n' "$MIN_YTDLP_VERSION" "$ver" | sort -V | head -1)" \
+          != "$MIN_YTDLP_VERSION" ]]; then
+        warn "yt-dlp $ver < required $MIN_YTDLP_VERSION (security fixes)"
+    fi
+    success "yt-dlp installed ($ver)"
 }
 
 # ── Kiwix tools ───────────────────────────────────────────────────────────────
@@ -212,9 +225,12 @@ configure_firewall() {
 }
 
 # ── Samba share ───────────────────────────────────────────────────────────────
+# SAMBA_HOSTS_ALLOW restricts the share to specified IPs/CIDRs. Default is
+# local-only; override in config/survive.conf (e.g. "127.0.0.1 192.168.1.").
 configure_samba() {
     info "Configuring Samba for local file sharing..."
     STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
+    local hosts_allow="${SAMBA_HOSTS_ALLOW:-127.0.0.1 192.168. 10.}"
     cat > /etc/samba/smb.conf << SAMBA
 [global]
    workgroup = SURVIVE
@@ -222,16 +238,28 @@ configure_samba() {
    security = user
    map to guest = bad user
    dns proxy = no
+   # Only accept connections from trusted local subnets.
+   hosts allow = $hosts_allow
+   hosts deny = 0.0.0.0/0
 
 [survive]
    path = $STORAGE_PATH
    browseable = yes
    read only = yes
-   guest ok = yes
+   # Require a real user rather than anonymous guest access.
+   guest ok = no
+   valid users = @survive
    comment = Survival Knowledge Repository
 SAMBA
+    # Create a 'survive' group and add the default user, if present.
+    getent group survive >/dev/null || groupadd survive
+    if id pi &>/dev/null; then usermod -aG survive pi; fi
+    if [[ -n "${SUDO_USER:-}" ]] && id "$SUDO_USER" &>/dev/null; then
+        usermod -aG survive "$SUDO_USER"
+    fi
     systemctl restart smbd nmbd
-    success "Samba share configured (\\\\survive\\survive)"
+    success "Samba share configured (hosts allow: $hosts_allow)"
+    info "Set a Samba password with: sudo smbpasswd -a <username>"
 }
 
 # ── Install systemd services ──────────────────────────────────────────────────
@@ -243,8 +271,11 @@ install_services() {
     systemctl daemon-reload
     systemctl enable survive-dashboard.service
     systemctl enable kiwix.service
-    systemctl enable jellyfin.service
+    systemctl enable jellyfin.service 2>/dev/null || true
     systemctl enable kolibri.service 2>/dev/null || true
+    systemctl enable calibre-web.service 2>/dev/null || true
+    systemctl enable ollama.service 2>/dev/null || true
+    systemctl enable martin-tiles.service 2>/dev/null || true
     success "Systemd services installed"
 }
 
@@ -307,11 +338,17 @@ main() {
     install_kiwix
     install_ollama
     setup_storage
+    bash "$SCRIPT_DIR/pi5_storage.sh" || warn "Pi 5 storage hardening skipped"
     configure_nginx
     configure_firewall
     configure_samba
     configure_avahi
     install_services
+    # Generate any host-specific service units (was previously documented
+    # as a manual step; call it here so services auto-start on reboot).
+    if [[ -x "$REPO_DIR/scripts/generate_services.sh" ]]; then
+        bash "$REPO_DIR/scripts/generate_services.sh" || warn "generate_services.sh failed"
+    fi
 
     # Optional (comment out if not needed)
     # install_kolibri

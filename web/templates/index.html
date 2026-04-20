@@ -174,19 +174,20 @@
     <div class="section-title">Quick Access</div>
   </div>
   <div class="quick-links">
-    <a class="quick-link" href="http://localhost:8081" target="_blank">
+    {% set host = request.host.split(':')[0] %}
+    <a class="quick-link" href="http://{{ host }}:{{ PORT_KIWIX }}" target="_blank">
       <span class="icon">📚</span> Wikipedia
     </a>
-    <a class="quick-link" href="http://localhost:8082" target="_blank">
+    <a class="quick-link" href="http://{{ host }}:{{ PORT_KOLIBRI }}" target="_blank">
       <span class="icon">🎓</span> Khan Academy
     </a>
-    <a class="quick-link" href="http://localhost:8096" target="_blank">
+    <a class="quick-link" href="http://{{ host }}:{{ PORT_JELLYFIN }}" target="_blank">
       <span class="icon">🎬</span> Videos
     </a>
-    <a class="quick-link" href="http://localhost:8083" target="_blank">
+    <a class="quick-link" href="http://{{ host }}:{{ PORT_CALIBRE }}" target="_blank">
       <span class="icon">📖</span> E-Books
     </a>
-    <a class="quick-link" href="http://localhost:3000" target="_blank">
+    <a class="quick-link" href="http://{{ host }}:{{ PORT_MAPS }}" target="_blank">
       <span class="icon">🗺️</span> Maps
     </a>
     <a class="quick-link" href="/ai">

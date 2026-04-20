@@ -2,22 +2,30 @@
 Description=Kiwix Server (Offline Wikipedia & Books)
 After=network.target local-fs.target
 Wants=local-fs.target
+RequiresMountsFor=/mnt/survive
 
 [Service]
 Type=simple
 User=pi
 ExecStartPre=/bin/mkdir -p /mnt/survive/zim
+# --threads 2 is enough for a single-user appliance; 4 ate RAM without benefit.
 ExecStart=/usr/local/bin/kiwix-serve \
     --library /mnt/survive/.kiwix_library.xml \
     --port 8081 \
     --address 0.0.0.0 \
-    --threads 4
+    --threads 2
 Restart=on-failure
 RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=3
+# Cold-loading a large Wikipedia ZIM on a Pi takes 5-15 min.
+TimeoutStartSec=300
 TimeoutStopSec=30
-ExecStartPre=/bin/mkdir -p /mnt/survive/zim
-StandardOutput=append:/var/log/survive_kiwix.log
-StandardError=append:/var/log/survive_kiwix.log
+# Cap against libkiwix memory-leak patterns seen on ARM.
+MemoryMax=1G
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=survive-kiwix
 
 [Install]
 WantedBy=multi-user.target
