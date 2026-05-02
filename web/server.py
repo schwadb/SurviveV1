@@ -9,12 +9,14 @@ import json
 import logging
 import shutil
 import socket
+import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime
 from flask import (
-    Flask, render_template, jsonify, request,
-    send_from_directory, redirect, url_for, abort
+    Flask, render_template, jsonify, request, Response,
+    send_from_directory, redirect, url_for, abort, stream_with_context
 )
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
@@ -29,6 +31,7 @@ from constants import (  # noqa: E402
     PORT_CALIBRE,
     PORT_JELLYFIN,
     PORT_MAPS,
+    CATEGORY_DIR_MAP,
 )
 
 logging.basicConfig(
@@ -38,13 +41,8 @@ logging.basicConfig(
 
 app = Flask(__name__)
 
-# CSRF is enabled for HTML form POSTs. JSON APIs are exempted individually
-# and defended by a strict application/json Content-Type check instead --
-# browsers cannot send that cross-origin without a CORS preflight.
 csrf = CSRFProtect(app)
 
-# Per-IP rate limiting; protects /api/ai/chat (which proxies to Ollama and
-# can pin the Pi's CPU) and /search (which walks the 800 GB storage tree).
 limiter = Limiter(
     get_remote_address,
     app=app,
@@ -53,7 +51,6 @@ limiter = Limiter(
 )
 
 
-# Single source of truth for service ports in all templates.
 @app.context_processor
 def _inject_ports():
     return {
@@ -66,13 +63,12 @@ def _inject_ports():
         "PORT_OLLAMA": PORT_OLLAMA,
     }
 
-# Generate a persistent random secret key on first run
 _KEY_FILE = Path(__file__).parent.parent / "config" / ".secret_key"
 if os.environ.get("SECRET_KEY"):
     app.secret_key = os.environ["SECRET_KEY"]
 elif _KEY_FILE.exists():
     app.secret_key = _KEY_FILE.read_text().strip()
-    _KEY_FILE.chmod(0o600)  # enforce permissions on every startup
+    _KEY_FILE.chmod(0o600)
 else:
     import secrets as _secrets
     _new_key = _secrets.token_hex(32)
@@ -86,83 +82,90 @@ REPO_DIR = Path(__file__).parent.parent
 DATA_DIR = Path(os.environ.get("SURVIVE_DATA_DIR", REPO_DIR / "data"))
 STORAGE_PATH = Path(os.environ.get("SURVIVE_STORAGE_PATH", "/mnt/survive"))
 
-# Tunable timeouts (seconds) — override via environment or survive.conf
 TIMEOUT_SERVICE_CHECK = float(os.environ.get("SURVIVE_SERVICE_CHECK_TIMEOUT", "1"))
 TIMEOUT_OLLAMA_LIST   = float(os.environ.get("SURVIVE_OLLAMA_LIST_TIMEOUT", "2"))
-TIMEOUT_AI_CHAT       = float(os.environ.get("SURVIVE_AI_CHAT_TIMEOUT", "60"))
+TIMEOUT_AI_CHAT       = float(os.environ.get("SURVIVE_AI_CHAT_TIMEOUT", "120"))
 
-# Fall back to repo data dir if storage not mounted
 if not STORAGE_PATH.exists():
     STORAGE_PATH = DATA_DIR
 
+# ── TTL Cache ──────────────────────────────────────────────────────────────────
+_cache = {}
+_CACHE_TTL = 60
+
+
+def _cached(key, func):
+    """Return cached result if fresh, otherwise recompute."""
+    now = time.monotonic()
+    entry = _cache.get(key)
+    if entry and (now - entry[0]) < _CACHE_TTL:
+        return entry[1]
+    result = func()
+    _cache[key] = (now, result)
+    return result
+
+
 CATEGORIES = [
-    # ── Core Survival ─────────────────────────────────────────
-    {"id": "medical", "name": "Medical & First Aid", "icon": "🏥",
+    {"id": "medical", "name": "Medical & First Aid", "icon": "\U0001f3e5",
      "color": "#e74c3c", "desc": "Emergency medicine, first aid, TCCC, trauma"},
-    {"id": "medicine_advanced", "name": "Advanced Medicine", "icon": "🩺",
+    {"id": "medicine_advanced", "name": "Advanced Medicine", "icon": "\U0001fa7a",
      "color": "#c0392b", "desc": "Surgery, obstetrics, dental, psychiatric care in austere settings"},
-    {"id": "obstetrics", "name": "Childbirth & Midwifery", "icon": "👶",
+    {"id": "obstetrics", "name": "Childbirth & Midwifery", "icon": "\U0001f476",
      "color": "#e91e8c", "desc": "Emergency delivery, midwifery, prenatal care without hospital"},
-    {"id": "dental", "name": "Dental Emergency", "icon": "🦷",
+    {"id": "dental", "name": "Dental Emergency", "icon": "\U0001f9b7",
      "color": "#9b59b6", "desc": "Tooth extraction, abscess, fillings without a dentist"},
-    {"id": "psychology", "name": "Mental Health & Survival Psychology", "icon": "🧠",
+    {"id": "psychology", "name": "Mental Health & Survival Psychology", "icon": "\U0001f9e0",
      "color": "#8e44ad", "desc": "Psychological first aid, grief, resilience, disaster psychology"},
-    # ── Food & Water ──────────────────────────────────────────
-    {"id": "food", "name": "Food & Water", "icon": "🌾",
+    {"id": "food", "name": "Food & Water", "icon": "\U0001f33e",
      "color": "#27ae60", "desc": "Farming, foraging, food preservation, water purification"},
-    {"id": "animal_husbandry", "name": "Animal Husbandry", "icon": "🐓",
-     "color": "#2ecc71", "desc": "Chickens, goats, pigs, cattle, rabbits — health, breeding, butchering"},
-    {"id": "seeds", "name": "Seed Saving", "icon": "🌱",
+    {"id": "animal_husbandry", "name": "Animal Husbandry", "icon": "\U0001f413",
+     "color": "#2ecc71", "desc": "Chickens, goats, pigs, cattle, rabbits -- health, breeding, butchering"},
+    {"id": "seeds", "name": "Seed Saving", "icon": "\U0001f331",
      "color": "#1abc9c", "desc": "Saving, storing, and propagating open-pollinated seeds across generations"},
-    {"id": "beeswax", "name": "Beekeeping", "icon": "🐝",
+    {"id": "beeswax", "name": "Beekeeping", "icon": "\U0001f41d",
      "color": "#f39c12", "desc": "Hive management, honey harvest, wax, mead, disease prevention"},
-    {"id": "fermentation", "name": "Fermentation & Brewing", "icon": "🍺",
+    {"id": "fermentation", "name": "Fermentation & Brewing", "icon": "\U0001f37a",
      "color": "#d35400", "desc": "Lacto-fermentation, beer, mead, vinegar, cheese, tinctures"},
-    # ── Infrastructure ────────────────────────────────────────
-    {"id": "shelter", "name": "Shelter & Construction", "icon": "🏠",
+    {"id": "shelter", "name": "Shelter & Construction", "icon": "\U0001f3e0",
      "color": "#8e44ad", "desc": "Building techniques, earthships, log cabins, off-grid structures"},
-    {"id": "sanitation", "name": "Sanitation & Waste", "icon": "🚽",
+    {"id": "sanitation", "name": "Sanitation & Waste", "icon": "\U0001f6bd",
      "color": "#795548", "desc": "Composting toilets, humanure, greywater, disease prevention"},
-    {"id": "water_systems", "name": "Water Systems & Wells", "icon": "💧",
+    {"id": "water_systems", "name": "Water Systems & Wells", "icon": "\U0001f4a7",
      "color": "#2980b9", "desc": "Hand-dug wells, rainwater, filtration, distribution systems"},
     {"id": "energy", "name": "Energy & Power", "icon": "⚡",
      "color": "#f39c12", "desc": "Solar, wind, batteries, biogas, generators"},
-    # ── Skills & Crafts ───────────────────────────────────────
-    {"id": "skills", "name": "Wilderness & Primitive Skills", "icon": "🪓",
+    {"id": "skills", "name": "Wilderness & Primitive Skills", "icon": "\U0001fa93",
      "color": "#16a085", "desc": "Fire, navigation, foraging, tracking, shelter building"},
     {"id": "blacksmithing", "name": "Blacksmithing & Metalwork", "icon": "⚒️",
      "color": "#607d8b", "desc": "Forge building, tool making, repair, knife making"},
-    {"id": "primitive_skills", "name": "Primitive Crafts", "icon": "🧵",
+    {"id": "primitive_skills", "name": "Primitive Crafts", "icon": "\U0001f9f5",
      "color": "#8d6e63", "desc": "Brain tanning, soap making, candles, fiber, pottery (18th century methods)"},
-    {"id": "tools", "name": "Tools & Repair", "icon": "🔧",
+    {"id": "tools", "name": "Tools & Repair", "icon": "\U0001f527",
      "color": "#2980b9", "desc": "iFixit guides, woodworking, mechanical repair"},
-    {"id": "permaculture", "name": "Permaculture & Food Forest", "icon": "🌳",
+    {"id": "permaculture", "name": "Permaculture & Food Forest", "icon": "\U0001f333",
      "color": "#4caf50", "desc": "Zone design, guild planting, food forest, water harvesting earthworks"},
-    # ── Communications & Community ────────────────────────────
-    {"id": "communication", "name": "Communications & Radio", "icon": "📡",
+    {"id": "communication", "name": "Communications & Radio", "icon": "\U0001f4e1",
      "color": "#c0392b", "desc": "Ham radio, Morse code, CHIRP programming, emergency frequencies"},
-    {"id": "security", "name": "Security & Defense", "icon": "🛡️",
+    {"id": "security", "name": "Security & Defense", "icon": "\U0001f6e1️",
      "color": "#37474f", "desc": "Perimeter defense, hand signals, community security doctrine"},
-    {"id": "community", "name": "Community & Social Survival", "icon": "👥",
+    {"id": "community", "name": "Community & Social Survival", "icon": "\U0001f465",
      "color": "#5c6bc0", "desc": "Post-collapse governance, barter economy, conflict resolution"},
-    # ── Reference ─────────────────────────────────────────────
-    {"id": "education", "name": "Education & Science", "icon": "🔬",
+    {"id": "education", "name": "Education & Science", "icon": "\U0001f52c",
      "color": "#2c3e50", "desc": "Khan Academy, science, math, engineering"},
-    {"id": "reference", "name": "Reference & Books", "icon": "📚",
+    {"id": "reference", "name": "Reference & Books", "icon": "\U0001f4da",
      "color": "#7f8c8d", "desc": "Wikipedia, Gutenberg library, manuals"},
-    {"id": "maps", "name": "Maps & Navigation", "icon": "🗺️",
+    {"id": "maps", "name": "Maps & Navigation", "icon": "\U0001f5fa️",
      "color": "#d35400", "desc": "Offline maps, topographic charts, navigation"},
     {"id": "military", "name": "Military Manuals", "icon": "⚔️",
      "color": "#2c3e50", "desc": "Army survival, field manuals, TCCC"},
-    {"id": "videos", "name": "How-To Videos", "icon": "🎬",
+    {"id": "videos", "name": "How-To Videos", "icon": "\U0001f3ac",
      "color": "#8e44ad", "desc": "Step-by-step survival and skills videos"},
 ]
 
 
 def _safe_walk(root: Path):
-    """Yield files under root without following symlinks (prevents infinite loops)."""
+    """Yield files under root without following symlinks."""
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        # Skip hidden directories in-place
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         for name in filenames:
             if not name.startswith("."):
@@ -170,7 +173,6 @@ def _safe_walk(root: Path):
 
 
 def get_storage_info():
-    """Return disk usage for the storage path."""
     try:
         total, used, free = shutil.disk_usage(str(STORAGE_PATH))
         return {
@@ -185,7 +187,6 @@ def get_storage_info():
 
 
 def check_service(port: int) -> bool:
-    """Check if a service is running on given port."""
     try:
         with socket.create_connection(("localhost", port), timeout=TIMEOUT_SERVICE_CHECK):
             return True
@@ -193,8 +194,24 @@ def check_service(port: int) -> bool:
         return False
 
 
-def get_content_stats():
-    """Count files and total size for each content subdirectory."""
+def check_all_services():
+    """Check all service ports concurrently."""
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(SERVICES)) as pool:
+        futures = {
+            pool.submit(check_service, svc["port"]): name
+            for name, svc in SERVICES.items()
+        }
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                results[name] = future.result()
+            except Exception:
+                results[name] = False
+    return results
+
+
+def _get_content_stats_uncached():
     stats = {}
     dirs = {
         "zim": STORAGE_PATH / "zim",
@@ -222,8 +239,11 @@ def get_content_stats():
     return stats
 
 
-def get_recent_downloads():
-    """Return the 20 most recently modified content files."""
+def get_content_stats():
+    return _cached("content_stats", _get_content_stats_uncached)
+
+
+def _get_recent_downloads_uncached():
     recent = []
     allowed_exts = {".zim", ".pdf", ".epub", ".mp4"}
     try:
@@ -246,13 +266,18 @@ def get_recent_downloads():
         return []
 
 
+def get_recent_downloads():
+    return _cached("recent_downloads", _get_recent_downloads_uncached)
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
     storage = get_storage_info()
+    svc_running = check_all_services()
     service_status = {
-        name: {"running": check_service(svc["port"]), **svc}
+        name: {"running": svc_running.get(name, False), **svc}
         for name, svc in SERVICES.items()
     }
     return render_template(
@@ -271,12 +296,13 @@ def category(cat_id):
         return redirect(url_for("index"))
 
     files = []
+    dir_patterns = CATEGORY_DIR_MAP.get(cat_id, [cat_id])
     try:
-        search_dirs = [
-            STORAGE_PATH / "pdfs" / cat_id,
-            STORAGE_PATH / "books" / cat_id,
-            STORAGE_PATH / "videos" / cat_id,
-        ]
+        search_dirs = []
+        for pattern in dir_patterns:
+            search_dirs.append(STORAGE_PATH / "pdfs" / pattern)
+            search_dirs.append(STORAGE_PATH / "books" / pattern)
+            search_dirs.append(STORAGE_PATH / "videos" / pattern)
         for d in search_dirs:
             if d.exists():
                 for f in _safe_walk(d):
@@ -295,10 +321,7 @@ def category(cat_id):
 
 @app.route("/files")
 def browse_files():
-    """File browser for all content."""
     rel_path = request.args.get("path", "")
-    # Path traversal guard: resolve the requested path and refuse anything
-    # that escapes the storage root.
     storage_root = STORAGE_PATH.resolve()
     try:
         browse_dir = (STORAGE_PATH / rel_path).resolve() if rel_path else storage_root
@@ -337,10 +360,8 @@ def browse_files():
 
 @app.route("/serve/<path:filepath>")
 def serve_file(filepath):
-    """Serve a file from storage."""
     full_path = (STORAGE_PATH / filepath).resolve()
     storage_root = STORAGE_PATH.resolve()
-    # Prevent path traversal — ensure the resolved path is inside storage root
     try:
         full_path.relative_to(storage_root)
     except ValueError:
@@ -353,7 +374,7 @@ def serve_file(filepath):
 @app.route("/search")
 @limiter.limit("30 per minute")
 def search():
-    query = request.args.get("q", "").strip()[:200]  # cap at 200 chars to prevent ReDoS
+    query = request.args.get("q", "").strip()[:200]
     results = []
 
     if query and len(query) >= 2:
@@ -400,14 +421,20 @@ def ai_page():
     return render_template("ai.html", ai_running=ai_running, models=models, categories=CATEGORIES)
 
 
+SYSTEM_PROMPT = (
+    "You are a survival expert assistant running offline on a Raspberry Pi. "
+    "Help with practical survival, medicine, food, water, shelter, energy, "
+    "and skills. Be concise and practical. No internet available."
+)
+
+MAX_CONVERSATION_MESSAGES = 20
+
+
 @app.route("/api/ai/chat", methods=["POST"])
 @csrf.exempt
 @limiter.limit("5 per minute")
 def ai_chat():
-    """Proxy to local Ollama API."""
-    # Strict Content-Type check: browsers cannot send application/json
-    # cross-origin without a CORS preflight, so this blocks CSRF-style
-    # form POSTs from a malicious page while the user is on the dashboard.
+    """Proxy to local Ollama API with streaming and conversation memory."""
     if (request.content_type or "").split(";")[0].strip() != "application/json":
         return jsonify({"error": "Content-Type must be application/json"}), 415
 
@@ -417,22 +444,23 @@ def ai_chat():
 
     model = data.get("model", "tinyllama")
     message = data["message"]
+    history = data.get("history", [])
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for msg in history[-MAX_CONVERSATION_MESSAGES:]:
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": message})
+
+    stream = data.get("stream", True)
 
     try:
         payload = json.dumps({
             "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a survival expert assistant running offline on a Raspberry Pi. "
-                        "Help with practical survival, medicine, food, water, shelter, energy, "
-                        "and skills. Be concise and practical. No internet available."
-                    ),
-                },
-                {"role": "user", "content": message},
-            ],
-            "stream": False,
+            "messages": messages,
+            "stream": stream,
         }).encode()
 
         req = urllib.request.Request(
@@ -440,14 +468,39 @@ def ai_chat():
             data=payload,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=TIMEOUT_AI_CHAT) as r:
-            result = json.loads(r.read())
-            return jsonify({
-                "response": result.get("message", {}).get("content", "No response"),
-                "model": model,
-            })
+
+        if stream:
+            def generate():
+                try:
+                    with urllib.request.urlopen(req, timeout=TIMEOUT_AI_CHAT) as r:
+                        for line in r:
+                            if line.strip():
+                                try:
+                                    chunk = json.loads(line)
+                                    token = chunk.get("message", {}).get("content", "")
+                                    done = chunk.get("done", False)
+                                    yield f"data: {json.dumps({'token': token, 'done': done})}\n\n"
+                                    if done:
+                                        break
+                                except json.JSONDecodeError:
+                                    continue
+                except Exception:
+                    logging.exception("AI chat stream error")
+                    yield f"data: {json.dumps({'error': 'AI service unavailable', 'done': True})}\n\n"
+
+            return Response(
+                stream_with_context(generate()),
+                mimetype="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+        else:
+            with urllib.request.urlopen(req, timeout=TIMEOUT_AI_CHAT) as r:
+                result = json.loads(r.read())
+                return jsonify({
+                    "response": result.get("message", {}).get("content", "No response"),
+                    "model": model,
+                })
     except (OSError, json.JSONDecodeError):
-        # Log the real error server-side; never leak internals to the client.
         logging.exception("AI chat proxy error")
         return jsonify({"error": "AI service unavailable"}), 502
 
@@ -455,17 +508,16 @@ def ai_chat():
 @app.route("/health")
 @limiter.exempt
 def health():
-    """Lightweight liveness probe for systemd ExecStartPost and external checks."""
     return jsonify({"status": "ok"}), 200
 
 
 @app.route("/api/status")
 def api_status():
-    """System status API endpoint."""
+    svc_running = check_all_services()
     return jsonify({
         "storage": get_storage_info(),
         "services": {
-            name: {"running": check_service(svc["port"]), "port": svc["port"]}
+            name: {"running": svc_running.get(name, False), "port": svc["port"]}
             for name, svc in SERVICES.items()
         },
         "content": get_content_stats(),
@@ -482,8 +534,9 @@ def api_recent():
 def status_page():
     storage = get_storage_info()
     content = get_content_stats()
+    svc_running = check_all_services()
     service_status = {
-        name: {"running": check_service(svc["port"]), **svc}
+        name: {"running": svc_running.get(name, False), **svc}
         for name, svc in SERVICES.items()
     }
     return render_template(
@@ -515,6 +568,5 @@ def server_error(_e):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     host = os.environ.get("HOST", "0.0.0.0")
-    # Debug mode disabled in production — never expose stack traces to users
     logging.info("SurviveV1 Dashboard starting on %s:%d", host, port)
     app.run(host=host, port=port, debug=False)

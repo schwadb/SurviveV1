@@ -31,7 +31,9 @@ main() {
 
     # Update git repo itself
     info "Updating SurviveV1 scripts..."
-    git -C "$REPO_DIR" pull --rebase origin claude/offline-survival-repository-vqWs2 \
+    local branch
+    branch="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
+    git -C "$REPO_DIR" pull --rebase origin "$branch" \
         && success "Scripts updated" || warn "Git pull failed"
 
     # Update yt-dlp

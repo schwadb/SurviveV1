@@ -52,26 +52,45 @@ sudo apt-get install hailort hailort-dev
 
 ---
 
-## Performance Benchmarks (RPi 5 + Hailo-8L)
+## Performance Benchmarks
 
-| Task | CPU Only | With AI Hat |
-|------|----------|-------------|
+### Vision tasks (Hailo-8L accelerated)
+
+| Task | CPU Only | With Hailo-8L |
+|------|----------|---------------|
 | Image classification | ~400ms | ~15ms |
-| Object detection | ~1200ms | ~30ms |
-| Text generation (7B model) | ~2 tok/s | ~8 tok/s |
-| Question answering | ~3s | ~0.8s |
+| Object detection (YOLOv8) | ~1200ms | ~30ms |
+
+### LLM inference (CPU only — Hailo-8L cannot accelerate LLMs)
+
+| Model | RPi 5 (4GB) | RPi 5 (8GB) |
+|-------|-------------|-------------|
+| tinyllama (1.1B) | ~2-3 tok/s | ~3-4 tok/s |
+| phi3:mini (3.8B) | ~1-2 tok/s | ~1-2 tok/s |
+| llama3.2:1b | ~2-3 tok/s | ~3 tok/s |
+| gemma3:1b | ~2-3 tok/s | ~3 tok/s |
+
+### Upgrade path: AI HAT+ 2 (Hailo-10H)
+
+The Raspberry Pi AI HAT+ 2 with Hailo-10H (40 TOPS, 8 GB onboard RAM) **can**
+accelerate LLM inference at 1-8 tokens/second for 1-1.5B parameter models via
+the `hailo-ollama` community backend. If you upgrade, SurviveV1 will detect
+the 10H and enable hardware LLM acceleration automatically.
 
 ---
 
 ## Compatible Models
 
-The Hailo-8L works best with quantized models compiled for the Hailo architecture.
-Pre-compiled models are available at:
+### Vision (Hailo-8L)
+
+Pre-compiled vision models are available at:
 
 - https://github.com/hailo-ai/hailo_model_zoo
 - https://github.com/hailo-ai/hailo-rpi5-examples
 
-For LLM inference, Ollama handles the AI Hat automatically when detected.
+### LLM (CPU via Ollama)
+
+Ollama runs LLMs on the Pi's CPU. The Hailo-8L is **not** used for text generation.
 
 ---
 

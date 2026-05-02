@@ -111,43 +111,55 @@ main() {
         return 0
     fi
 
-    # Download each category if enabled and not done
+    run_step() {
+        local step_name="$1"; shift
+        if [[ "$RESUME" == "true" ]] && is_done "$step_name"; then
+            info "Skipping $step_name (already done)"
+            return 0
+        fi
+        if run_or_dry "$@"; then
+            mark_done "$step_name"
+            success "$step_name completed"
+        else
+            warn "$step_name had errors (not marked done -- will retry on --resume)"
+        fi
+    }
+
+    RESUME_FLAG=()
+    [[ "$RESUME" == "true" ]] && RESUME_FLAG=(--resume)
+
     if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "kiwix" ]]; then
-        RESUME_FLAG=()
-        [[ "$RESUME" == "true" ]] && RESUME_FLAG=(--resume)
-        run_or_dry bash "$REPO_DIR/download/kiwix_content.sh" \
+        run_step "kiwix" bash "$REPO_DIR/download/kiwix_content.sh" \
             --storage "$STORAGE_PATH" \
-            "${RESUME_FLAG[@]}"
+            ${RESUME_FLAG[@]+"${RESUME_FLAG[@]}"}
     fi
 
     if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "videos" ]]; then
         [[ "${CONTENT_VIDEOS:-Y}" =~ [Yy] ]] && \
-        run_or_dry bash "$REPO_DIR/download/videos.sh" --storage "$STORAGE_PATH"
+        run_step "videos" bash "$REPO_DIR/download/videos.sh" --storage "$STORAGE_PATH"
     fi
 
     if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "books" ]]; then
         [[ "${CONTENT_GUTENBERG:-Y}" =~ [Yy] ]] && \
-        run_or_dry bash "$REPO_DIR/download/books_pdfs.sh" --storage "$STORAGE_PATH"
+        run_step "books" bash "$REPO_DIR/download/books_pdfs.sh" --storage "$STORAGE_PATH"
     fi
 
     if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "maps" ]]; then
         [[ "${CONTENT_MAPS:-Y}" =~ [Yy] ]] && \
-        run_or_dry bash "$REPO_DIR/download/maps.sh" --storage "$STORAGE_PATH"
+        run_step "maps" bash "$REPO_DIR/download/maps.sh" --storage "$STORAGE_PATH"
     fi
 
     if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "kolibri" ]]; then
         [[ "${CONTENT_KOLIBRI:-Y}" =~ [Yy] ]] && \
-        run_or_dry bash "$REPO_DIR/download/kolibri_content.sh" --storage "$STORAGE_PATH"
+        run_step "kolibri" bash "$REPO_DIR/download/kolibri_content.sh" --storage "$STORAGE_PATH"
     fi
 
-    # Gap-filling content from expert research
     if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "gaps" ]]; then
-        run_or_dry bash "$REPO_DIR/download/gaps_content.sh" --storage "$STORAGE_PATH"
+        run_step "gaps" bash "$REPO_DIR/download/gaps_content.sh" --storage "$STORAGE_PATH"
     fi
 
-    # Mental health & psychological first aid
     if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "mental_health" ]]; then
-        run_or_dry bash "$REPO_DIR/download/mental_health.sh" --storage "$STORAGE_PATH"
+        run_step "mental_health" bash "$REPO_DIR/download/mental_health.sh" --storage "$STORAGE_PATH"
     fi
 
     section "Download Complete"

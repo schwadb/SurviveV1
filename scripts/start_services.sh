@@ -155,12 +155,12 @@ main() {
     info "Starting SurviveV1 services..."
     preflight_check
 
-    start_manual dashboard
-    start_manual kiwix
-    start_manual ollama
-    start_manual maps
-    start_manual kolibri
-    start_manual jellyfin
+    start_service dashboard survive-dashboard.service "Dashboard"
+    start_service kiwix     kiwix.service              "Kiwix"
+    start_service ollama    ollama.service              "Ollama AI"
+    start_service maps      martin-tiles.service        "Maps"
+    start_service kolibri   kolibri.service             "Kolibri"
+    start_service jellyfin  jellyfin.service            "Jellyfin"
 
     sleep 2
 

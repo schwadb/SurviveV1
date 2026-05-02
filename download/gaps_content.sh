@@ -60,6 +60,8 @@ dl_channel() {
         --format "bestvideo[height<=720][ext=mp4]+bestaudio/best[height<=720]/best" \
         --merge-output-format mp4 \
         --embed-metadata \
+        --restrict-filenames --no-exec --no-config --no-overwrites \
+        --socket-timeout 30 \
         --download-archive "$LOG_DIR/${category}_gaps_archive.txt" \
         --output "$VIDEO_DIR/$category/%(channel)s/%(title)s.%(ext)s" \
         --playlist-end "$max" \

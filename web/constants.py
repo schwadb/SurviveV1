@@ -24,3 +24,36 @@ SERVICES = {
 
 # ── Content budget ─────────────────────────────────────────────────────────────
 CONTENT_BUDGET_GB = 800  # target total content size in GB
+
+# ── Category → directory mapping ──────────────────────────────────────────────
+# Download scripts use directory names that don't always match category IDs.
+# Each category ID maps to a list of directory names to search.
+CATEGORY_DIR_MAP = {
+    "medical": ["medical", "medicine_advanced", "first_aid"],
+    "medicine_advanced": ["medicine_advanced", "medical"],
+    "obstetrics": ["obstetrics", "medicine_advanced"],
+    "dental": ["dental", "medicine_advanced"],
+    "psychology": ["psychology", "mental_health"],
+    "food": ["food", "farming", "foraging", "food_preservation"],
+    "animal_husbandry": ["animal_husbandry", "livestock"],
+    "seeds": ["seeds", "seed_saving"],
+    "beeswax": ["beeswax", "beekeeping"],
+    "fermentation": ["fermentation", "brewing"],
+    "shelter": ["shelter", "construction", "building"],
+    "sanitation": ["sanitation", "waste", "hygiene"],
+    "water_systems": ["water_systems", "water", "wells"],
+    "energy": ["energy", "solar", "power"],
+    "skills": ["skills", "wilderness", "bushcraft"],
+    "blacksmithing": ["blacksmithing", "metalwork"],
+    "primitive_skills": ["primitive_skills", "primitive_crafts"],
+    "tools": ["tools", "repair", "iFixit"],
+    "permaculture": ["permaculture", "food_forest", "agroforestry"],
+    "communication": ["communication", "radio", "ham_radio"],
+    "security": ["security", "defense", "military_manuals"],
+    "community": ["community", "governance", "economics"],
+    "education": ["education", "science", "khan_academy"],
+    "reference": ["reference", "books", "peace_corps"],
+    "maps": ["maps", "navigation", "topographic"],
+    "military": ["military", "military_manuals", "security"],
+    "videos": ["videos"],
+}

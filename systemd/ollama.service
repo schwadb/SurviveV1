@@ -10,7 +10,7 @@ User=pi
 # Limit loaded models + parallelism to prevent OOM on a 4 GB Pi 5
 # (Ollama default OLLAMA_MAX_LOADED_MODELS=3 will OOM on 4 GB).
 Environment="OLLAMA_MODELS=/mnt/survive/ai_models/ollama"
-Environment="OLLAMA_HOST=0.0.0.0:11434"
+Environment="OLLAMA_HOST=127.0.0.1:11434"
 Environment="OLLAMA_MAX_LOADED_MODELS=1"
 Environment="OLLAMA_NUM_PARALLEL=1"
 Environment="OLLAMA_FLASH_ATTENTION=1"
