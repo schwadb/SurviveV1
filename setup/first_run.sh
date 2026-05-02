@@ -106,7 +106,13 @@ if [[ "$STORAGE_DEV" != "SKIP" ]] && [[ -b "$STORAGE_DEV" ]]; then
     # Add to fstab for auto-mount
     PARTUUID=$(blkid -s PARTUUID -o value "$STORAGE_DEV" 2>/dev/null || echo "")
     if [[ -n "$PARTUUID" ]]; then
-        echo "PARTUUID=$PARTUUID  $STORAGE_PATH  $FSTYPE  defaults,noatime  0  2" >> /etc/fstab
-        echo "Added to /etc/fstab for auto-mount"
+        if grep -q "PARTUUID=$PARTUUID" /etc/fstab 2>/dev/null; then
+            echo "fstab entry for PARTUUID=$PARTUUID already exists -- skipping"
+        elif grep -q " $STORAGE_PATH " /etc/fstab 2>/dev/null; then
+            echo "fstab entry for $STORAGE_PATH already exists -- skipping"
+        else
+            echo "PARTUUID=$PARTUUID  $STORAGE_PATH  $FSTYPE  defaults,noatime  0  2" >> /etc/fstab
+            echo "Added to /etc/fstab for auto-mount"
+        fi
     fi
 fi

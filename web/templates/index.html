@@ -122,6 +122,10 @@
     transform: translateY(-1px);
   }
   .quick-link .icon { font-size: 20px; }
+
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr !important; }
+  }
 </style>
 {% endblock %}
 
@@ -202,7 +206,7 @@
   </div>
 
   <!-- Main grid: Categories + Sidebar -->
-  <div style="display:grid; grid-template-columns: 1fr 320px; gap: 24px;">
+  <div class="main-grid" style="display:grid; grid-template-columns: 1fr 320px; gap: 24px;">
 
     <!-- Categories -->
     <div>
@@ -253,7 +257,7 @@
             <div class="service-port">:{{ svc.port }}</div>
           </div>
           {% if svc.running %}
-            <a href="http://localhost:{{ svc.port }}" target="_blank"
+            <a href="http://{{ request.host.split(':')[0] }}:{{ svc.port }}" target="_blank"
                class="badge badge-green">RUNNING</a>
           {% else %}
             <span class="badge badge-red">STOPPED</span>

@@ -195,7 +195,7 @@
           {% endif %}
         </select>
         <div class="offline-notice">
-          Running 100% offline on your Raspberry Pi AI Hat (Hailo-8L NPU accelerated)
+          Running 100% offline on your Raspberry Pi (CPU inference). Hailo-8L is used for vision tasks only.
         </div>
       </div>
 
@@ -295,6 +295,9 @@ const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
 
+// Conversation history for server-side context
+let conversationHistory = [];
+
 function scrollToBottom() {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -309,31 +312,34 @@ function addMessage(role, content) {
 
   const bubble = document.createElement('div');
   bubble.className = 'message-bubble';
-  bubble.textContent = content;  // textContent — no XSS possible
+  bubble.textContent = content;
 
   div.appendChild(avatar);
   div.appendChild(bubble);
   chatMessages.appendChild(div);
   scrollToBottom();
-  return div;
+  return bubble;
 }
 
-function addTyping() {
+function addStreamingMessage() {
   const div = document.createElement('div');
   div.className = 'message';
-  div.id = 'typingIndicator';
-  div.innerHTML = `
-    <div class="message-avatar">🤖</div>
-    <div class="message-bubble">
-      <div class="typing-indicator">
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-      </div>
-    </div>
-  `;
+  div.id = 'streamingMessage';
+
+  const avatar = document.createElement('div');
+  avatar.className = 'message-avatar';
+  avatar.textContent = '🤖';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'message-bubble';
+  bubble.id = 'streamingBubble';
+  bubble.textContent = '';
+
+  div.appendChild(avatar);
+  div.appendChild(bubble);
   chatMessages.appendChild(div);
   scrollToBottom();
+  return bubble;
 }
 
 function removeTyping() {
@@ -352,46 +358,77 @@ async function sendMessage() {
   sendBtn.disabled = true;
   document.getElementById('cancelBtn').style.display = 'block';
   addMessage('user', msg);
-  addTyping();
+  conversationHistory.push({ role: 'user', content: msg });
 
   const model = document.getElementById('modelSelect').value;
   _currentController = new AbortController();
 
-  // Client-side timeout: warn at 55s (server timeout is 60s)
-  const warnTimer = setTimeout(() => {
-    if (document.getElementById('typingIndicator')) {
-      const note = document.createElement('div');
-      note.style.cssText = 'font-size:11px; color:var(--warning); margin-top:6px;';
-      note.textContent = 'Still thinking… large models can take up to 60 seconds on Pi hardware.';
-      const tip = document.getElementById('typingIndicator');
-      if (tip) tip.querySelector('.message-bubble').appendChild(note);
-    }
-  }, 55000);
+  const bubble = addStreamingMessage();
+  let fullResponse = '';
 
   try {
     const res = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg, model }),
+      body: JSON.stringify({
+        message: msg,
+        model,
+        stream: true,
+        history: conversationHistory.slice(-20),
+      }),
       signal: _currentController.signal,
     });
-    clearTimeout(warnTimer);
-    const data = await res.json();
-    removeTyping();
-    if (data.error) {
-      addMessage('ai', `Error: ${data.error}\n\nMake sure Ollama is running: bash scripts/start_services.sh`);
+
+    if (!res.ok) {
+      const data = await res.json();
+      bubble.textContent = `Error: ${data.error || 'Unknown error'}\n\nMake sure Ollama is running.`;
     } else {
-      addMessage('ai', data.response);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const chunk = JSON.parse(line.slice(6));
+              if (chunk.error) {
+                bubble.textContent = `Error: ${chunk.error}`;
+                break;
+              }
+              if (chunk.token) {
+                fullResponse += chunk.token;
+                bubble.textContent = fullResponse;
+                scrollToBottom();
+              }
+            } catch (e) { /* skip malformed chunks */ }
+          }
+        }
+      }
+
+      if (fullResponse) {
+        conversationHistory.push({ role: 'assistant', content: fullResponse });
+      }
     }
   } catch (e) {
-    clearTimeout(warnTimer);
-    removeTyping();
     if (e.name === 'AbortError') {
-      addMessage('ai', 'Request cancelled.');
+      bubble.textContent = 'Request cancelled.';
     } else {
-      addMessage('ai', 'Connection error. Make sure the AI service is running.\n\nRun: ollama serve');
+      bubble.textContent = 'Connection error. Make sure the AI service is running.\n\nRun: ollama serve';
     }
   }
+
+  const streaming = document.getElementById('streamingMessage');
+  if (streaming) streaming.removeAttribute('id');
+  const streamBubble = document.getElementById('streamingBubble');
+  if (streamBubble) streamBubble.removeAttribute('id');
 
   _currentController = null;
   sendBtn.disabled = false;
@@ -412,6 +449,7 @@ function sendPrompt(prompt) {
 
 function clearChat() {
   chatMessages.innerHTML = '';
+  conversationHistory = [];
   addMessage('ai', 'Chat cleared. How can I help with your survival needs?');
 }
 

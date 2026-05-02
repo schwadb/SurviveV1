@@ -9,7 +9,7 @@ Type=simple
 User=pi
 ExecStart=/usr/local/bin/martin \
     --config /mnt/survive/maps/martin_config.yaml \
-    --listen-addresses 0.0.0.0:3000
+    --listen-addresses 127.0.0.1:3000
 Restart=on-failure
 RestartSec=10
 StartLimitIntervalSec=60
