@@ -162,7 +162,14 @@ main() {
     start_manual kolibri
     start_manual jellyfin
 
-    sleep 2
+    # Wait up to 15 s for the dashboard to respond before printing URLs
+    local retries=30
+    while [[ $retries -gt 0 ]]; do
+        if curl -sf "http://localhost:8080/health" >/dev/null 2>&1; then break; fi
+        sleep 0.5
+        retries=$((retries - 1))
+    done
+    [[ $retries -eq 0 ]] && warn "Dashboard did not respond within 15 s — URLs may not be ready"
 
     print_urls
 

@@ -295,6 +295,12 @@
   </div>
 </nav>
 
+{% if not storage_mounted %}
+<div style="background:#d29922;color:#0d1117;padding:8px 20px;text-align:center;font-size:13px;font-weight:600;position:sticky;top:56px;z-index:99;">
+  &#9888; Storage drive not mounted &mdash; content may be missing. Connect drive and restart services.
+</div>
+{% endif %}
+
 {% block content %}{% endblock %}
 
 <footer>

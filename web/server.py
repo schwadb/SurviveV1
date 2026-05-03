@@ -9,7 +9,9 @@ import json
 import logging
 import shutil
 import socket
+import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 from flask import (
@@ -37,6 +39,10 @@ logging.basicConfig(
 )
 
 app = Flask(__name__)
+app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_HTTPONLY=True,
+)
 
 # CSRF is enabled for HTML form POSTs. JSON APIs are exempted individually
 # and defended by a strict application/json Content-Type check instead --
@@ -55,7 +61,7 @@ limiter = Limiter(
 
 # Single source of truth for service ports in all templates.
 @app.context_processor
-def _inject_ports():
+def _inject_globals():
     return {
         "PORT_DASHBOARD": PORT_DASHBOARD,
         "PORT_KIWIX": PORT_KIWIX,
@@ -64,7 +70,17 @@ def _inject_ports():
         "PORT_JELLYFIN": PORT_JELLYFIN,
         "PORT_MAPS": PORT_MAPS,
         "PORT_OLLAMA": PORT_OLLAMA,
+        "storage_mounted": STORAGE_MOUNTED,
     }
+
+
+@app.after_request
+def _security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    return response
 
 # Generate a persistent random secret key on first run
 _KEY_FILE = Path(__file__).parent.parent / "config" / ".secret_key"
@@ -84,16 +100,14 @@ else:
 # ── Configuration ──────────────────────────────────────────────────────────────
 REPO_DIR = Path(__file__).parent.parent
 DATA_DIR = Path(os.environ.get("SURVIVE_DATA_DIR", REPO_DIR / "data"))
-STORAGE_PATH = Path(os.environ.get("SURVIVE_STORAGE_PATH", "/mnt/survive"))
+_configured_storage = Path(os.environ.get("SURVIVE_STORAGE_PATH", "/mnt/survive"))
+STORAGE_MOUNTED = _configured_storage.exists()
+STORAGE_PATH = _configured_storage if STORAGE_MOUNTED else DATA_DIR
 
 # Tunable timeouts (seconds) — override via environment or survive.conf
 TIMEOUT_SERVICE_CHECK = float(os.environ.get("SURVIVE_SERVICE_CHECK_TIMEOUT", "1"))
 TIMEOUT_OLLAMA_LIST   = float(os.environ.get("SURVIVE_OLLAMA_LIST_TIMEOUT", "2"))
 TIMEOUT_AI_CHAT       = float(os.environ.get("SURVIVE_AI_CHAT_TIMEOUT", "60"))
-
-# Fall back to repo data dir if storage not mounted
-if not STORAGE_PATH.exists():
-    STORAGE_PATH = DATA_DIR
 
 CATEGORIES = [
     # ── Core Survival ─────────────────────────────────────────
@@ -159,6 +173,14 @@ CATEGORIES = [
 ]
 
 
+_CACHE_TTL = 60.0  # seconds — how long content-stat / recent-file caches are valid
+_content_stats_cache: list = [0.0, None]   # [timestamp, data]
+_recent_cache: list       = [0.0, None]    # [timestamp, data]
+
+# Search is capped to avoid walking 800 GB to exhaustion with zero matches.
+_MAX_FILES_CHECKED = 500_000
+
+
 def _safe_walk(root: Path):
     """Yield files under root without following symlinks (prevents infinite loops)."""
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
@@ -193,8 +215,18 @@ def check_service(port: int) -> bool:
         return False
 
 
-def get_content_stats():
-    """Count files and total size for each content subdirectory."""
+def check_all_services() -> dict:
+    """Check all services concurrently; wall-clock cost = one timeout period."""
+    with ThreadPoolExecutor(max_workers=len(SERVICES)) as ex:
+        futures = {name: ex.submit(check_service, svc["port"]) for name, svc in SERVICES.items()}
+    return {
+        name: {"running": future.result(), **SERVICES[name]}
+        for name, future in futures.items()
+    }
+
+
+def _compute_content_stats() -> dict:
+    """Walk each content subdirectory and return file counts + sizes."""
     stats = {}
     dirs = {
         "zim": STORAGE_PATH / "zim",
@@ -222,8 +254,16 @@ def get_content_stats():
     return stats
 
 
-def get_recent_downloads():
-    """Return the 20 most recently modified content files."""
+def get_content_stats() -> dict:
+    """Cached wrapper — recomputes at most once per _CACHE_TTL seconds."""
+    if time.monotonic() - _content_stats_cache[0] > _CACHE_TTL:
+        _content_stats_cache[0] = time.monotonic()
+        _content_stats_cache[1] = _compute_content_stats()
+    return _content_stats_cache[1]
+
+
+def _compute_recent_downloads() -> list:
+    """Walk storage and return the 20 most recently modified content files."""
     recent = []
     allowed_exts = {".zim", ".pdf", ".epub", ".mp4"}
     try:
@@ -246,19 +286,23 @@ def get_recent_downloads():
         return []
 
 
+def get_recent_downloads() -> list:
+    """Cached wrapper — recomputes at most once per _CACHE_TTL seconds."""
+    if time.monotonic() - _recent_cache[0] > _CACHE_TTL:
+        _recent_cache[0] = time.monotonic()
+        _recent_cache[1] = _compute_recent_downloads()
+    return _recent_cache[1]
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
     storage = get_storage_info()
-    service_status = {
-        name: {"running": check_service(svc["port"]), **svc}
-        for name, svc in SERVICES.items()
-    }
     return render_template(
         "index.html",
         categories=CATEGORIES,
-        services=service_status,
+        services=check_all_services(),
         storage=storage,
         now=datetime.now(),
     )
@@ -322,8 +366,8 @@ def browse_files():
                 "path": str(item.relative_to(STORAGE_PATH)),
                 "ext": item.suffix.lower().lstrip(".") if item.is_file() else "",
             })
-    except PermissionError:
-        pass
+    except PermissionError as e:
+        logging.warning("browse_files permission denied at %s: %s", browse_dir, e)
 
     parent = str(Path(rel_path).parent) if rel_path else None
     return render_template(
@@ -358,8 +402,13 @@ def search():
 
     if query and len(query) >= 2:
         ql = query.lower()
+        files_checked = 0
         try:
             for f in _safe_walk(STORAGE_PATH):
+                files_checked += 1
+                if files_checked > _MAX_FILES_CHECKED:
+                    logging.info("search: hit %d-file cap, stopping walk", _MAX_FILES_CHECKED)
+                    break
                 if ql in f.name.lower():
                     try:
                         results.append({
@@ -462,12 +511,10 @@ def health():
 @app.route("/api/status")
 def api_status():
     """System status API endpoint."""
+    svc = check_all_services()
     return jsonify({
         "storage": get_storage_info(),
-        "services": {
-            name: {"running": check_service(svc["port"]), "port": svc["port"]}
-            for name, svc in SERVICES.items()
-        },
+        "services": {name: {"running": v["running"], "port": v["port"]} for name, v in svc.items()},
         "content": get_content_stats(),
         "timestamp": datetime.now().isoformat(),
     })
@@ -480,17 +527,11 @@ def api_recent():
 
 @app.route("/status")
 def status_page():
-    storage = get_storage_info()
-    content = get_content_stats()
-    service_status = {
-        name: {"running": check_service(svc["port"]), **svc}
-        for name, svc in SERVICES.items()
-    }
     return render_template(
         "status.html",
-        storage=storage,
-        content=content,
-        services=service_status,
+        storage=get_storage_info(),
+        content=get_content_stats(),
+        services=check_all_services(),
         categories=CATEGORIES,
         recent=get_recent_downloads(),
     )
