@@ -16,6 +16,7 @@ env/
 # Secrets / generated keys
 config/.secret_key
 config/*.secret
+config/.cache/
 .env
 *.env
 
