@@ -61,10 +61,22 @@ start_manual() {
     local name="$1"
     case "$name" in
         dashboard)
-            info "Starting dashboard on :8080..."
+            info "Starting dashboard on :8080 (gunicorn)..."
             source /opt/survive/venv/bin/activate 2>/dev/null || true
             cd "$REPO_DIR/web"
-            PORT=8080 nohup python3 server.py > /tmp/survive_dashboard.log 2>&1 &
+            if command -v gunicorn &>/dev/null; then
+                nohup gunicorn \
+                    --workers 3 \
+                    --preload \
+                    --bind 0.0.0.0:8080 \
+                    --timeout 120 \
+                    --access-logfile /tmp/survive_access.log \
+                    --error-logfile /tmp/survive_dashboard.log \
+                    server:app > /dev/null 2>&1 &
+            else
+                warn "gunicorn not found — falling back to Flask dev server"
+                PORT=8080 nohup python3 server.py > /tmp/survive_dashboard.log 2>&1 &
+            fi
             echo $! > /tmp/survive_dashboard.pid
             success "Dashboard started (PID $(cat /tmp/survive_dashboard.pid))"
             ;;
@@ -155,12 +167,13 @@ main() {
     info "Starting SurviveV1 services..."
     preflight_check
 
-    start_manual dashboard
-    start_manual kiwix
-    start_manual ollama
-    start_manual maps
-    start_manual kolibri
-    start_manual jellyfin
+    # Start order: infrastructure first, then content services, dashboard last
+    start_manual ollama     # AI backend (no deps)
+    start_manual kiwix      # Requires ZIM files
+    start_manual kolibri    # Requires kolibri DB
+    start_manual jellyfin   # Requires media library
+    start_manual maps       # Requires Martin binary + map data
+    start_manual dashboard  # Depends on all above for status checks
 
     # Wait up to 15 s for the dashboard to respond before printing URLs
     local retries=30

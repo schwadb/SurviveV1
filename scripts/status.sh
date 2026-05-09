@@ -11,9 +11,12 @@ GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC
 
 check_port() {
     local port="$1"
-    (echo >/dev/tcp/localhost/"$port") 2>/dev/null && \
-        echo -e "${GREEN}● UP${NC}" || \
+    # 2-second timeout prevents hanging on unresponsive services
+    if timeout 2 bash -c "echo >/dev/tcp/localhost/$port" 2>/dev/null; then
+        echo -e "${GREEN}● UP${NC}"
+    else
         echo -e "${RED}● DOWN${NC}"
+    fi
 }
 
 echo ""

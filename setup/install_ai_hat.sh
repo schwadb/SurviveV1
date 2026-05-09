@@ -29,25 +29,50 @@ check_hailo_device() {
     fi
 }
 
+# ── Detect Hailo generation ──────────────────────────────────────────────────
+detect_hailo_gen() {
+    local pci_info
+    pci_info=$(lspci 2>/dev/null | grep -i hailo || true)
+    if echo "$pci_info" | grep -qi "hailo-10"; then
+        echo "hat2"
+    elif echo "$pci_info" | grep -qi "hailo-8"; then
+        echo "hat1"
+    else
+        echo "unknown"
+    fi
+}
+
 # ── Install Hailo Software Suite ──────────────────────────────────────────────
 install_hailo_suite() {
-    info "Installing Hailo Software Suite (HailoRT)..."
+    local gen
+    gen=$(detect_hailo_gen)
 
-    # Add Hailo repository
-    curl -fsSL https://hailo.ai/hailo-apt-key.gpg | gpg --dearmor \
-        -o /usr/share/keyrings/hailo-archive-keyring.gpg
+    if [[ "$gen" == "hat2" ]]; then
+        info "Hailo-10H (AI HAT+ 2) detected -- installing GenAI runtime..."
+        info "  40 TOPS / 8GB on-board RAM -- supports hailo-ollama"
+        apt-get update -qq
+        apt-get install -y hailo-all hailo-genai-model-zoo 2>/dev/null || {
+            info "Trying pip-based install..."
+            pip3 install -q hailort hailo-genai 2>/dev/null || true
+        }
+        success "Hailo-10H (HAT+ 2) runtime installed"
+    else
+        info "Installing Hailo-8L Software Suite (HailoRT)..."
+        curl -fsSL https://hailo.ai/hailo-apt-key.gpg | gpg --dearmor \
+            -o /usr/share/keyrings/hailo-archive-keyring.gpg
 
-    echo "deb [signed-by=/usr/share/keyrings/hailo-archive-keyring.gpg] \
-        https://hailo.ai/ubuntu jammy main" \
-        > /etc/apt/sources.list.d/hailo.list
+        echo "deb [signed-by=/usr/share/keyrings/hailo-archive-keyring.gpg] \
+            https://hailo.ai/ubuntu jammy main" \
+            > /etc/apt/sources.list.d/hailo.list
 
-    apt-get update -qq
-    apt-get install -y \
-        hailort \
-        hailort-dev \
-        python3-hailort
+        apt-get update -qq
+        apt-get install -y \
+            hailort \
+            hailort-dev \
+            python3-hailort
 
-    success "Hailo Runtime installed"
+        success "Hailo-8L Runtime installed"
+    fi
 }
 
 # ── Install Hailo Raspberry Pi examples ──────────────────────────────────────
@@ -66,19 +91,49 @@ install_hailo_examples() {
 
 # ── Configure Ollama with Hailo backend ──────────────────────────────────────
 configure_ollama_hailo() {
-    info "Configuring Ollama to use Hailo NPU..."
+    local gen
+    gen=$(detect_hailo_gen)
 
-    # Create Ollama systemd override for Hailo
+    if [[ "$gen" == "hat2" ]]; then
+        info "Configuring hailo-ollama (Ollama-compatible server for Hailo-10H)..."
+        # hailo-ollama provides a drop-in Ollama API on port 11434
+        cat > /etc/systemd/system/hailo-ollama.service << 'EOF'
+[Unit]
+Description=Hailo-Ollama LLM Server (AI HAT+ 2)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/hailo-ollama serve
+Environment="HAILO_OLLAMA_HOST=0.0.0.0:11434"
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
+        systemctl enable hailo-ollama 2>/dev/null || true
+        systemctl start hailo-ollama 2>/dev/null || {
+            warn "hailo-ollama service not available; falling back to standard Ollama"
+            configure_ollama_standard
+        }
+        success "hailo-ollama configured for Hailo-10H (AI HAT+ 2)"
+    else
+        configure_ollama_standard
+    fi
+}
+
+configure_ollama_standard() {
+    info "Configuring Ollama to use Hailo-8L NPU..."
     mkdir -p /etc/systemd/system/ollama.service.d
     cat > /etc/systemd/system/ollama.service.d/hailo.conf << 'EOF'
 [Service]
 Environment="OLLAMA_HAILO=1"
 Environment="HAILO_RUNTIME_PATH=/usr/lib/hailo"
 EOF
-
     systemctl daemon-reload
     systemctl restart ollama || true
-    success "Ollama configured for Hailo acceleration"
+    success "Ollama configured for Hailo-8L acceleration"
 }
 
 # ── Pull recommended models ───────────────────────────────────────────────────

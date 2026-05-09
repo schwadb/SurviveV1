@@ -19,6 +19,7 @@ from flask import (
     send_from_directory, redirect, url_for, abort
 )
 from flask_wtf.csrf import CSRFProtect
+from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -38,7 +39,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_HTTPONLY=True,
@@ -57,6 +58,14 @@ limiter = Limiter(
     default_limits=["120 per minute"],
     storage_uri="memory://",
 )
+
+# Filesystem-based cache — no Redis/Memcached dependency needed on Pi.
+cache = Cache(app, config={
+    "CACHE_TYPE": "FileSystemCache",
+    "CACHE_DIR": str(Path(__file__).parent.parent / "config" / ".cache"),
+    "CACHE_DEFAULT_TIMEOUT": 60,
+    "CACHE_THRESHOLD": 200,
+})
 
 
 # Single source of truth for service ports in all templates.
@@ -509,6 +518,7 @@ def health():
 
 
 @app.route("/api/status")
+@cache.cached(timeout=30, key_prefix="api_status")
 def api_status():
     """System status API endpoint."""
     svc = check_all_services()

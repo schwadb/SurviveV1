@@ -43,9 +43,9 @@ http://localhost:8080
 
 ## System Requirements
 
-- **Hardware:** Raspberry Pi 5 (4GB+ RAM recommended), AI Hat (Hailo-8L)
-- **Storage:** USB 3.0 SSD or NVMe (256GB minimum, 800GB recommended)
-- **Power:** Power bank (20,000+ mAh) or solar + battery
+- **Hardware:** Raspberry Pi 5 (4GB+ RAM recommended), AI Hat (Hailo-8L or HAT+ 2 with Hailo-10H)
+- **Storage:** NVMe SSD via M.2 HAT+ (~850 MB/s, recommended) or USB 3.0 SSD (~360 MB/s). 256GB minimum, 1TB recommended.
+- **Power:** Power bank (20,000+ mAh) or solar + battery. See `scripts/power_save.sh` for battery optimization.
 - **OS:** Raspberry Pi OS (64-bit Bookworm)
 - **Optional:** Wi-Fi dongle for local network sharing
 
@@ -144,6 +144,23 @@ bash ai/query.sh "How do I purify water without chemicals?"
 | LLM models (AI) | ~50 GB |
 | Buffer | ~65 GB |
 | **Total** | **~800 GB** |
+
+---
+
+## How It Compares
+
+| Feature | SurviveV1 | Internet-in-a-Box | Project N.O.M.A.D |
+|---------|-----------|-------------------|-------------------|
+| **Target hardware** | Raspberry Pi 5 | Raspberry Pi 3/4 | x86 + GPU |
+| **Portable/field-ready** | Yes (battery-powered) | Yes | No (desktop) |
+| **Local AI assistant** | Yes (Ollama + Hailo) | No | Yes (GPU required) |
+| **Survival-focused content** | Yes (26 categories) | No (education-focused) | Yes |
+| **Video library** | Yes (yt-dlp) | No | Limited |
+| **Offline maps** | Yes (OpenStreetMap) | Yes | No |
+| **Setup complexity** | Single installer | Ansible playbook | Docker Compose |
+| **Storage target** | 800 GB | 64-256 GB | 500+ GB |
+| **Cost** | ~$80 (Pi 5) | ~$35 (Pi 4) | $500+ (PC + GPU) |
+| **Power consumption** | 3-9W | 2-5W | 100-300W |
 
 ---
 

@@ -28,6 +28,14 @@ done
 LOG_DIR="$STORAGE_PATH/.logs"
 mkdir -p "$LOG_DIR"
 
+# Prevent concurrent downloads from corrupting files
+DOWNLOAD_LOCK="$STORAGE_PATH/.download.lock"
+exec 200>"$DOWNLOAD_LOCK"
+if ! flock -n 200; then
+    echo "[ERROR] Another download_all.sh is already running. Exiting." >&2
+    exit 1
+fi
+
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[DL]${NC} $*"; }
 success() { echo -e "${GREEN}[DL]${NC} $*"; }

@@ -47,6 +47,12 @@ import_channel() {
     local name="$1"
     local channel_id="$2"
 
+    # Validate channel_id is a hex string (prevents injection)
+    if ! [[ "$channel_id" =~ ^[a-f0-9]{32}$ ]]; then
+        warn "Invalid channel ID for $name: $channel_id — skipping"
+        return 1
+    fi
+
     info "Importing: $name ($channel_id)"
     kolibri manage importchannel network "$channel_id" 2>/dev/null || {
         info "Trying with token..."

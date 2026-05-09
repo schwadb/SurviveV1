@@ -75,7 +75,7 @@ setup_provider() {
             # the command line (would leak via ps / shell history / errors).
             local secret_file
             secret_file=$(mktemp) && chmod 600 "$secret_file"
-            trap 'shred -u "$secret_file" 2>/dev/null || rm -f "$secret_file"' RETURN
+            trap 'if command -v shred &>/dev/null; then shred -u "$secret_file" 2>/dev/null; else rm -Pf "$secret_file" 2>/dev/null || rm -f "$secret_file"; fi' RETURN
             cat > "$secret_file" <<EOF
 [s3]
 type = s3
@@ -105,7 +105,7 @@ EOF
             echo ""
             local secret_file
             secret_file=$(mktemp) && chmod 600 "$secret_file"
-            trap 'shred -u "$secret_file" 2>/dev/null || rm -f "$secret_file"' RETURN
+            trap 'if command -v shred &>/dev/null; then shred -u "$secret_file" 2>/dev/null; else rm -Pf "$secret_file" 2>/dev/null || rm -f "$secret_file"; fi' RETURN
             cat > "$secret_file" <<EOF
 [b2]
 type = b2

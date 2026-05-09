@@ -31,6 +31,17 @@ success() { echo -e "${GREEN}[VIDEO]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[VIDEO]${NC} $*"; }
 error()   { echo -e "${RED}[VIDEO]${NC} $*" >&2; }
 
+# ── yt-dlp PoToken setup ────────────────────────────────────────────────────
+# YouTube requires Proof-of-Origin tokens; without bgutil-ytdlp-pot-provider
+# downloads fail silently. Install it if missing.
+setup_pot_provider() {
+    if ! pip3 show bgutil-ytdlp-pot-provider &>/dev/null 2>&1; then
+        info "Installing bgutil-ytdlp-pot-provider (required for YouTube PoToken)..."
+        pip3 install -q bgutil-ytdlp-pot-provider 2>/dev/null || \
+            warn "Could not install PoToken provider -- YouTube downloads may fail"
+    fi
+}
+
 check_disk_space() {
     local required_gb="${1:-50}"
     local available_gb
@@ -94,6 +105,11 @@ dl_playlist() {
         --add-metadata \
         --write-info-json \
         --write-thumbnail \
+        --write-subs \
+        --write-auto-subs \
+        --embed-subs \
+        --sub-langs "en" \
+        --embed-chapters \
         --restrict-filenames \
         --no-exec \
         --no-config \
@@ -125,6 +141,11 @@ dl_channel() {
         --merge-output-format mp4 \
         --embed-metadata \
         --write-info-json \
+        --write-subs \
+        --write-auto-subs \
+        --embed-subs \
+        --sub-langs "en" \
+        --embed-chapters \
         --restrict-filenames \
         --no-exec \
         --no-config \
@@ -280,11 +301,55 @@ dl_preparedness() {
         "https://www.youtube.com/@FEMAReady/videos" 50
 }
 
+# Bushcraft & Wilderness Skills
+dl_bushcraft() {
+    info "=== Bushcraft & Wilderness ==="
+    dl_channel "survival" "My Self Reliance" \
+        "https://www.youtube.com/@MySelfReliance/videos" 100
+    dl_channel "survival" "Far North Bushcraft" \
+        "https://www.youtube.com/@FarNorthBushcraft/videos" 100
+    dl_channel "survival" "TA Outdoors" \
+        "https://www.youtube.com/@TAOutdoors/videos" 100
+    dl_channel "survival" "Joe Robinet" \
+        "https://www.youtube.com/@JoeRobinet/videos" 100
+    dl_channel "survival" "Black Scout Survival" \
+        "https://www.youtube.com/@BlackScoutSurvival/videos" 100
+    dl_channel "survival" "David Canterbury" \
+        "https://www.youtube.com/@DavidCanterbury/videos" 100
+}
+
+# Additional Preparedness Channels
+dl_preparedness_extra() {
+    info "=== Additional Preparedness ==="
+    dl_channel "preparedness" "Southern Prepper 1" \
+        "https://www.youtube.com/@SouthernPrepper1/videos" 150
+    dl_channel "preparedness" "The Provident Prepper" \
+        "https://www.youtube.com/@TheProvidentPrepper/videos" 100
+    dl_channel "preparedness" "Magic Prepper" \
+        "https://www.youtube.com/@MagicPrepper/videos" 100
+    dl_channel "preparedness" "Alaska Prepper" \
+        "https://www.youtube.com/@AlaskaPrepper/videos" 100
+    dl_channel "preparedness" "The Urban Prepper" \
+        "https://www.youtube.com/@TheUrbanPrepper/videos" 100
+    dl_channel "medical" "PrepMedic" \
+        "https://www.youtube.com/@PrepMedic/videos" 100
+    dl_channel "preparedness" "COMMS Prepper" \
+        "https://www.youtube.com/@COMMSPrepper/videos" 100
+    dl_channel "food" "Eat The Weeds" \
+        "https://www.youtube.com/@EatTheWeeds/videos" 100
+    dl_channel "shelter" "Big Family Homestead" \
+        "https://www.youtube.com/@BigFamilyHomestead/videos" 100
+    dl_channel "energy" "Engineer775" \
+        "https://www.youtube.com/@engineer775/videos" 100
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
     info "Starting video downloads to $VIDEO_DIR"
     info "Quality: ${QUALITY}p"
     check_disk_space 50
+
+    setup_pot_provider
 
     if [[ "${CONTENT_VIDEOS:-Y}" =~ [Yy] ]]; then
         dl_survival
@@ -296,6 +361,8 @@ main() {
         dl_energy
         dl_tools
         dl_preparedness
+        dl_bushcraft
+        dl_preparedness_extra
     fi
 
     check_downloads

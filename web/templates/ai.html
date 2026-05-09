@@ -342,10 +342,19 @@ function removeTyping() {
 }
 
 let _currentController = null;
+let _lastSendTime = 0;
+const _MIN_SEND_INTERVAL = 2000;  // 2s minimum between requests
 
 async function sendMessage() {
   const msg = chatInput.value.trim();
   if (!msg) return;
+
+  // Client-side rate limiting to protect Pi CPU
+  const now = Date.now();
+  if (now - _lastSendTime < _MIN_SEND_INTERVAL) {
+    return;
+  }
+  _lastSendTime = now;
 
   chatInput.value = '';
   chatInput.style.height = 'auto';

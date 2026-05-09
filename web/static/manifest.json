@@ -1,0 +1,22 @@
+{
+  "name": "SurviveV1 — Offline Survival Knowledge",
+  "short_name": "SurviveV1",
+  "description": "800GB offline survival knowledge base running on Raspberry Pi 5",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#3fb950",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

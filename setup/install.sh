@@ -197,11 +197,13 @@ setup_storage() {
 # ── Nginx configuration ───────────────────────────────────────────────────────
 configure_nginx() {
     info "Configuring Nginx reverse proxy..."
-    cp "$REPO_DIR/config/nginx.conf" /etc/nginx/sites-available/survive
+    local storage="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
+    sed "s|%%STORAGE_PATH%%|${storage}|g" \
+        "$REPO_DIR/config/nginx.conf" > /etc/nginx/sites-available/survive
     ln -sfn /etc/nginx/sites-available/survive /etc/nginx/sites-enabled/survive
     rm -f /etc/nginx/sites-enabled/default
     nginx -t && systemctl reload nginx
-    success "Nginx configured"
+    success "Nginx configured (storage: $storage)"
 }
 
 # ── Firewall ──────────────────────────────────────────────────────────────────

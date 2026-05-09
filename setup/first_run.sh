@@ -103,10 +103,15 @@ if [[ "$STORAGE_DEV" != "SKIP" ]] && [[ -b "$STORAGE_DEV" ]]; then
     FSTYPE=$(blkid -s TYPE -o value "$STORAGE_DEV" 2>/dev/null || echo "ext4")
     mount -t "$FSTYPE" "$STORAGE_DEV" "$STORAGE_PATH"
 
-    # Add to fstab for auto-mount
+    # Add to fstab for auto-mount (with validation and dedup)
     PARTUUID=$(blkid -s PARTUUID -o value "$STORAGE_DEV" 2>/dev/null || echo "")
-    if [[ -n "$PARTUUID" ]]; then
-        echo "PARTUUID=$PARTUUID  $STORAGE_PATH  $FSTYPE  defaults,noatime  0  2" >> /etc/fstab
-        echo "Added to /etc/fstab for auto-mount"
+    if [[ -n "$PARTUUID" ]] && [[ "$PARTUUID" =~ ^[a-zA-Z0-9-]+$ ]]; then
+        if grep -q "PARTUUID=$PARTUUID" /etc/fstab 2>/dev/null; then
+            echo "Already in /etc/fstab — skipping"
+        else
+            cp /etc/fstab "/etc/fstab.bak.$(date +%s)"
+            echo "PARTUUID=$PARTUUID  $STORAGE_PATH  $FSTYPE  defaults,noatime  0  2" >> /etc/fstab
+            echo "Added to /etc/fstab for auto-mount (backup saved)"
+        fi
     fi
 fi

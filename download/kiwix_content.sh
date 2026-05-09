@@ -93,15 +93,23 @@ download_zim() {
     # can find the target file regardless of what the mirror labelled it.
     local expected
     expected=$(awk '{print $1; exit}' "$sha_file")
+    if [[ -z "$expected" ]] || [[ ${#expected} -ne 64 ]]; then
+        warn "[$name] Invalid checksum sidecar format -- size check only"
+        rm -f "$sha_file"
+        success "[$name] Done: $filename (size OK, checksum sidecar malformed)"
+        return 0
+    fi
     echo "$expected  $dest" > "$sha_file"
     if sha256sum -c "$sha_file" &>/dev/null; then
         success "[$name] Checksum OK"
         rm -f "$sha_file"
         return 0
     else
-        warn "[$name] Checksum MISMATCH -- deleting corrupt file"
+        local actual
+        actual=$(sha256sum "$dest" 2>/dev/null | awk '{print $1}')
+        warn "[$name] Checksum MISMATCH -- expected: ${expected:0:16}... got: ${actual:0:16}..."
         rm -f "$dest" "$sha_file"
-        mark_failed "$name" "checksum mismatch"
+        mark_failed "$name" "checksum mismatch (expected=$expected actual=$actual)"
         return 1
     fi
 }
@@ -236,17 +244,44 @@ dl_ted() {
         "$ZIM_DIR/education"
 }
 
+# ── WikiHow (illustrated how-to guides) ──────────────────────────────────────
+dl_wikihow() {
+    [[ -n "$ONLY_PACKAGE" ]] && [[ "$ONLY_PACKAGE" != "wikihow" ]] && return
+
+    info "=== WikiHow (step-by-step guides) ==="
+    download_zim "WikiHow EN" \
+        "$KIWIX_MIRROR/wikihow/wikihow_en_all_maxi_2024-01.zim" \
+        "$ZIM_DIR/skills"
+}
+
+# ── Preppers content bundle ──────────────────────────────────────────────────
+dl_preppers() {
+    [[ -n "$ONLY_PACKAGE" ]] && [[ "$ONLY_PACKAGE" != "preppers" ]] && return
+
+    info "=== Preppers Content (medical, survival manuals) ==="
+    download_zim "MD Wiki (medical)" \
+        "$KIWIX_MIRROR/mdwiki/mdwiki_en_all_maxi_2024-01.zim" \
+        "$ZIM_DIR/medicine"
+}
+
 # ── Register all ZIMs with kiwix-serve ───────────────────────────────────────
 register_zims() {
     info "Registering ZIM files with Kiwix library..."
     KIWIX_LIBRARY="$STORAGE_PATH/.kiwix_library.xml"
 
     # Find all downloaded ZIM files and register them
+    local registered=0 failed=0
     while IFS= read -r -d '' zimfile; do
-        kiwix-manage "$KIWIX_LIBRARY" add "$zimfile" 2>/dev/null || true
+        if kiwix-manage "$KIWIX_LIBRARY" add "$zimfile" 2>/dev/null; then
+            registered=$((registered + 1))
+        else
+            warn "Failed to register: $zimfile"
+            failed=$((failed + 1))
+        fi
     done < <(find "$ZIM_DIR" -name "*.zim" -print0)
 
-    success "Kiwix library updated: $KIWIX_LIBRARY"
+    success "Kiwix library updated: $registered registered, $failed failed"
+    [[ $failed -gt 0 ]] && warn "Check kiwix-manage is installed and ZIM files are not corrupt"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -262,6 +297,8 @@ main() {
     dl_khan
     dl_medical
     dl_ted
+    dl_wikihow
+    dl_preppers
 
     register_zims
 
