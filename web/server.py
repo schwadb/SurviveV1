@@ -114,7 +114,7 @@ CATEGORIES = [
     {"id": "medical", "name": "Medical & First Aid", "icon": "🏥",
      "color": "#e74c3c", "desc": "Emergency medicine, first aid, TCCC, trauma"},
     {"id": "medicine_advanced", "name": "Advanced Medicine", "icon": "🩺",
-     "color": "#c0392b", "desc": "Surgery, obstetrics, dental, psychiatric care in austere settings"},
+     "color": "#c0392b", "desc": "Surgery, obstetrics, dental, psychiatric care in austere"},
     {"id": "obstetrics", "name": "Childbirth & Midwifery", "icon": "👶",
      "color": "#e91e8c", "desc": "Emergency delivery, midwifery, prenatal care without hospital"},
     {"id": "dental", "name": "Dental Emergency", "icon": "🦷",
@@ -125,16 +125,16 @@ CATEGORIES = [
     {"id": "food", "name": "Food & Water", "icon": "🌾",
      "color": "#27ae60", "desc": "Farming, foraging, food preservation, water purification"},
     {"id": "animal_husbandry", "name": "Animal Husbandry", "icon": "🐓",
-     "color": "#2ecc71", "desc": "Chickens, goats, pigs, cattle, rabbits — health, breeding, butchering"},
+     "color": "#2ecc71", "desc": "Chickens, goats, cattle, rabbits — health, breeding, butchering"},
     {"id": "seeds", "name": "Seed Saving", "icon": "🌱",
-     "color": "#1abc9c", "desc": "Saving, storing, and propagating open-pollinated seeds across generations"},
+     "color": "#1abc9c", "desc": "Storing and propagating open-pollinated seeds, generations"},
     {"id": "beeswax", "name": "Beekeeping", "icon": "🐝",
      "color": "#f39c12", "desc": "Hive management, honey harvest, wax, mead, disease prevention"},
     {"id": "fermentation", "name": "Fermentation & Brewing", "icon": "🍺",
      "color": "#d35400", "desc": "Lacto-fermentation, beer, mead, vinegar, cheese, tinctures"},
     # ── Infrastructure ────────────────────────────────────────
     {"id": "shelter", "name": "Shelter & Construction", "icon": "🏠",
-     "color": "#8e44ad", "desc": "Building techniques, earthships, log cabins, off-grid structures"},
+     "color": "#8e44ad", "desc": "Building techniques, earthships, log cabins, off-grid"},
     {"id": "sanitation", "name": "Sanitation & Waste", "icon": "🚽",
      "color": "#795548", "desc": "Composting toilets, humanure, greywater, disease prevention"},
     {"id": "water_systems", "name": "Water Systems & Wells", "icon": "💧",
@@ -147,11 +147,11 @@ CATEGORIES = [
     {"id": "blacksmithing", "name": "Blacksmithing & Metalwork", "icon": "⚒️",
      "color": "#607d8b", "desc": "Forge building, tool making, repair, knife making"},
     {"id": "primitive_skills", "name": "Primitive Crafts", "icon": "🧵",
-     "color": "#8d6e63", "desc": "Brain tanning, soap making, candles, fiber, pottery (18th century methods)"},
+     "color": "#8d6e63", "desc": "Brain tanning, soap making, candles, fiber, 18th-century crafts"},
     {"id": "tools", "name": "Tools & Repair", "icon": "🔧",
      "color": "#2980b9", "desc": "iFixit guides, woodworking, mechanical repair"},
     {"id": "permaculture", "name": "Permaculture & Food Forest", "icon": "🌳",
-     "color": "#4caf50", "desc": "Zone design, guild planting, food forest, water harvesting earthworks"},
+     "color": "#4caf50", "desc": "Zone design, guild planting, food forest, water earthworks"},
     # ── Communications & Community ────────────────────────────
     {"id": "communication", "name": "Communications & Radio", "icon": "📡",
      "color": "#c0392b", "desc": "Ham radio, Morse code, CHIRP programming, emergency frequencies"},
@@ -206,10 +206,10 @@ def get_storage_info():
         return {"total_gb": 0, "used_gb": 0, "free_gb": 0, "percent": 0}
 
 
-def check_service(port: int) -> bool:
+def check_service(svc_port: int) -> bool:
     """Check if a service is running on given port."""
     try:
-        with socket.create_connection(("localhost", port), timeout=TIMEOUT_SERVICE_CHECK):
+        with socket.create_connection(("localhost", svc_port), timeout=TIMEOUT_SERVICE_CHECK):
             return True
     except (ConnectionRefusedError, OSError):
         return False
