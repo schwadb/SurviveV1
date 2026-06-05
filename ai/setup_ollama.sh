@@ -113,23 +113,57 @@ pull_models() {
     else
         warn "< 8 GB RAM -- skipping 12B model (will OOM)."
     fi
+
+    # 16 GB tier: gemma4:12b fits without swap (7.6 GB weights + ~3 GB services).
+    # Expect ~1-3 tok/s — slow but highest-quality answers for life-critical queries.
+    if (( ram_mb >= 14336 )); then
+        local free_gb
+        free_gb=$(df -BG "$MODELS_DIR" | tail -1 | awk '{print $4}' | tr -d 'G')
+        if [[ "$free_gb" =~ ^[0-9]+$ ]] && (( free_gb >= 12 )); then
+            info "16 GB Pi detected -- pulling gemma4:12b..."
+            OLLAMA_MODELS="$MODELS_DIR" ollama pull "gemma4:12b" \
+                && success "gemma4:12b downloaded" \
+                || warn "gemma4:12b failed"
+        else
+            warn "< 12 GB free -- skipping gemma4:12b"
+        fi
+    fi
+}
+
+# ── Select best base model for available RAM ─────────────────────────────────
+select_base_model() {
+    local ram_mb
+    ram_mb=$(total_ram_mb)
+    if (( ram_mb >= 14336 )); then
+        # 16 GB Pi 5: gemma4:12b — best quality, ~1-3 tok/s (acceptable for
+        # survival use where accuracy matters more than speed)
+        echo "gemma4:12b"
+    elif (( ram_mb >= 6144 )); then
+        # 8 GB Pi 5: gemma4:e4b — good quality step-up, 3-5 tok/s
+        echo "gemma4:e4b"
+    else
+        # 4 GB Pi 5: gemma4:e2b — 8-12 tok/s, still Gemma 4 architecture
+        echo "gemma4:e2b"
+    fi
 }
 
 # ── Create survival-optimized Modelfile ──────────────────────────────────────
-# shellcheck disable=SC2120  # optional arg kept for future base-model overrides
 create_survival_model() {
-    local base_model="${1:-llama3.2:1b}"
+    local base_model="$1"
     info "Creating survival-optimized model from $base_model..."
-    # The Modelfile is stored alongside the repo so it is version-controlled.
-    # num_ctx=2048 keeps RAM use sane on 4 GB devices.
     local MODELFILE="$REPO_DIR/ai/Modelfile.survival"
     if [[ ! -f "$MODELFILE" ]]; then
         warn "Modelfile not found at $MODELFILE -- skipping survive model creation"
         return
     fi
-    OLLAMA_MODELS="$MODELS_DIR" ollama create survive -f "$MODELFILE" \
-        && success "Custom 'survive' model created" \
+    # Patch the FROM line at build time so the correct base is baked in.
+    local TMP_MF
+    TMP_MF=$(mktemp)
+    sed "s|^FROM .*|FROM ${base_model}|" "$MODELFILE" > "$TMP_MF"
+    OLLAMA_MODELS="$MODELS_DIR" ollama create survive -f "$TMP_MF" \
+        && success "Custom 'survive' model created (base: $base_model)" \
         || warn "Custom model creation failed"
+    rm -f "$TMP_MF"
 }
 
 # ── Test models ───────────────────────────────────────────────────────────────
@@ -170,7 +204,7 @@ print_usage() {
     echo ""
     echo "  List models:    ollama list"
     echo "  Chat with AI:   ollama run survive"
-    echo "  Quick query:    ollama run tinyllama 'How do I start a fire?'"
+    echo "  Quick query:    ollama run gemma4:e2b 'How do I start a fire?'"
     echo "  Web UI:         http://localhost:8080/ai"
     echo ""
     echo "  Models stored:  $MODELS_DIR"
@@ -184,7 +218,7 @@ main() {
             detect_hailo
             start_ollama
             pull_models
-            create_survival_model
+            create_survival_model "$(select_base_model)"
             test_models
             print_usage
             ;;
