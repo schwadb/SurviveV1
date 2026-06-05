@@ -57,19 +57,27 @@ start_ollama() {
 }
 
 # ── Pull models sized to the available RAM ────────────────────────────────────
+# Model selection rationale (CPU-only; Hailo-8L cannot accelerate LLMs):
+#
+#  gemma4:e2b  ~1.5 GB  8-12 tok/s on Pi 5  — primary; Gemma 4 quality in 2B
+#  gemma4:e4b  ~3.5 GB  3-5  tok/s on Pi 5  — quality step-up for 8 GB Pi
+#  gemma3:4b   ~2.5 GB  5-7  tok/s on Pi 5  — alternative mid-tier
+#  gemma4:12b  ~7.6 GB  NOT RECOMMENDED      — requires 8-10 GB RAM, swaps heavily
 pull_models() {
     local ram_mb
     ram_mb=$(total_ram_mb)
     info "Detected ${ram_mb} MB total RAM"
 
-    # Always-safe baseline: ~1 GB models for any Pi.
-    local PRIORITY_MODELS=("tinyllama" "llama3.2:1b")
-    # Mid tier: adds ~2-3 GB models, requires 6 GB+ total RAM.
-    local MID_MODELS=("phi3:mini" "llama3.2:3b")
-    # Large tier: 7B quantized models, requires 8 GB+ total RAM.
-    local LARGE_MODELS=("mistral:7b-q4_0")
+    # Baseline: gemma4:e2b works on any Pi 5 (4 GB or 8 GB); llama3.2:1b is the
+    # fallback if the Gemma 4 download fails or the device is very constrained.
+    local PRIORITY_MODELS=("gemma4:e2b" "llama3.2:1b")
+    # Mid tier: ~3.5 GB, 3-5 tok/s — meaningful quality gain, requires 6 GB+ free.
+    local MID_MODELS=("gemma4:e4b" "gemma3:4b")
+    # Large tier: only safe on 8 GB Pi with ≥10 GB disk; rare survival queries
+    # benefit from the extra reasoning capacity.
+    local LARGE_MODELS=("gemma3:12b-it-q4_K_M")
 
-    info "Pulling small models (safe on any Pi)..."
+    info "Pulling baseline models (safe on any Pi 5)..."
     for model in "${PRIORITY_MODELS[@]}"; do
         info "Pulling $model..."
         OLLAMA_MODELS="$MODELS_DIR" ollama pull "$model" \
@@ -86,24 +94,24 @@ pull_models() {
                 || warn "$model failed"
         done
     else
-        warn "< 6 GB RAM -- skipping phi3:mini and llama3.2:3b (would OOM)."
+        warn "< 6 GB RAM -- skipping gemma4:e4b and gemma3:4b (would OOM)."
     fi
 
     if (( ram_mb >= 8192 )); then
         local free_gb
         free_gb=$(df -BG "$MODELS_DIR" | tail -1 | awk '{print $4}' | tr -d 'G')
-        if [[ "$free_gb" =~ ^[0-9]+$ ]] && (( free_gb >= 10 )); then
-            info "8 GB+ RAM and ${free_gb} GB free -- pulling 7B model..."
+        if [[ "$free_gb" =~ ^[0-9]+$ ]] && (( free_gb >= 12 )); then
+            info "8 GB+ RAM and ${free_gb} GB free -- pulling 12B model..."
             for model in "${LARGE_MODELS[@]}"; do
                 OLLAMA_MODELS="$MODELS_DIR" ollama pull "$model" \
                     && success "$model downloaded" \
                     || warn "$model failed"
             done
         else
-            warn "< 10 GB free -- skipping 7B models"
+            warn "< 12 GB free -- skipping 12B model"
         fi
     else
-        warn "< 8 GB RAM -- skipping 7B models (will OOM)."
+        warn "< 8 GB RAM -- skipping 12B model (will OOM)."
     fi
 }
 
@@ -137,10 +145,23 @@ test_models() {
     echo "Installed models:"
     OLLAMA_MODELS="$MODELS_DIR" ollama list
 
-    info "Quick test with tinyllama..."
-    RESPONSE=$(OLLAMA_MODELS="$MODELS_DIR" ollama run tinyllama \
-        "In one sentence: how do you purify water by boiling?" 2>/dev/null || echo "FAILED")
-    echo "Response: $RESPONSE"
+    # Test with the best available model in priority order.
+    local TEST_MODEL=""
+    for candidate in survive gemma4:e2b llama3.2:1b; do
+        if OLLAMA_MODELS="$MODELS_DIR" ollama list 2>/dev/null | grep -q "^${candidate}"; then
+            TEST_MODEL="$candidate"
+            break
+        fi
+    done
+
+    if [[ -n "$TEST_MODEL" ]]; then
+        info "Quick test with $TEST_MODEL..."
+        RESPONSE=$(OLLAMA_MODELS="$MODELS_DIR" ollama run "$TEST_MODEL" \
+            "In one sentence: how do you purify water by boiling?" 2>/dev/null || echo "FAILED")
+        echo "Response: $RESPONSE"
+    else
+        warn "No testable model found"
+    fi
 }
 
 # ── Print usage ───────────────────────────────────────────────────────────────

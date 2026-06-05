@@ -119,12 +119,19 @@ All content under `$SURVIVE_STORAGE_PATH` (`/mnt/survive` by default):
 
 ### AI model (`ai/Modelfile.survival`)
 
-Defines the `survive` Ollama model. Built from `llama3.2:1b` with a large survival-domain system prompt. `num_ctx 2048` is intentionally conservative — raising it above 2048 will OOM a 4 GB Pi when other services are loaded. To change the base model, edit the `FROM` line and re-run `bash ai/setup_ollama.sh`.
+Defines the `survive` Ollama model. Currently built from `gemma4:e2b` (~1.5 GB, 8–12 tok/s on Pi 5) with a large survival-domain system prompt. `num_ctx 4096` is safe for this base model even on 4 GB Pi. To change the base model, edit the `FROM` line and re-run `bash ai/setup_ollama.sh`.
 
-`ai/setup_ollama.sh pull_models` gates model downloads by detected RAM:
-- Any RAM: `tinyllama`, `llama3.2:1b`
-- ≥6 GB: `phi3:mini`, `llama3.2:3b`
-- ≥8 GB + ≥10 GB free disk: `mistral:7b-q4_0`
+Model selection rationale (Hailo-8L is vision-only — all inference is CPU):
+
+| Model | RAM | Speed (Pi 5) | Tier |
+|-------|-----|--------------|------|
+| `gemma4:e2b` | ~1.5 GB | 8–12 tok/s | Baseline (all Pi 5) |
+| `gemma4:e4b` | ~3.5 GB | 3–5 tok/s | Mid (≥6 GB RAM) |
+| `gemma3:4b` | ~2.5 GB | 5–7 tok/s | Mid alternative |
+| `gemma3:12b-it-q4_K_M` | ~8 GB | 1–2 tok/s | Large (≥8 GB + ≥12 GB disk) |
+| `gemma4:12b` | ~7.6 GB | NOT recommended | Too large; swaps on Pi 5 |
+
+`ai/setup_ollama.sh pull_models` gates downloads by detected RAM automatically.
 
 ### Systemd (`systemd/*.service`)
 

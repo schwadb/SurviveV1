@@ -388,9 +388,9 @@ def serve_file(filepath):
     try:
         full_path.relative_to(storage_root)
     except ValueError:
-        return "Forbidden", 403
+        return render_template("error.html", code=403, message="Access forbidden"), 403
     if not full_path.exists():
-        return "File not found", 404
+        return render_template("error.html", code=404, message="File not found"), 404
     return send_from_directory(str(full_path.parent), full_path.name)
 
 
@@ -464,7 +464,7 @@ def ai_chat():
     if not data or "message" not in data:
         return jsonify({"error": "No message"}), 400
 
-    model = data.get("model", "tinyllama")
+    model = data.get("model", os.environ.get("SURVIVE_AI_MODEL", "survive"))
     message = data["message"]
 
     try:

@@ -1,4 +1,4 @@
-FROM llama3.2:1b
+FROM gemma4:e2b
 
 SYSTEM """
 You are SURVIVE, an offline AI assistant running on a Raspberry Pi 5 in a
@@ -59,7 +59,7 @@ RESPONSE GUIDELINES:
 
 PARAMETER temperature 0.7
 PARAMETER top_p 0.9
-# num_ctx reduced from 4096 to 2048: context scales RAM linearly; 4096 on a 3B
-# model is marginal on a 4 GB Pi 5 and causes OOM when other services are hot.
-PARAMETER num_ctx 2048
+# gemma4:e2b weights are ~1.5 GB; 4096-token KV cache adds ~300 MB — safe on
+# 4 GB Pi 5 even with Kiwix + Kolibri running. Up to 8192 is feasible on 8 GB.
+PARAMETER num_ctx 4096
 PARAMETER num_predict 1024
