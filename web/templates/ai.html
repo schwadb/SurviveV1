@@ -188,14 +188,15 @@
             <option value="{{ m }}">{{ m }}</option>
             {% endfor %}
           {% else %}
-            <option value="tinyllama">tinyllama (default)</option>
-            <option value="phi3:mini">phi3:mini</option>
-            <option value="llama3.2:3b">llama3.2:3b</option>
-            <option value="mistral:7b-q4">mistral:7b-q4</option>
+            <option value="survive">survive (default)</option>
+            <option value="gemma4:e2b">gemma4:e2b</option>
+            <option value="gemma4:12b">gemma4:12b</option>
+            <option value="llama3.2:1b">llama3.2:1b</option>
           {% endif %}
         </select>
         <div class="offline-notice">
-          Running 100% offline on your Raspberry Pi AI Hat (Hailo-8L NPU accelerated)
+          Running 100% offline on your Raspberry Pi — CPU inference via Ollama
+          (Hailo-8L accelerates vision tasks only, not LLMs)
         </div>
       </div>
 

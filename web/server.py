@@ -7,8 +7,11 @@ Flask app serving the offline survival knowledge portal
 import os
 import json
 import logging
+import re
+import secrets
 import shutil
 import socket
+import threading
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -23,6 +26,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 from constants import (  # noqa: E402
+    CATEGORIES,
     SERVICES,
     PORT_OLLAMA,
     PORT_DASHBOARD,
@@ -42,6 +46,9 @@ app = Flask(__name__)
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_HTTPONLY=True,
+    # Cap POST body size: the chat API only needs a JSON envelope; large bodies
+    # would pin the Pi's memory before rate limiting or JSON parsing can reject them.
+    MAX_CONTENT_LENGTH=64 * 1024,  # 64 KB
 )
 
 # CSRF is enabled for HTML form POSTs. JSON APIs are exempted individually
@@ -80,27 +87,45 @@ def _security_headers(response):
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    # Inline styles and scripts are used throughout the templates; unsafe-inline is
+    # required until they are extracted to static files. This still blocks injected
+    # external resources and data: URIs.
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "font-src 'self'; "
+        "object-src 'none'; "
+        "frame-ancestors 'none';",
+    )
     return response
 
-# Generate a persistent random secret key on first run
-_KEY_FILE = Path(__file__).parent.parent / "config" / ".secret_key"
-if os.environ.get("SECRET_KEY"):
-    app.secret_key = os.environ["SECRET_KEY"]
-elif _KEY_FILE.exists():
-    app.secret_key = _KEY_FILE.read_text().strip()
-    _KEY_FILE.chmod(0o600)  # enforce permissions on every startup
-else:
-    import secrets as _secrets
-    _new_key = _secrets.token_hex(32)
-    _KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _KEY_FILE.write_text(_new_key)
-    _KEY_FILE.chmod(0o600)
-    app.secret_key = _new_key
+def _configure_secret_key(flask_app) -> None:
+    """Set flask_app.secret_key from env, persisted file, or freshly generated value."""
+    key_file = Path(__file__).parent.parent / "config" / ".secret_key"
+    if os.environ.get("SECRET_KEY"):
+        flask_app.secret_key = os.environ["SECRET_KEY"]
+    elif key_file.exists():
+        flask_app.secret_key = key_file.read_text().strip()
+        key_file.chmod(0o600)  # enforce permissions on every startup
+    else:
+        new_key = secrets.token_hex(32)
+        key_file.parent.mkdir(parents=True, exist_ok=True)
+        key_file.write_text(new_key)
+        key_file.chmod(0o600)
+        flask_app.secret_key = new_key
+
+
+_configure_secret_key(app)
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 REPO_DIR = Path(__file__).parent.parent
 DATA_DIR = Path(os.environ.get("SURVIVE_DATA_DIR", REPO_DIR / "data"))
 _configured_storage = Path(os.environ.get("SURVIVE_STORAGE_PATH", "/mnt/survive"))
+# Snapshot at startup — does not track live mount/unmount after the server starts.
 STORAGE_MOUNTED = _configured_storage.exists()
 STORAGE_PATH = _configured_storage if STORAGE_MOUNTED else DATA_DIR
 
@@ -109,76 +134,32 @@ TIMEOUT_SERVICE_CHECK = float(os.environ.get("SURVIVE_SERVICE_CHECK_TIMEOUT", "1
 TIMEOUT_OLLAMA_LIST   = float(os.environ.get("SURVIVE_OLLAMA_LIST_TIMEOUT", "2"))
 TIMEOUT_AI_CHAT       = float(os.environ.get("SURVIVE_AI_CHAT_TIMEOUT", "60"))
 
-CATEGORIES = [
-    # ── Core Survival ─────────────────────────────────────────
-    {"id": "medical", "name": "Medical & First Aid", "icon": "🏥",
-     "color": "#e74c3c", "desc": "Emergency medicine, first aid, TCCC, trauma"},
-    {"id": "medicine_advanced", "name": "Advanced Medicine", "icon": "🩺",
-     "color": "#c0392b", "desc": "Surgery, obstetrics, dental, psychiatric care in austere"},
-    {"id": "obstetrics", "name": "Childbirth & Midwifery", "icon": "👶",
-     "color": "#e91e8c", "desc": "Emergency delivery, midwifery, prenatal care without hospital"},
-    {"id": "dental", "name": "Dental Emergency", "icon": "🦷",
-     "color": "#9b59b6", "desc": "Tooth extraction, abscess, fillings without a dentist"},
-    {"id": "psychology", "name": "Mental Health & Survival Psychology", "icon": "🧠",
-     "color": "#8e44ad", "desc": "Psychological first aid, grief, resilience, disaster psychology"},
-    # ── Food & Water ──────────────────────────────────────────
-    {"id": "food", "name": "Food & Water", "icon": "🌾",
-     "color": "#27ae60", "desc": "Farming, foraging, food preservation, water purification"},
-    {"id": "animal_husbandry", "name": "Animal Husbandry", "icon": "🐓",
-     "color": "#2ecc71", "desc": "Chickens, goats, cattle, rabbits — health, breeding, butchering"},
-    {"id": "seeds", "name": "Seed Saving", "icon": "🌱",
-     "color": "#1abc9c", "desc": "Storing and propagating open-pollinated seeds, generations"},
-    {"id": "beeswax", "name": "Beekeeping", "icon": "🐝",
-     "color": "#f39c12", "desc": "Hive management, honey harvest, wax, mead, disease prevention"},
-    {"id": "fermentation", "name": "Fermentation & Brewing", "icon": "🍺",
-     "color": "#d35400", "desc": "Lacto-fermentation, beer, mead, vinegar, cheese, tinctures"},
-    # ── Infrastructure ────────────────────────────────────────
-    {"id": "shelter", "name": "Shelter & Construction", "icon": "🏠",
-     "color": "#8e44ad", "desc": "Building techniques, earthships, log cabins, off-grid"},
-    {"id": "sanitation", "name": "Sanitation & Waste", "icon": "🚽",
-     "color": "#795548", "desc": "Composting toilets, humanure, greywater, disease prevention"},
-    {"id": "water_systems", "name": "Water Systems & Wells", "icon": "💧",
-     "color": "#2980b9", "desc": "Hand-dug wells, rainwater, filtration, distribution systems"},
-    {"id": "energy", "name": "Energy & Power", "icon": "⚡",
-     "color": "#f39c12", "desc": "Solar, wind, batteries, biogas, generators"},
-    # ── Skills & Crafts ───────────────────────────────────────
-    {"id": "skills", "name": "Wilderness & Primitive Skills", "icon": "🪓",
-     "color": "#16a085", "desc": "Fire, navigation, foraging, tracking, shelter building"},
-    {"id": "blacksmithing", "name": "Blacksmithing & Metalwork", "icon": "⚒️",
-     "color": "#607d8b", "desc": "Forge building, tool making, repair, knife making"},
-    {"id": "primitive_skills", "name": "Primitive Crafts", "icon": "🧵",
-     "color": "#8d6e63", "desc": "Brain tanning, soap making, candles, fiber, 18th-century crafts"},
-    {"id": "tools", "name": "Tools & Repair", "icon": "🔧",
-     "color": "#2980b9", "desc": "iFixit guides, woodworking, mechanical repair"},
-    {"id": "permaculture", "name": "Permaculture & Food Forest", "icon": "🌳",
-     "color": "#4caf50", "desc": "Zone design, guild planting, food forest, water earthworks"},
-    # ── Communications & Community ────────────────────────────
-    {"id": "communication", "name": "Communications & Radio", "icon": "📡",
-     "color": "#c0392b", "desc": "Ham radio, Morse code, CHIRP programming, emergency frequencies"},
-    {"id": "security", "name": "Security & Defense", "icon": "🛡️",
-     "color": "#37474f", "desc": "Perimeter defense, hand signals, community security doctrine"},
-    {"id": "community", "name": "Community & Social Survival", "icon": "👥",
-     "color": "#5c6bc0", "desc": "Post-collapse governance, barter economy, conflict resolution"},
-    # ── Reference ─────────────────────────────────────────────
-    {"id": "education", "name": "Education & Science", "icon": "🔬",
-     "color": "#2c3e50", "desc": "Khan Academy, science, math, engineering"},
-    {"id": "reference", "name": "Reference & Books", "icon": "📚",
-     "color": "#7f8c8d", "desc": "Wikipedia, Gutenberg library, manuals"},
-    {"id": "maps", "name": "Maps & Navigation", "icon": "🗺️",
-     "color": "#d35400", "desc": "Offline maps, topographic charts, navigation"},
-    {"id": "military", "name": "Military Manuals", "icon": "⚔️",
-     "color": "#2c3e50", "desc": "Army survival, field manuals, TCCC"},
-    {"id": "videos", "name": "How-To Videos", "icon": "🎬",
-     "color": "#8e44ad", "desc": "Step-by-step survival and skills videos"},
-]
-
-
 _CACHE_TTL = 60.0  # seconds — how long content-stat / recent-file caches are valid
-_content_stats_cache: list = [0.0, None]   # [timestamp, data]
-_recent_cache: list       = [0.0, None]    # [timestamp, data]
 
 # Search is capped to avoid walking 800 GB to exhaustion with zero matches.
 _MAX_FILES_CHECKED = 500_000
+
+
+class _TTLCache:
+    """Thread-safe write-once TTL cache for a single value."""
+
+    def __init__(self, ttl: float) -> None:
+        self._ttl = ttl
+        self._ts = 0.0
+        self._data = None
+        self._lock = threading.Lock()
+
+    def get(self, compute):
+        """Return cached value, calling compute() to refresh if TTL has expired."""
+        with self._lock:
+            if time.monotonic() - self._ts > self._ttl:
+                self._ts = time.monotonic()
+                self._data = compute()
+            return self._data
+
+
+_content_stats_cache = _TTLCache(_CACHE_TTL)
+_recent_cache = _TTLCache(_CACHE_TTL)
 
 
 def _safe_walk(root: Path):
@@ -256,10 +237,7 @@ def _compute_content_stats() -> dict:
 
 def get_content_stats() -> dict:
     """Cached wrapper — recomputes at most once per _CACHE_TTL seconds."""
-    if time.monotonic() - _content_stats_cache[0] > _CACHE_TTL:
-        _content_stats_cache[0] = time.monotonic()
-        _content_stats_cache[1] = _compute_content_stats()
-    return _content_stats_cache[1]
+    return _content_stats_cache.get(_compute_content_stats)
 
 
 def _compute_recent_downloads() -> list:
@@ -288,10 +266,7 @@ def _compute_recent_downloads() -> list:
 
 def get_recent_downloads() -> list:
     """Cached wrapper — recomputes at most once per _CACHE_TTL seconds."""
-    if time.monotonic() - _recent_cache[0] > _CACHE_TTL:
-        _recent_cache[0] = time.monotonic()
-        _recent_cache[1] = _compute_recent_downloads()
-    return _recent_cache[1]
+    return _recent_cache.get(_compute_recent_downloads)
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
@@ -465,7 +440,12 @@ def ai_chat():
         return jsonify({"error": "No message"}), 400
 
     model = data.get("model", os.environ.get("SURVIVE_AI_MODEL", "survive"))
-    message = data["message"]
+    # Validate model name: allow alphanumeric, colon, dot, dash, underscore only.
+    # Prevents path traversal or injection into the Ollama API URL.
+    if not re.fullmatch(r"[a-zA-Z0-9:.\-_]{1,100}", model):
+        return jsonify({"error": "Invalid model name"}), 400
+
+    message = str(data["message"])[:4096]  # bound message length to one context window
 
     try:
         payload = json.dumps({
