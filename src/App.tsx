@@ -28,11 +28,11 @@ import { useTheme } from './hooks/useLocalStorage';
 import type { Alert } from './types';
 import { mockAlerts } from './data/mockData';
 
-const ROUTE_META: Record<string, { title: string; subtitle: string }> = {
+const ROUTE_META: Record<string, { title: string; subtitle: string; isTrackingPage?: true }> = {
   '/': { title: 'Dashboard', subtitle: 'Live intelligence overview' },
-  '/satellites': { title: 'Satellite Tracker', subtitle: 'Real-time orbital tracking via CelesTrak & N2YO' },
-  '/aircraft': { title: 'Aircraft Tracker', subtitle: 'Live ADS-B flight data via OpenSky Network' },
-  '/ships': { title: 'Ship Tracker', subtitle: 'AIS maritime vessel tracking' },
+  '/satellites': { title: 'Satellite Tracker', subtitle: 'Real-time orbital tracking via CelesTrak & N2YO', isTrackingPage: true },
+  '/aircraft': { title: 'Aircraft Tracker', subtitle: 'Live ADS-B flight data via OpenSky Network', isTrackingPage: true },
+  '/ships': { title: 'Ship Tracker', subtitle: 'AIS maritime vessel tracking', isTrackingPage: true },
   '/cameras': { title: 'Public Cameras', subtitle: 'Open webcam feeds worldwide' },
   '/flock': { title: 'Flock Cameras', subtitle: 'License plate reader network mapping' },
   '/person': { title: 'Person Lookup', subtitle: 'OSINT people search from public records' },
@@ -42,7 +42,7 @@ const ROUTE_META: Record<string, { title: string; subtitle: string }> = {
   '/scanners': { title: 'Scanner Access', subtitle: 'Live police, fire, EMS & ATC radio feeds' },
   '/ai-search': { title: 'Perplexity AI Search', subtitle: 'AI-powered OSINT research with real-time web search' },
   '/agents': { title: 'OSINT Agent Recorder', subtitle: 'Auto-capture and replay live intelligence data' },
-  '/chokepoints': { title: 'Strategic Chokepoints', subtitle: 'Pre-configured monitoring for critical global corridors' },
+  '/chokepoints': { title: 'Strategic Chokepoints', subtitle: 'Pre-configured monitoring for critical global corridors', isTrackingPage: true },
   '/watchlist': { title: 'Watchlist', subtitle: 'Monitor specific targets across all data sources' },
   '/resources': { title: 'Resource Manager', subtitle: 'Manage OSINT tools, APIs & data sources' },
   '/settings': { title: 'Settings', subtitle: 'Configure API keys, live data & preferences' },
@@ -94,7 +94,7 @@ const App: React.FC = () => {
         />
 
         {/* Timeline toggle button — shown on tracking pages */}
-        {['/satellites', '/aircraft', '/ships', '/chokepoints'].includes(location.pathname) && (
+        {meta.isTrackingPage && (
           <div className="flex items-center gap-2 px-4 py-1 border-b border-gray-800 bg-gray-900/50">
             <button
               onClick={() => setShowTimeline(v => !v)}

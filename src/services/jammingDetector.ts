@@ -84,11 +84,10 @@ export async function fetchGpsJamData(
   date?: string
 ): Promise<JammingZone[]> {
   const dateStr = date ?? new Date().toISOString().split('T')[0]
-  // Try direct API first; fall back silently — local OpenSky detection still runs.
+  // Proxy first (no CORS); external URL only as fallback for direct/non-browser callers.
   const urls = [
-    `https://gpsjam.org/api/jam?lat=${lat}&lon=${lng}&z=${zoom}&date=${dateStr}`,
-    // Proxy path for deployments with a backend (no-op if not available)
     `/api/gpsjam?lat=${lat}&lon=${lng}&z=${zoom}&date=${dateStr}`,
+    `https://gpsjam.org/api/jam?lat=${lat}&lon=${lng}&z=${zoom}&date=${dateStr}`,
   ]
 
   for (const url of urls) {

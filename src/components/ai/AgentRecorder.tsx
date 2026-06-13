@@ -100,12 +100,8 @@ export default function AgentRecorder() {
   }
 
   async function refreshCounts() {
-    const counts: Record<string, number> = {}
-    for (const s of sessions) {
-      const snaps = await getSnapshots(s.id)
-      counts[s.id] = snaps.length
-    }
-    setSnapshotCounts(counts)
+    const entries = await Promise.all(sessions.map(s => getSnapshots(s.id).then(snaps => [s.id, snaps.length] as const)))
+    setSnapshotCounts(Object.fromEntries(entries))
   }
 
   useEffect(() => {

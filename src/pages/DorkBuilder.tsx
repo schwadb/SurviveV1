@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Copy, ExternalLink, ChevronDown, ChevronUp,
@@ -308,26 +308,23 @@ function parseTemplateIntoFields(tpl: string): OperatorFields {
   const fields: OperatorFields = { ...DEFAULT_FIELDS };
   let remainder = tpl;
 
+  // Regex: op:"quoted value" OR op:bare-value — group 1 = quoted, group 2 = bare
   const extract = (key: keyof OperatorFields, re: RegExp) => {
     if (fields[key]) return;
     const m = remainder.match(re);
-    if (m) { (fields as unknown as Record<string, string>)[key] = m[1]; remainder = remainder.replace(m[0], '').trim(); }
+    if (m) { (fields as unknown as Record<string, string>)[key] = m[1] ?? m[2]; remainder = remainder.replace(m[0], '').trim(); }
   };
 
   extract('site',       /\bsite:(\S+)/);
   extract('inurl',      /\binurl:(\S+)/);
-  extract('intitle',    /\bintitle:"([^"]+)"/);
-  extract('intitle',    /\bintitle:(\S+)/);
-  extract('intext',     /\bintext:"([^"]+)"/);
-  extract('intext',     /\bintext:(\S+)/);
+  extract('intitle',    /\bintitle:(?:"([^"]+)"|(\S+))/);
+  extract('intext',     /\bintext:(?:"([^"]+)"|(\S+))/);
   extract('filetype',   /\bfiletype:(\S+)/);
   extract('ext',        /\bext:(\S+)/);
   extract('inanchor',   /\binanchor:(\S+)/);
-  extract('allintext',  /\ballintext:"([^"]+)"/);
-  extract('allintext',  /\ballintext:(\S+)/);
+  extract('allintext',  /\ballintext:(?:"([^"]+)"|(\S+))/);
   extract('allinurl',   /\ballinurl:(\S+)/);
-  extract('allintitle', /\ballintitle:"([^"]+)"/);
-  extract('allintitle', /\ballintitle:(\S+)/);
+  extract('allintitle', /\ballintitle:(?:"([^"]+)"|(\S+))/);
   extract('cache',      /\bcache:(\S+)/);
   extract('related',    /\brelated:(\S+)/);
 
@@ -415,7 +412,7 @@ const DorkBuilder: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const warnings = validateQuery(fields, queryString);
+  const warnings = useMemo(() => validateQuery(fields, queryString), [fields, queryString]);
 
   const updateQuery = useCallback((updated: OperatorFields) => {
     const q = buildQuery(updated);
