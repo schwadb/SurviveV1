@@ -281,6 +281,10 @@ What survival challenge can I help you with?
                   onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendMessage()}"
                   oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'">
         </textarea>
+        <button class="btn btn-secondary" id="micBtn" onclick="toggleMic()" title="Voice input (hold or click)"
+                style="height:40px; font-size:18px; padding:8px 12px; display:none;">🎤</button>
+        <button class="btn btn-secondary" id="ttsToggle" onclick="toggleTTS()" title="Toggle spoken responses"
+                style="height:40px; font-size:18px; padding:8px 12px; display:none;">🔇</button>
         <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
         <button class="btn btn-secondary" id="cancelBtn" onclick="cancelRequest()"
                 style="height:40px; display:none;">Cancel</button>
@@ -417,5 +421,132 @@ function clearChat() {
 }
 
 chatInput.focus();
+
+// ── Voice AI (Whisper STT + Piper TTS) ──────────────────────────────────────
+let _voiceAvailable = {whisper: false, piper: false};
+let _ttsEnabled = false;
+let _mediaRecorder = null;
+let _recording = false;
+
+(async function checkVoice() {
+  try {
+    const r = await fetch('/api/voice/status');
+    _voiceAvailable = await r.json();
+    if (_voiceAvailable.whisper) document.getElementById('micBtn').style.display = '';
+    if (_voiceAvailable.piper) document.getElementById('ttsToggle').style.display = '';
+  } catch(e) {}
+})();
+
+function toggleTTS() {
+  _ttsEnabled = !_ttsEnabled;
+  document.getElementById('ttsToggle').textContent = _ttsEnabled ? '🔊' : '🔇';
+  document.getElementById('ttsToggle').title = _ttsEnabled ? 'Spoken responses ON' : 'Spoken responses OFF';
+}
+
+async function speakText(text) {
+  if (!_ttsEnabled || !_voiceAvailable.piper) return;
+  try {
+    const r = await fetch('/api/voice/tts', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: text.substring(0, 500)}),
+    });
+    if (r.ok) {
+      const blob = await r.blob();
+      const audio = new Audio(URL.createObjectURL(blob));
+      audio.play();
+    }
+  } catch(e) {}
+}
+
+async function toggleMic() {
+  const btn = document.getElementById('micBtn');
+  if (_recording) {
+    _recording = false;
+    btn.style.background = '';
+    btn.textContent = '🎤';
+    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') _mediaRecorder.stop();
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    _mediaRecorder = new MediaRecorder(stream, {mimeType: 'audio/webm'});
+    const chunks = [];
+
+    _mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    _mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      btn.style.background = '';
+      btn.textContent = '🎤';
+      if (chunks.length === 0) return;
+
+      const blob = new Blob(chunks, {type: 'audio/webm'});
+      btn.textContent = '⏳';
+
+      // Convert webm to wav using AudioContext for Whisper compatibility
+      try {
+        const arrayBuf = await blob.arrayBuffer();
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 16000});
+        const decoded = await audioCtx.decodeAudioData(arrayBuf);
+        const wavBuf = encodeWav(decoded);
+        audioCtx.close();
+
+        const r = await fetch('/api/voice/stt', {method: 'POST', body: wavBuf});
+        const data = await r.json();
+        if (data.text) {
+          chatInput.value = data.text;
+          sendMessage();
+        } else {
+          addMessage('ai', 'Could not understand audio. Please try again.');
+        }
+      } catch(e) {
+        addMessage('ai', 'Audio processing error. Ensure microphone is working.');
+      }
+      btn.textContent = '🎤';
+    };
+
+    _recording = true;
+    btn.style.background = 'rgba(248,81,73,0.3)';
+    btn.textContent = '⏹';
+    _mediaRecorder.start();
+  } catch(e) {
+    addMessage('ai', 'Microphone access denied. Check browser permissions.');
+  }
+}
+
+function encodeWav(audioBuffer) {
+  const ch = audioBuffer.getChannelData(0);
+  const sr = audioBuffer.sampleRate;
+  const buf = new ArrayBuffer(44 + ch.length * 2);
+  const v = new DataView(buf);
+  function writeStr(o, s) { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+  writeStr(0, 'RIFF');
+  v.setUint32(4, 36 + ch.length * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true);
+  v.setUint32(28, sr * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  v.setUint32(40, ch.length * 2, true);
+  for (let i = 0; i < ch.length; i++) {
+    const s = Math.max(-1, Math.min(1, ch[i]));
+    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return new Uint8Array(buf);
+}
+
+// Patch sendMessage to trigger TTS on AI responses
+const _origAddMessage = addMessage;
+addMessage = function(role, content) {
+  const div = _origAddMessage(role, content);
+  if (role !== 'user' && !content.startsWith('Error:')) speakText(content);
+  return div;
+};
 </script>
 {% endblock %}

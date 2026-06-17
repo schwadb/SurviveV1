@@ -14,22 +14,51 @@ HOSTNAME="${SURVIVE_HOSTNAME:-survive}"
 CERT_DIR="/etc/nginx/certs"
 CERT="$CERT_DIR/survive.crt"
 KEY="$CERT_DIR/survive.key"
+CA_CERT="$CERT_DIR/survive-ca.pem"
 
-GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
+GREEN='\033[0;32m'; BLUE='\033[0;34m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[TLS]${NC} $*"; }
 success() { echo -e "${GREEN}[TLS]${NC} $*"; }
+warn()    { echo -e "${YELLOW}[TLS]${NC} $*"; }
 
 [[ $EUID -eq 0 ]] || { echo "Run with sudo: sudo bash $0"; exit 1; }
 
 mkdir -p "$CERT_DIR"
 chmod 700 "$CERT_DIR"
 
-info "Generating self-signed certificate for $HOSTNAME.local..."
-openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-    -keyout "$KEY" \
-    -out "$CERT" \
-    -subj "/C=US/ST=Local/L=Local/O=SurviveV1/CN=$HOSTNAME.local" \
-    -addext "subjectAltName=DNS:$HOSTNAME.local,DNS:$HOSTNAME,IP:127.0.0.1"
+# Detect the Pi's LAN IP for the certificate SAN
+LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+if [[ -z "$LAN_IP" ]]; then
+    LAN_IP="192.168.1.1"
+    warn "Could not detect LAN IP, defaulting to $LAN_IP"
+fi
+
+# Prefer mkcert if available (produces locally-trusted certs that enable PWA
+# service workers on LAN without browser warnings). Fall back to openssl.
+if command -v mkcert &>/dev/null; then
+    info "Using mkcert for locally-trusted certificates..."
+    mkcert -install 2>/dev/null || true
+    mkcert -cert-file "$CERT" -key-file "$KEY" \
+        "$HOSTNAME.local" "$HOSTNAME" "localhost" "127.0.0.1" "$LAN_IP"
+    CAROOT=$(mkcert -CAROOT 2>/dev/null)
+    if [[ -n "$CAROOT" && -f "$CAROOT/rootCA.pem" ]]; then
+        cp "$CAROOT/rootCA.pem" "$CA_CERT"
+        chmod 644 "$CA_CERT"
+        success "CA certificate copied to $CA_CERT"
+        info "Install this CA on client devices to trust HTTPS without warnings."
+        info "This also enables PWA service workers on LAN (required for https://$LAN_IP)."
+    fi
+else
+    info "mkcert not found -- using self-signed certificate (install mkcert for PWA support)"
+    info "  Install mkcert: curl -JLO https://github.com/FiloSottile/mkcert/releases/latest/download/mkcert-v*-linux-arm64"
+    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+        -keyout "$KEY" \
+        -out "$CERT" \
+        -subj "/C=US/ST=Local/L=Local/O=SurviveV1/CN=$HOSTNAME.local" \
+        -addext "subjectAltName=DNS:$HOSTNAME.local,DNS:$HOSTNAME,IP:127.0.0.1,IP:$LAN_IP"
+    warn "Self-signed certs trigger browser warnings and do NOT enable PWA service workers."
+    warn "For full PWA support on LAN, install mkcert and re-run this script."
+fi
 
 chmod 600 "$KEY"
 chmod 644 "$CERT"
@@ -116,9 +145,22 @@ fi
 echo ""
 success "TLS setup complete!"
 echo "  HTTPS URL: https://$HOSTNAME.local"
+echo "  HTTPS IP:  https://$LAN_IP"
 echo "  HTTP URL:  http://$HOSTNAME.local (still works)"
 echo ""
-echo "  Browser will show a security warning for self-signed certs."
-echo "  Click 'Advanced' → 'Proceed' to accept."
-echo ""
-echo "  To trust the cert on your devices, copy $CERT to each device and install."
+if command -v mkcert &>/dev/null && [[ -f "$CA_CERT" ]]; then
+    echo "  PWA + Service Worker support: ENABLED (mkcert CA trusted locally)"
+    echo ""
+    echo "  To enable on other devices, copy and install the CA certificate:"
+    echo "    $CA_CERT"
+    echo ""
+    echo "  Android: Settings → Security → Install from storage"
+    echo "  iOS:     AirDrop/email the .pem → Settings → Profile → Install → Trust"
+    echo "  Desktop: Import into browser certificate store"
+else
+    echo "  Browser will show a security warning for self-signed certs."
+    echo "  Click 'Advanced' → 'Proceed' to accept."
+    echo ""
+    echo "  PWA service workers require trusted HTTPS on LAN IPs."
+    echo "  Install mkcert for full PWA support: https://github.com/FiloSottile/mkcert"
+fi

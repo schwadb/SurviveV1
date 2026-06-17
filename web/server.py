@@ -11,6 +11,8 @@ import re
 import secrets
 import shutil
 import socket
+import subprocess
+import tempfile
 import threading
 import time
 import urllib.request
@@ -160,6 +162,7 @@ class _TTLCache:
 
 _content_stats_cache = _TTLCache(_CACHE_TTL)
 _recent_cache = _TTLCache(_CACHE_TTL)
+_storage_info_cache = _TTLCache(_CACHE_TTL)
 
 
 def _safe_walk(root: Path):
@@ -172,8 +175,7 @@ def _safe_walk(root: Path):
                 yield Path(dirpath) / name
 
 
-def get_storage_info():
-    """Return disk usage for the storage path."""
+def _compute_storage_info():
     try:
         total, used, free = shutil.disk_usage(str(STORAGE_PATH))
         return {
@@ -185,6 +187,11 @@ def get_storage_info():
     except OSError as e:
         logging.warning("Could not read disk usage: %s", e)
         return {"total_gb": 0, "used_gb": 0, "free_gb": 0, "percent": 0}
+
+
+def get_storage_info():
+    """Cached wrapper — recomputes at most once per _CACHE_TTL seconds."""
+    return _storage_info_cache.get(_compute_storage_info)
 
 
 def check_service(svc_port: int) -> bool:
@@ -366,7 +373,9 @@ def serve_file(filepath):
         return render_template("error.html", code=403, message="Access forbidden"), 403
     if not full_path.exists():
         return render_template("error.html", code=404, message="File not found"), 404
-    return send_from_directory(str(full_path.parent), full_path.name)
+    resp = send_from_directory(str(full_path.parent), full_path.name)
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
 
 
 @app.route("/search")
@@ -406,6 +415,98 @@ def search():
         results=results,
         categories=CATEGORIES,
     )
+
+
+@app.route("/vision")
+def vision_page():
+    hailo_available = (STORAGE_PATH / "ai_models" / "vision" / "yolov8s.hef").exists()
+    return render_template("vision.html", hailo_available=hailo_available, categories=CATEGORIES)
+
+
+@app.route("/api/vision/detect", methods=["POST"])
+@csrf.exempt
+@limiter.limit("10 per minute")
+def vision_detect():
+    """Run object detection on an uploaded image via Hailo NPU."""
+    model_path = STORAGE_PATH / "ai_models" / "vision" / "yolov8s.hef"
+    labels_path = STORAGE_PATH / "ai_models" / "vision" / "coco_labels.txt"
+    if not model_path.exists():
+        return jsonify({"error": "Vision model not installed. Run: bash ai/setup_vision.sh"}), 503
+
+    if "image" not in request.files:
+        return jsonify({"error": "No image uploaded"}), 400
+
+    img_file = request.files["image"]
+    if not img_file.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    allowed_ext = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+    ext = os.path.splitext(img_file.filename)[1].lower()
+    if ext not in allowed_ext:
+        return jsonify({"error": f"Unsupported format: {ext}"}), 400
+
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        img_file.save(tmp)
+        tmp_path = tmp.name
+
+    try:
+        return _run_hailo_detection(tmp_path, model_path, labels_path)
+    finally:
+        os.unlink(tmp_path)
+
+
+def _run_hailo_detection(img_path, model_path, labels_path):
+    """Run Hailo inference on a saved image file."""
+    labels = []
+    if labels_path.exists():
+        labels = labels_path.read_text().strip().split("\n")
+
+    try:
+        from PIL import Image  # pylint: disable=import-outside-toplevel
+        import numpy as np  # pylint: disable=import-outside-toplevel
+    except ImportError:
+        return jsonify({"error": "Pillow/numpy not installed"}), 503
+
+    img = Image.open(img_path).convert("RGB").resize((640, 640))
+    img_array = np.array(img, dtype=np.uint8)
+
+    try:
+        from hailo_platform import (  # pylint: disable=import-outside-toplevel
+            HEF, VDevice, ConfigureParams, HailoStreamInterface,
+        )
+    except ImportError:
+        return jsonify({
+            "error": "Hailo SDK not installed. Run: bash ai/setup_vision.sh",
+        }), 503
+
+    hef = HEF(str(model_path))
+    with VDevice() as vdevice:
+        params = ConfigureParams.create_from_hef(
+            hef, interface=HailoStreamInterface.PCIe,
+        )
+        network_group = vdevice.configure(hef, params)[0]
+        with network_group.activate():
+            input_data = {
+                network_group.get_input_vstream_infos()[0].name:
+                np.expand_dims(img_array, axis=0),
+            }
+            results = network_group.infer(input_data)
+
+    detections = []
+    for output_data in results.values():
+        if output_data is None or len(output_data) == 0:
+            continue
+        for det in output_data[0]:
+            if len(det) < 5:
+                continue
+            conf = float(det[4])
+            if conf <= 0.5:
+                continue
+            cls_id = int(det[5]) if len(det) > 5 else 0
+            label = labels[cls_id] if cls_id < len(labels) else f"class_{cls_id}"
+            detections.append({"label": label, "confidence": round(conf, 3)})
+
+    return jsonify({"detections": detections, "count": len(detections)})
 
 
 @app.route("/ai")
@@ -479,6 +580,103 @@ def ai_chat():
         # Log the real error server-side; never leak internals to the client.
         logging.exception("AI chat proxy error")
         return jsonify({"error": "AI service unavailable"}), 502
+
+
+_VOICE_DIR = STORAGE_PATH / "ai_models" / "voice"
+_WHISPER_BIN = _VOICE_DIR / "whisper" / "main"
+_WHISPER_MODEL = _VOICE_DIR / "whisper" / "ggml-tiny.en.bin"
+_PIPER_BIN = _VOICE_DIR / "piper" / "piper"
+_PIPER_MODEL = _VOICE_DIR / "piper" / "en_US-lessac-medium.onnx"
+
+
+@app.route("/api/voice/status")
+def voice_status():
+    """Check if voice components (Whisper STT / Piper TTS) are installed."""
+    return jsonify({
+        "whisper": _WHISPER_BIN.exists() and _WHISPER_MODEL.exists(),
+        "piper": _PIPER_BIN.exists() and _PIPER_MODEL.exists(),
+    })
+
+
+@app.route("/api/voice/stt", methods=["POST"])
+@csrf.exempt
+@limiter.limit("10 per minute")
+def voice_stt():
+    """Transcribe audio via Whisper. Accepts WAV audio in request body."""
+    if not (_WHISPER_BIN.exists() and _WHISPER_MODEL.exists()):
+        return jsonify({"error": "Whisper STT not installed. Run: bash ai/setup_voice.sh"}), 503
+
+    audio = request.get_data()
+    if not audio or len(audio) < 100:
+        return jsonify({"error": "No audio data"}), 400
+    if len(audio) > 10 * 1024 * 1024:
+        return jsonify({"error": "Audio too large (10 MB max)"}), 413
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        tmp.write(audio)
+        tmp_path = tmp.name
+
+    try:
+        result = subprocess.run(
+            [str(_WHISPER_BIN), "-m", str(_WHISPER_MODEL),
+             "-f", tmp_path, "--no-timestamps", "-nt"],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+        text = result.stdout.strip()
+        if not text:
+            return jsonify({"error": "Could not transcribe audio"}), 422
+        return jsonify({"text": text})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Transcription timed out"}), 504
+    except OSError:
+        logging.exception("Whisper STT error")
+        return jsonify({"error": "STT processing failed"}), 500
+    finally:
+        os.unlink(tmp_path)
+
+
+@app.route("/api/voice/tts", methods=["POST"])
+@csrf.exempt
+@limiter.limit("10 per minute")
+def voice_tts():
+    """Synthesize speech via Piper. Returns WAV audio."""
+    if not (_PIPER_BIN.exists() and _PIPER_MODEL.exists()):
+        return jsonify({"error": "Piper TTS not installed. Run: bash ai/setup_voice.sh"}), 503
+
+    if (request.content_type or "").split(";")[0].strip() != "application/json":
+        return jsonify({"error": "Content-Type must be application/json"}), 415
+
+    data = request.get_json(silent=True)
+    if not data or "text" not in data:
+        return jsonify({"error": "No text provided"}), 400
+
+    text = str(data["text"])[:2000]
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        proc = subprocess.run(
+            [str(_PIPER_BIN), "--model", str(_PIPER_MODEL),
+             "--output_file", tmp_path],
+            input=text, capture_output=True, text=True, timeout=30, check=False,
+        )
+        if proc.returncode != 0 or not os.path.exists(tmp_path):
+            return jsonify({"error": "TTS synthesis failed"}), 500
+        resp = send_from_directory(
+            os.path.dirname(tmp_path), os.path.basename(tmp_path),
+            mimetype="audio/wav",
+        )
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "TTS timed out"}), 504
+    except OSError:
+        logging.exception("Piper TTS error")
+        return jsonify({"error": "TTS processing failed"}), 500
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 @app.route("/health")

@@ -125,11 +125,14 @@ Model selection rationale (Hailo-8L is vision-only — all inference is CPU):
 
 | Model | RAM | Speed (Pi 5) | Tier |
 |-------|-----|--------------|------|
+| `qwen2.5:1.5b` | ~1.0 GB | 10–15 tok/s | Best quality/speed/RAM balance |
 | `gemma4:e2b` | ~1.5 GB | 8–12 tok/s | Baseline (all Pi 5, <6 GB) |
 | `gemma4:e4b` | ~3.5 GB | 3–5 tok/s | Mid (≥6 GB RAM) |
 | `gemma3:4b` | ~2.5 GB | 5–7 tok/s | Mid alternative |
 | `gemma3:12b-it-q4_K_M` | ~8 GB | 1–2 tok/s | Large (≥8 GB + ≥12 GB disk) |
 | `gemma4:12b` | ~7.6 GB | 1–3 tok/s | 16 GB Pi 5 (≥14 GB RAM) |
+
+Ollama env tuning for Pi 5: `OLLAMA_KEEP_ALIVE=0` (unload idle models to free RAM), `OLLAMA_LOAD_TIMEOUT=60m0s` (Pi loads slowly). Note: llama.cpp is 10–20% faster than Ollama for production; consider switching for max throughput.
 
 `ai/setup_ollama.sh pull_models` gates downloads by detected RAM automatically. `select_base_model()` picks the best available model at build time and patches the `FROM` line in a temp copy of `Modelfile.survival` before running `ollama create survive`.
 

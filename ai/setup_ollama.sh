@@ -59,18 +59,23 @@ start_ollama() {
 # ── Pull models sized to the available RAM ────────────────────────────────────
 # Model selection rationale (CPU-only; Hailo-8L cannot accelerate LLMs):
 #
-#  gemma4:e2b  ~1.5 GB  8-12 tok/s on Pi 5  — primary; Gemma 4 quality in 2B
-#  gemma4:e4b  ~3.5 GB  3-5  tok/s on Pi 5  — quality step-up for 8 GB Pi
-#  gemma3:4b   ~2.5 GB  5-7  tok/s on Pi 5  — alternative mid-tier
-#  gemma4:12b  ~7.6 GB  NOT RECOMMENDED      — requires 8-10 GB RAM, swaps heavily
+#  qwen2.5:1.5b ~1.0 GB  10-15 tok/s on Pi 5  — best quality/speed/RAM balance
+#  gemma4:e2b   ~1.5 GB  8-12  tok/s on Pi 5  — primary; Gemma 4 quality in 2B
+#  gemma4:e4b   ~3.5 GB  3-5   tok/s on Pi 5  — quality step-up for 8 GB Pi
+#  gemma3:4b    ~2.5 GB  5-7   tok/s on Pi 5  — alternative mid-tier
+#  gemma4:12b   ~7.6 GB  1-3   tok/s on Pi 5  — 16 GB Pi only
+#
+# Note: llama.cpp is 10-20% faster than Ollama for production deployments.
+# Consider switching for maximum throughput on constrained hardware.
 pull_models() {
     local ram_mb
     ram_mb=$(total_ram_mb)
     info "Detected ${ram_mb} MB total RAM"
 
-    # Baseline: gemma4:e2b works on any Pi 5 (4 GB or 8 GB); llama3.2:1b is the
-    # fallback if the Gemma 4 download fails or the device is very constrained.
-    local PRIORITY_MODELS=("gemma4:e2b" "llama3.2:1b")
+    # Baseline: qwen2.5:1.5b has the best quality/speed/RAM balance per benchmarks
+    # (Stratosphere IPS 2025). gemma4:e2b is the primary Gemma option.
+    # llama3.2:1b is the fallback for very constrained devices.
+    local PRIORITY_MODELS=("qwen2.5:1.5b" "gemma4:e2b" "llama3.2:1b")
     # Mid tier: ~3.5 GB, 3-5 tok/s — meaningful quality gain, requires 6 GB+ free.
     local MID_MODELS=("gemma4:e4b" "gemma3:4b")
     # Large tier: only safe on 8 GB Pi with ≥10 GB disk; rare survival queries
@@ -181,7 +186,7 @@ test_models() {
 
     # Test with the best available model in priority order.
     local TEST_MODEL=""
-    for candidate in survive gemma4:e2b llama3.2:1b; do
+    for candidate in survive qwen2.5:1.5b gemma4:e2b llama3.2:1b; do
         if OLLAMA_MODELS="$MODELS_DIR" ollama list 2>/dev/null | grep -q "^${candidate}"; then
             TEST_MODEL="$candidate"
             break

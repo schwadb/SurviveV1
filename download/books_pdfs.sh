@@ -238,6 +238,45 @@ dl_homesteading() {
         "$DIR" "Herbal_Medicine_Guide.pdf"
 }
 
+# ── Repair Manuals & iFixit Guides ───────────────────────────────────────────
+dl_repair_manuals() {
+    info "=== Repair Manuals & iFixit Guides ==="
+    local DIR="$PDF_DIR/repair"
+    mkdir -p "$DIR"
+
+    dl_file "iFixit Self-Repair Manifesto" \
+        "https://www.ifixit.com/Manifesto" \
+        "$DIR" "iFixit_Manifesto.pdf" || true
+
+    dl_file "Small Engine Repair (EPA)" \
+        "https://www.epa.gov/sites/default/files/2015-06/documents/small_engine_manual.pdf" \
+        "$DIR" "EPA_Small_Engine_Repair.pdf" || true
+
+    dl_file "Basic Electricity (Navy NEETS)" \
+        "https://www.fcctests.com/neets/Neets01/NEETS-Module-01.pdf" \
+        "$DIR" "NEETS_Basic_Electricity.pdf"
+
+    dl_file "Introduction to Electronics (Navy NEETS)" \
+        "https://www.fcctests.com/neets/Neets07/NEETS-Module-07.pdf" \
+        "$DIR" "NEETS_Intro_Electronics.pdf"
+
+    dl_file "Motors and Generators (Navy NEETS)" \
+        "https://www.fcctests.com/neets/Neets05/NEETS-Module-05.pdf" \
+        "$DIR" "NEETS_Motors_Generators.pdf"
+
+    dl_file "Bicycle Maintenance Guide (Sheldon Brown)" \
+        "https://www.sheldonbrown.com/bicycle-maintenance.pdf" \
+        "$DIR" "Bicycle_Maintenance.pdf" || true
+
+    dl_file "FEMA Disaster Repair Guide" \
+        "https://www.fema.gov/sites/default/files/2020-07/fema_p-259_engineering-principles-practices_2012.pdf" \
+        "$DIR" "FEMA_Disaster_Repair.pdf"
+
+    dl_file "Basic Plumbing Guide (HUD)" \
+        "https://www.huduser.gov/portal/publications/pdf/plumbing.pdf" \
+        "$DIR" "HUD_Basic_Plumbing.pdf" || true
+}
+
 # ── Download book catalog from Standard Ebooks (free, legal) ─────────────────
 dl_standard_ebooks() {
     info "=== Standard Ebooks (free, public domain) ==="
@@ -269,6 +308,7 @@ main() {
     dl_engineering
     dl_radio
     dl_homesteading
+    dl_repair_manuals
     dl_standard_ebooks
 
     success "Books and PDF download complete"

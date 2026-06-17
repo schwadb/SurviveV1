@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% block title %}Visual ID{% endblock %}
+
+{% block head %}
+<style>
+  .vision-container {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 20px;
+    min-height: 500px;
+  }
+  .vision-main {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+  }
+  .vision-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .vision-title { font-weight: 600; font-size: 15px; }
+  .vision-preview {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    position: relative;
+    min-height: 400px;
+  }
+  .vision-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: var(--radius);
+    object-fit: contain;
+  }
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 60px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent);
+    background: rgba(63,185,80,0.05);
+  }
+  .drop-zone-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+  .drop-zone-sub { color: var(--text-dim); font-size: 13px; }
+  .vision-controls {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .vision-sidebar { display: flex; flex-direction: column; gap: 12px; }
+  .result-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .result-item:last-child { border-bottom: none; }
+  .result-label { font-size: 14px; font-weight: 600; flex: 1; }
+  .result-conf {
+    font-size: 12px;
+    font-family: var(--mono);
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: rgba(63,185,80,0.15);
+    color: var(--accent);
+  }
+  .result-empty {
+    color: var(--text-dim);
+    font-size: 13px;
+    text-align: center;
+    padding: 40px 20px;
+  }
+  @media (max-width: 768px) {
+    .vision-container { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">Visual Identification</div>
+  <div class="page-sub">Hailo-8L NPU — upload a photo to identify objects, plants, or animals</div>
+
+  {% if not hailo_available %}
+  <div style="background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3);
+              border-radius: var(--radius); padding: 16px; margin-bottom: 20px;">
+    <strong style="color: var(--danger);">Vision Model Not Installed</strong><br>
+    <span style="color: var(--text-dim); font-size: 13px;">
+      Run <code style="background:var(--surface2); padding:2px 6px; border-radius:4px;">
+      bash ai/setup_vision.sh</code> to download YOLOv8s and configure the Hailo-8L NPU.
+    </span>
+  </div>
+  {% endif %}
+
+  <div class="vision-container">
+    <div class="vision-main">
+      <div class="vision-header">
+        <div class="vision-title">Image Analysis</div>
+        <div id="visionStatus">
+          {% if hailo_available %}
+          <span class="badge badge-green">NPU Ready</span>
+          {% else %}
+          <span class="badge badge-red">Not Configured</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="vision-preview" id="previewArea">
+        <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <div class="drop-zone-title">Drop an image here</div>
+          <div class="drop-zone-sub">or click to browse — JPG, PNG, BMP, WebP</div>
+          <input type="file" id="fileInput" accept="image/*" style="display:none"
+                 onchange="handleFile(this.files[0])">
+        </div>
+      </div>
+
+      <div class="vision-controls">
+        <button class="btn btn-primary" id="detectBtn" onclick="runDetection()" disabled>
+          Identify Objects
+        </button>
+        <button class="btn btn-secondary" onclick="captureCamera()">
+          Use Camera
+        </button>
+        <button class="btn btn-secondary" onclick="resetVision()">Clear</button>
+        <span id="detectStatus" style="color:var(--text-dim); font-size:12px; margin-left:auto;"></span>
+      </div>
+    </div>
+
+    <div class="vision-sidebar">
+      <div class="card">
+        <div class="card-title">Detection Results</div>
+        <div id="resultsArea">
+          <div class="result-empty">Upload an image to begin identification</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">About</div>
+        <div style="font-size:12px; color:var(--text-dim); line-height:1.6;">
+          Uses <strong>YOLOv8s</strong> running on the <strong>Hailo-8L NPU</strong> (13 TOPS)
+          for real-time object detection. Identifies 80 common object categories including
+          people, animals, plants, vehicles, and household items.<br><br>
+          All processing runs locally on the NPU — no internet required. The CPU remains
+          free for other tasks (AI chat, serving content).
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Survival Uses</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="font-size:12px; color:var(--text-dim);">
+            <strong style="color:var(--text);">Wildlife ID</strong> — Identify animals near camp
+          </div>
+          <div style="font-size:12px; color:var(--text-dim);">
+            <strong style="color:var(--text);">Perimeter Watch</strong> — Detect people/vehicles approaching
+          </div>
+          <div style="font-size:12px; color:var(--text-dim);">
+            <strong style="color:var(--text);">Inventory</strong> — Catalog supplies and equipment
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dropZone = document.getElementById('dropZone');
+const previewArea = document.getElementById('previewArea');
+const detectBtn = document.getElementById('detectBtn');
+const resultsArea = document.getElementById('resultsArea');
+const detectStatus = document.getElementById('detectStatus');
+let currentFile = null;
+
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+
+function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  currentFile = file;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    previewArea.innerHTML = `<img src="${e.target.result}" alt="Uploaded image">`;
+    detectBtn.disabled = false;
+    resultsArea.innerHTML = '<div class="result-empty">Click "Identify Objects" to analyze</div>';
+    detectStatus.textContent = `${file.name} (${(file.size/1024).toFixed(0)} KB)`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function captureCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}});
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.autoplay = true;
+    video.style.cssText = 'max-width:100%; max-height:100%; border-radius:var(--radius);';
+
+    previewArea.innerHTML = '';
+    previewArea.appendChild(video);
+
+    const captureBtn = document.createElement('button');
+    captureBtn.className = 'btn btn-primary';
+    captureBtn.textContent = 'Capture';
+    captureBtn.style.cssText = 'position:absolute; bottom:20px; left:50%; transform:translateX(-50%);';
+    captureBtn.onclick = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      stream.getTracks().forEach(t => t.stop());
+
+      canvas.toBlob(blob => {
+        currentFile = new File([blob], 'capture.jpg', {type: 'image/jpeg'});
+        previewArea.innerHTML = `<img src="${canvas.toDataURL()}" alt="Camera capture">`;
+        detectBtn.disabled = false;
+        detectStatus.textContent = 'Camera capture';
+        resultsArea.innerHTML = '<div class="result-empty">Click "Identify Objects" to analyze</div>';
+      }, 'image/jpeg', 0.9);
+    };
+    previewArea.appendChild(captureBtn);
+  } catch(e) {
+    detectStatus.textContent = 'Camera access denied';
+  }
+}
+
+async function runDetection() {
+  if (!currentFile) return;
+  detectBtn.disabled = true;
+  detectStatus.textContent = 'Analyzing...';
+  resultsArea.innerHTML = '<div class="result-empty">Processing on Hailo NPU...</div>';
+
+  const form = new FormData();
+  form.append('image', currentFile);
+
+  try {
+    const r = await fetch('/api/vision/detect', {method: 'POST', body: form});
+    const data = await r.json();
+
+    if (data.error) {
+      resultsArea.innerHTML = `<div class="result-empty" style="color:var(--danger);">${data.error}</div>`;
+      detectStatus.textContent = 'Detection failed';
+    } else if (data.detections && data.detections.length > 0) {
+      resultsArea.innerHTML = data.detections.map(d =>
+        `<div class="result-item">
+          <span class="result-label">${d.label}</span>
+          <span class="result-conf">${(d.confidence * 100).toFixed(1)}%</span>
+        </div>`
+      ).join('');
+      detectStatus.textContent = `${data.count} object(s) detected`;
+    } else {
+      resultsArea.innerHTML = '<div class="result-empty">No objects detected. Try a clearer image.</div>';
+      detectStatus.textContent = 'No detections';
+    }
+  } catch(e) {
+    resultsArea.innerHTML = '<div class="result-empty" style="color:var(--danger);">Connection error</div>';
+    detectStatus.textContent = 'Error';
+  }
+  detectBtn.disabled = false;
+}
+
+function resetVision() {
+  currentFile = null;
+  previewArea.innerHTML = `
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div class="drop-zone-title">Drop an image here</div>
+      <div class="drop-zone-sub">or click to browse — JPG, PNG, BMP, WebP</div>
+      <input type="file" id="fileInput" accept="image/*" style="display:none"
+             onchange="handleFile(this.files[0])">
+    </div>`;
+  detectBtn.disabled = true;
+  resultsArea.innerHTML = '<div class="result-empty">Upload an image to begin identification</div>';
+  detectStatus.textContent = '';
+
+  const newDrop = document.getElementById('dropZone');
+  newDrop.addEventListener('dragover', e => { e.preventDefault(); newDrop.classList.add('dragover'); });
+  newDrop.addEventListener('dragleave', () => newDrop.classList.remove('dragover'));
+  newDrop.addEventListener('drop', e => {
+    e.preventDefault(); newDrop.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+}
+</script>
+{% endblock %}
