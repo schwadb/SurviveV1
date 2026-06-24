@@ -114,9 +114,11 @@
         </div>
         {% if svc.running %}
           <a href="http://localhost:{{ svc.port }}" target="_blank"
-             class="badge badge-green" style="text-decoration:none;">● UP</a>
+             class="badge badge-green" style="text-decoration:none;"
+             aria-label="{{ svc.name }} is running on port {{ svc.port }}">● UP</a>
         {% else %}
-          <span class="badge badge-red">● DOWN</span>
+          <span class="badge badge-red"
+                aria-label="{{ svc.name }} is stopped">● DOWN</span>
         {% endif %}
       </div>
       {% endfor %}

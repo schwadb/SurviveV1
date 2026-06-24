@@ -150,10 +150,37 @@
     .grid-4 { grid-template-columns: repeat(4, 1fr); }
     .grid-auto { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 
+    .nav-toggle {
+      display: none;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: var(--radius);
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 1;
+    }
+
     @media (max-width: 768px) {
       .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
-      .nav-links { display: none; }
-      .nav-search input { width: 160px; }
+      .nav-toggle { display: block; }
+      .nav-links {
+        display: none;
+        position: absolute;
+        top: 56px;
+        left: 0;
+        right: 0;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-direction: column;
+        padding: 8px 20px 12px;
+        gap: 2px;
+        z-index: 101;
+      }
+      .nav-links.open { display: flex; }
+      .nav-links a { padding: 10px 12px; }
+      .nav-search input { width: 120px; }
     }
 
     /* ── Badges / Pills ──────────────────────────────────────── */
@@ -269,28 +296,36 @@
     }
     footer strong { color: var(--accent); }
   </style>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#0d1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   {% block head %}{% endblock %}
 </head>
 <body>
 
-<nav>
+<nav role="navigation" aria-label="Main navigation">
   <div class="nav-inner">
-    <div class="status-dot" title="Offline — System Running"></div>
+    <div class="status-dot" title="Offline — System Running" role="status" aria-label="System running"></div>
     <a href="/" class="nav-logo">SurviveV1<span>OFFLINE</span></a>
-    <div class="nav-links">
-      <a href="/" class="{{ 'active' if request.endpoint == 'index' }}">Home</a>
-      <a href="/files" class="{{ 'active' if request.endpoint == 'browse_files' }}">Browse</a>
-      <a href="/ai" class="{{ 'active' if request.endpoint == 'ai_page' }}">AI Assistant</a>
-      <a href="/status" class="{{ 'active' if request.endpoint == 'status_page' }}">Status</a>
-      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KIWIX }}" target="_blank">Wikipedia</a>
-      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KOLIBRI }}" target="_blank">Education</a>
-      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_JELLYFIN }}" target="_blank">Videos</a>
-      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_MAPS }}" target="_blank">Maps</a>
+    <button class="nav-toggle" onclick="document.getElementById('navLinks').classList.toggle('open')"
+            aria-label="Toggle navigation menu" aria-expanded="false"
+            id="navToggle">&#9776;</button>
+    <div class="nav-links" id="navLinks" role="menubar">
+      <a href="/" class="{{ 'active' if request.endpoint == 'index' }}" role="menuitem">Home</a>
+      <a href="/files" class="{{ 'active' if request.endpoint == 'browse_files' }}" role="menuitem">Browse</a>
+      <a href="/ai" class="{{ 'active' if request.endpoint == 'ai_page' }}" role="menuitem">AI Assistant</a>
+      <a href="/status" class="{{ 'active' if request.endpoint == 'status_page' }}" role="menuitem">Status</a>
+      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KIWIX }}" target="_blank" role="menuitem">Wikipedia</a>
+      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KOLIBRI }}" target="_blank" role="menuitem">Education</a>
+      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_JELLYFIN }}" target="_blank" role="menuitem">Videos</a>
+      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_MAPS }}" target="_blank" role="menuitem">Maps</a>
     </div>
-    <form class="nav-search" action="/search" method="get">
-      <input type="text" name="q" placeholder="Search knowledge base..."
-             value="{{ request.args.get('q', '') }}" autocomplete="off">
-      <button type="submit">Search</button>
+    <form class="nav-search" action="/search" method="get" role="search">
+      <input type="text" name="q" placeholder="Search knowledge base... (Ctrl+K)"
+             value="{{ request.args.get('q', '') }}" autocomplete="off" id="globalSearch"
+             aria-label="Search knowledge base">
+      <button type="submit" aria-label="Submit search">Search</button>
     </form>
   </div>
 </nav>
@@ -310,5 +345,22 @@
 </footer>
 
 {% block scripts %}{% endblock %}
+<script>
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    var s = document.getElementById('globalSearch');
+    if (s) { s.focus(); s.select(); }
+  }
+  if (e.key === 'Escape') {
+    var nl = document.getElementById('navLinks');
+    if (nl) nl.classList.remove('open');
+    document.activeElement.blur();
+  }
+});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(function(){});
+}
+</script>
 </body>
 </html>

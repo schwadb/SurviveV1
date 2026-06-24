@@ -13,14 +13,15 @@ import shutil
 import socket
 import threading
 import time
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
+import requests as http_client
 from flask import (
-    Flask, render_template, jsonify, request,
+    Flask, render_template, jsonify, request, Response,
     send_from_directory, redirect, url_for, abort
 )
+from flask_compress import Compress
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -46,10 +47,15 @@ app = Flask(__name__)
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_HTTPONLY=True,
-    # Cap POST body size: the chat API only needs a JSON envelope; large bodies
-    # would pin the Pi's memory before rate limiting or JSON parsing can reject them.
     MAX_CONTENT_LENGTH=64 * 1024,  # 64 KB
 )
+
+Compress(app)
+
+_ollama_session = http_client.Session()
+_ollama_session.headers.update({"Content-Type": "application/json"})
+_adapter = http_client.adapters.HTTPAdapter(max_retries=0)
+_ollama_session.mount("http://", _adapter)
 
 # CSRF is enabled for HTML form POSTs. JSON APIs are exempted individually
 # and defended by a strict application/json Content-Type check instead --
@@ -354,19 +360,24 @@ def browse_files():
     )
 
 
+_STATIC_CACHE_EXTS = {".pdf", ".epub", ".mp4", ".mkv", ".zim", ".mp3", ".mbtiles"}
+
+
 @app.route("/serve/<path:filepath>")
 def serve_file(filepath):
-    """Serve a file from storage."""
+    """Serve a file from storage with caching for static content."""
     full_path = (STORAGE_PATH / filepath).resolve()
     storage_root = STORAGE_PATH.resolve()
-    # Prevent path traversal — ensure the resolved path is inside storage root
     try:
         full_path.relative_to(storage_root)
     except ValueError:
         return render_template("error.html", code=403, message="Access forbidden"), 403
     if not full_path.exists():
         return render_template("error.html", code=404, message="File not found"), 404
-    return send_from_directory(str(full_path.parent), full_path.name)
+    response = send_from_directory(str(full_path.parent), full_path.name)
+    if full_path.suffix.lower() in _STATIC_CACHE_EXTS:
+        response.headers["Cache-Control"] = "public, max-age=604800, immutable"
+    return response
 
 
 @app.route("/search")
@@ -414,71 +425,137 @@ def ai_page():
     models = []
     if ai_running:
         try:
-            with urllib.request.urlopen(
-                f"http://localhost:{PORT_OLLAMA}/api/tags", timeout=TIMEOUT_OLLAMA_LIST
-            ) as r:
-                data = json.loads(r.read())
-                models = [m["name"] for m in data.get("models", [])]
-        except (OSError, json.JSONDecodeError) as e:
+            r = _ollama_session.get(
+                f"http://localhost:{PORT_OLLAMA}/api/tags",
+                timeout=TIMEOUT_OLLAMA_LIST,
+            )
+            models = [m["name"] for m in r.json().get("models", [])]
+        except (http_client.RequestException, json.JSONDecodeError) as e:
             logging.debug("Could not fetch Ollama model list: %s", e)
     return render_template("ai.html", ai_running=ai_running, models=models, categories=CATEGORIES)
+
+
+_SYSTEM_PROMPT = (
+    "You are a survival expert assistant running offline on a Raspberry Pi. "
+    "Help with practical survival, medicine, food, water, shelter, energy, "
+    "and skills. Be concise and practical. No internet available."
+)
+
+_MAX_HISTORY = 20
+
+
+def _validate_chat_request():
+    """Shared validation for chat endpoints. Returns (model, message, history) or raises."""
+    if (request.content_type or "").split(";")[0].strip() != "application/json":
+        return None
+    data = request.get_json(silent=True)
+    if not data or "message" not in data:
+        return None
+    model = data.get("model", os.environ.get("SURVIVE_AI_MODEL", "survive"))
+    if not re.fullmatch(r"[a-zA-Z0-9:.\-_]{1,100}", model):
+        return None
+    message = str(data["message"])[:4096]
+    history = data.get("history", [])
+    if not isinstance(history, list):
+        history = []
+    return model, message, history
 
 
 @app.route("/api/ai/chat", methods=["POST"])
 @csrf.exempt
 @limiter.limit("5 per minute")
 def ai_chat():
-    """Proxy to local Ollama API."""
-    # Strict Content-Type check: browsers cannot send application/json
-    # cross-origin without a CORS preflight, so this blocks CSRF-style
-    # form POSTs from a malicious page while the user is on the dashboard.
+    """Proxy to local Ollama API with conversation history support."""
     if (request.content_type or "").split(";")[0].strip() != "application/json":
         return jsonify({"error": "Content-Type must be application/json"}), 415
 
-    data = request.get_json(silent=True)
-    if not data or "message" not in data:
-        return jsonify({"error": "No message"}), 400
+    parsed = _validate_chat_request()
+    if not parsed:
+        return jsonify({"error": "No message or invalid request"}), 400
 
-    model = data.get("model", os.environ.get("SURVIVE_AI_MODEL", "survive"))
-    # Validate model name: allow alphanumeric, colon, dot, dash, underscore only.
-    # Prevents path traversal or injection into the Ollama API URL.
-    if not re.fullmatch(r"[a-zA-Z0-9:.\-_]{1,100}", model):
-        return jsonify({"error": "Invalid model name"}), 400
+    model, message, history = parsed
 
-    message = str(data["message"])[:4096]  # bound message length to one context window
+    messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    for msg in history[-_MAX_HISTORY:]:
+        role = msg.get("role", "")
+        content = str(msg.get("content", ""))[:4096]
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": message})
 
     try:
-        payload = json.dumps({
-            "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a survival expert assistant running offline on a Raspberry Pi. "
-                        "Help with practical survival, medicine, food, water, shelter, energy, "
-                        "and skills. Be concise and practical. No internet available."
-                    ),
-                },
-                {"role": "user", "content": message},
-            ],
-            "stream": False,
-        }).encode()
-
-        req = urllib.request.Request(
+        r = _ollama_session.post(
             f"http://localhost:{PORT_OLLAMA}/api/chat",
-            data=payload,
-            headers={"Content-Type": "application/json"},
+            json={"model": model, "messages": messages, "stream": False},
+            timeout=TIMEOUT_AI_CHAT,
         )
-        with urllib.request.urlopen(req, timeout=TIMEOUT_AI_CHAT) as r:
-            result = json.loads(r.read())
-            return jsonify({
-                "response": result.get("message", {}).get("content", "No response"),
-                "model": model,
-            })
-    except (OSError, json.JSONDecodeError):
-        # Log the real error server-side; never leak internals to the client.
+        r.raise_for_status()
+        result = r.json()
+        return jsonify({
+            "response": result.get("message", {}).get("content", "No response"),
+            "model": model,
+        })
+    except (http_client.RequestException, json.JSONDecodeError):
         logging.exception("AI chat proxy error")
         return jsonify({"error": "AI service unavailable"}), 502
+
+
+@app.route("/api/ai/chat/stream", methods=["POST"])
+@csrf.exempt
+@limiter.limit("5 per minute")
+def ai_chat_stream():
+    """Streaming proxy to Ollama — returns Server-Sent Events."""
+    if (request.content_type or "").split(";")[0].strip() != "application/json":
+        return jsonify({"error": "Content-Type must be application/json"}), 415
+
+    parsed = _validate_chat_request()
+    if not parsed:
+        return jsonify({"error": "No message or invalid request"}), 400
+
+    model, message, history = parsed
+
+    messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    for msg in history[-_MAX_HISTORY:]:
+        role = msg.get("role", "")
+        content = str(msg.get("content", ""))[:4096]
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": message})
+
+    def generate():
+        try:
+            with _ollama_session.post(
+                f"http://localhost:{PORT_OLLAMA}/api/chat",
+                json={"model": model, "messages": messages, "stream": True},
+                timeout=TIMEOUT_AI_CHAT,
+                stream=True,
+            ) as r:
+                r.raise_for_status()
+                for line in r.iter_lines():
+                    if not line:
+                        continue
+                    chunk = json.loads(line)
+                    token = chunk.get("message", {}).get("content", "")
+                    if token:
+                        yield f"data: {json.dumps({'token': token})}\n\n"
+                    if chunk.get("done"):
+                        yield f"data: {json.dumps({'done': True})}\n\n"
+                        break
+        except (http_client.RequestException, json.JSONDecodeError):
+            logging.exception("AI chat stream error")
+            yield f"data: {json.dumps({'error': 'AI service unavailable'})}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/sw.js")
+@limiter.exempt
+def service_worker():
+    """Serve the service worker from root scope."""
+    return send_from_directory(app.static_folder, "sw.js",
+                               mimetype="application/javascript",
+                               max_age=0)
 
 
 @app.route("/health")
@@ -489,6 +566,7 @@ def health():
 
 
 @app.route("/api/status")
+@limiter.limit("30 per minute")
 def api_status():
     """System status API endpoint."""
     svc = check_all_services()
@@ -501,6 +579,7 @@ def api_status():
 
 
 @app.route("/api/recent")
+@limiter.limit("30 per minute")
 def api_recent():
     return jsonify(get_recent_downloads())
 

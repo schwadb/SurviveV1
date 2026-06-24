@@ -246,24 +246,7 @@
         </div>
       </div>
 
-      <div class="chat-messages" id="chatMessages">
-        <div class="message">
-          <div class="message-avatar">🤖</div>
-          <div class="message-bubble">
-            Hello! I'm your offline survival AI assistant running locally on your Raspberry Pi.
-
-I can help with:
-• Water purification &amp; sourcing
-• Medical emergencies &amp; first aid
-• Food production &amp; preservation
-• Shelter building
-• Fire starting &amp; navigation
-• Energy systems
-• Communications
-
-What survival challenge can I help you with?
-          </div>
-        </div>
+      <div class="chat-messages" id="chatMessages" role="log" aria-label="Chat messages">
       </div>
 
       <div class="prompt-chips" id="promptChips">
@@ -295,105 +278,185 @@ What survival challenge can I help you with?
 const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
+const STORAGE_KEY = 'survive_chat_history';
+
+let _chatHistory = [];
+
+function loadHistory() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+    const data = JSON.parse(saved);
+    if (!Array.isArray(data)) return;
+    _chatHistory = data;
+    chatMessages.innerHTML = '';
+    if (_chatHistory.length === 0) {
+      addWelcome();
+      return;
+    }
+    _chatHistory.forEach(function(m) { renderMessage(m.role, m.content, true); });
+  } catch(e) { _chatHistory = []; }
+}
+
+function saveHistory() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(_chatHistory.slice(-100))); } catch(e) {}
+}
+
+function addWelcome() {
+  renderMessage('assistant', 'Hello! I\'m your offline survival AI assistant running locally on your Raspberry Pi.\n\nI can help with:\n• Water purification & sourcing\n• Medical emergencies & first aid\n• Food production & preservation\n• Shelter building\n• Fire starting & navigation\n• Energy systems\n• Communications\n\nWhat survival challenge can I help you with?', true);
+}
 
 function scrollToBottom() {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function addMessage(role, content) {
-  const div = document.createElement('div');
-  div.className = `message ${role === 'user' ? 'user' : ''}`;
-
-  const avatar = document.createElement('div');
+function renderMessage(role, content, skipSave) {
+  var div = document.createElement('div');
+  div.className = 'message ' + (role === 'user' ? 'user' : '');
+  var avatar = document.createElement('div');
   avatar.className = 'message-avatar';
+  avatar.setAttribute('aria-hidden', 'true');
   avatar.textContent = role === 'user' ? '👤' : '🤖';
-
-  const bubble = document.createElement('div');
+  var bubble = document.createElement('div');
   bubble.className = 'message-bubble';
-  bubble.textContent = content;  // textContent — no XSS possible
-
+  bubble.textContent = content;
   div.appendChild(avatar);
   div.appendChild(bubble);
   chatMessages.appendChild(div);
   scrollToBottom();
-  return div;
+  if (!skipSave) {
+    _chatHistory.push({role: role === 'user' ? 'user' : 'assistant', content: content});
+    saveHistory();
+  }
+  return bubble;
 }
 
 function addTyping() {
-  const div = document.createElement('div');
+  var div = document.createElement('div');
   div.className = 'message';
   div.id = 'typingIndicator';
-  div.innerHTML = `
-    <div class="message-avatar">🤖</div>
-    <div class="message-bubble">
-      <div class="typing-indicator">
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-      </div>
-    </div>
-  `;
+  var avatar = document.createElement('div');
+  avatar.className = 'message-avatar';
+  avatar.setAttribute('aria-hidden', 'true');
+  avatar.textContent = '🤖';
+  var bubble = document.createElement('div');
+  bubble.className = 'message-bubble';
+  var indicator = document.createElement('div');
+  indicator.className = 'typing-indicator';
+  for (var i = 0; i < 3; i++) {
+    var dot = document.createElement('div');
+    dot.className = 'typing-dot';
+    indicator.appendChild(dot);
+  }
+  bubble.appendChild(indicator);
+  div.appendChild(avatar);
+  div.appendChild(bubble);
   chatMessages.appendChild(div);
   scrollToBottom();
 }
 
 function removeTyping() {
-  const t = document.getElementById('typingIndicator');
+  var t = document.getElementById('typingIndicator');
   if (t) t.remove();
 }
 
 let _currentController = null;
 
 async function sendMessage() {
-  const msg = chatInput.value.trim();
+  var msg = chatInput.value.trim();
   if (!msg) return;
-
   chatInput.value = '';
   chatInput.style.height = 'auto';
   sendBtn.disabled = true;
   document.getElementById('cancelBtn').style.display = 'block';
-  addMessage('user', msg);
+  renderMessage('user', msg);
   addTyping();
 
-  const model = document.getElementById('modelSelect').value;
+  var model = document.getElementById('modelSelect').value;
   _currentController = new AbortController();
 
-  // Client-side timeout: warn at 55s (server timeout is 60s)
-  const warnTimer = setTimeout(() => {
-    if (document.getElementById('typingIndicator')) {
-      const note = document.createElement('div');
-      note.style.cssText = 'font-size:11px; color:var(--warning); margin-top:6px;';
-      note.textContent = 'Still thinking… large models can take up to 60 seconds on Pi hardware.';
-      const tip = document.getElementById('typingIndicator');
-      if (tip) tip.querySelector('.message-bubble').appendChild(note);
-    }
-  }, 55000);
-
   try {
-    const res = await fetch('/api/ai/chat', {
+    var res = await fetch('/api/ai/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg, model }),
+      body: JSON.stringify({ message: msg, model: model, history: _chatHistory.slice(-20) }),
       signal: _currentController.signal,
     });
-    clearTimeout(warnTimer);
-    const data = await res.json();
+
     removeTyping();
-    if (data.error) {
-      addMessage('ai', `Error: ${data.error}\n\nMake sure Ollama is running: bash scripts/start_services.sh`);
-    } else {
-      addMessage('ai', data.response);
+
+    if (!res.ok) {
+      var errData = await res.json().catch(function() { return {}; });
+      renderMessage('assistant', 'Error: ' + (errData.error || 'AI service unavailable') + '\n\nMake sure Ollama is running: bash scripts/start_services.sh');
+      _done();
+      return;
+    }
+
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var bubble = null;
+    var fullText = '';
+    var buffer = '';
+
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, {stream: true});
+      var lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (!line.startsWith('data: ')) continue;
+        try {
+          var chunk = JSON.parse(line.slice(6));
+          if (chunk.error) {
+            if (!bubble) bubble = renderMessage('assistant', 'Error: ' + chunk.error);
+            else bubble.textContent = fullText + '\n\nError: ' + chunk.error;
+            break;
+          }
+          if (chunk.token) {
+            fullText += chunk.token;
+            if (!bubble) {
+              var div = document.createElement('div');
+              div.className = 'message';
+              var avatar = document.createElement('div');
+              avatar.className = 'message-avatar';
+              avatar.setAttribute('aria-hidden', 'true');
+              avatar.textContent = '🤖';
+              bubble = document.createElement('div');
+              bubble.className = 'message-bubble';
+              bubble.textContent = fullText;
+              div.appendChild(avatar);
+              div.appendChild(bubble);
+              chatMessages.appendChild(div);
+            } else {
+              bubble.textContent = fullText;
+            }
+            scrollToBottom();
+          }
+          if (chunk.done) {
+            _chatHistory.push({role: 'assistant', content: fullText});
+            saveHistory();
+          }
+        } catch(e) {}
+      }
+    }
+    if (fullText && !_chatHistory.length || _chatHistory[_chatHistory.length-1].content !== fullText) {
+      _chatHistory.push({role: 'assistant', content: fullText});
+      saveHistory();
     }
   } catch (e) {
-    clearTimeout(warnTimer);
     removeTyping();
     if (e.name === 'AbortError') {
-      addMessage('ai', 'Request cancelled.');
+      renderMessage('assistant', 'Request cancelled.');
     } else {
-      addMessage('ai', 'Connection error. Make sure the AI service is running.\n\nRun: ollama serve');
+      renderMessage('assistant', 'Connection error. Make sure the AI service is running.\n\nRun: ollama serve');
     }
   }
+  _done();
+}
 
+function _done() {
   _currentController = null;
   sendBtn.disabled = false;
   document.getElementById('cancelBtn').style.display = 'none';
@@ -401,9 +464,7 @@ async function sendMessage() {
 }
 
 function cancelRequest() {
-  if (_currentController) {
-    _currentController.abort();
-  }
+  if (_currentController) _currentController.abort();
 }
 
 function sendPrompt(prompt) {
@@ -413,9 +474,13 @@ function sendPrompt(prompt) {
 
 function clearChat() {
   chatMessages.innerHTML = '';
-  addMessage('ai', 'Chat cleared. How can I help with your survival needs?');
+  _chatHistory = [];
+  saveHistory();
+  addWelcome();
 }
 
+loadHistory();
+if (_chatHistory.length === 0) addWelcome();
 chatInput.focus();
 </script>
 {% endblock %}
