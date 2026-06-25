@@ -21,12 +21,31 @@ A self-hosted, offline-first knowledge base for post-apocalyptic or grid-down su
 
 ## Quick Start
 
+### One-click install (recommended)
+
+Paste this single command into your Raspberry Pi terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/schwadb/SurviveV1/main/install/bootstrap.sh | bash
+```
+
+This will:
+1. Check your system (architecture, OS, internet)
+2. Clone the repository
+3. Launch an interactive wizard to guide you through storage, hostname, and AI model setup
+4. Install all services and start them automatically
+
+### Manual install
+
 ```bash
 # 1. Clone on your Raspberry Pi
 git clone https://github.com/schwadb/SurviveV1.git ~/SurviveV1
 cd ~/SurviveV1
 
-# 2. Run the installer
+# 2. Run the interactive wizard (recommended)
+sudo bash install/wizard.sh
+
+# — or run the installer directly (non-interactive) —
 sudo bash setup/install.sh
 
 # 3. Download content (runs in background, can take days)
