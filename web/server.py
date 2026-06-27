@@ -78,6 +78,7 @@ def _inject_globals():
         "PORT_MAPS": PORT_MAPS,
         "PORT_OLLAMA": PORT_OLLAMA,
         "storage_mounted": STORAGE_MOUNTED,
+        "now": datetime.now(),
     }
 
 
@@ -295,6 +296,7 @@ def category(cat_id):
             STORAGE_PATH / "pdfs" / cat_id,
             STORAGE_PATH / "books" / cat_id,
             STORAGE_PATH / "videos" / cat_id,
+            STORAGE_PATH / cat_id,  # top-level dir (e.g. maps/, zim/ via "maps" / "reference" id)
         ]
         for d in search_dirs:
             if d.exists():

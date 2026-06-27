@@ -11,9 +11,8 @@ Environment="CALIBRE_DBPATH=/mnt/survive/books"
 # --dry-run off; bind to localhost and expose via nginx at /books/.
 ExecStartPre=/bin/mkdir -p /mnt/survive/books
 ExecStart=/opt/survive/venv/bin/cps \
-    -p /mnt/survive/.calibre-web.db \
-    -i 127.0.0.1 \
-    -g /var/log/survive_calibre.log
+    -p 8083 \
+    -i 127.0.0.1
 Restart=on-failure
 RestartSec=10
 StartLimitIntervalSec=60

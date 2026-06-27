@@ -124,6 +124,22 @@ start_manual() {
                 success "Jellyfin started"
             fi
             ;;
+        calibre)
+            CPS_BIN=""
+            [[ -f /opt/survive/venv/bin/cps ]] && CPS_BIN=/opt/survive/venv/bin/cps
+            command -v cps &>/dev/null && CPS_BIN=cps
+            if [[ -n "$CPS_BIN" ]]; then
+                info "Starting Calibre-Web on :8083..."
+                mkdir -p "$STORAGE_PATH/books"
+                CALIBRE_DBPATH="$STORAGE_PATH/books" \
+                nohup "$CPS_BIN" -p 8083 -i 127.0.0.1 \
+                    > /tmp/calibre.log 2>&1 &
+                echo $! > /tmp/calibre.pid
+                success "Calibre-Web started (PID $(cat /tmp/calibre.pid))"
+            else
+                warn "Calibre-Web not installed"
+            fi
+            ;;
     esac
 }
 
@@ -161,6 +177,7 @@ main() {
     start_manual maps
     start_manual kolibri
     start_manual jellyfin
+    start_manual calibre
 
     # Wait up to 15 s for the dashboard to respond before printing URLs
     local retries=30

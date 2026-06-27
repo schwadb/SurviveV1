@@ -25,6 +25,7 @@ stop_pid "survive_dashboard"
 stop_pid "kiwix"
 stop_pid "ollama"
 stop_pid "martin"
+stop_pid "calibre"
 pkill -f "kolibri start" 2>/dev/null && success "Kolibri stopped" || true
 systemctl stop jellyfin 2>/dev/null && success "Jellyfin stopped" || true
 success "All services stopped"

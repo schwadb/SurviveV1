@@ -100,6 +100,9 @@ run_tests() {
     check_http "GET /files"       "/files"
     check_http "GET /search"      "/search"
     check_http "GET /search?q=water" "/search?q=water"
+    check_http "GET /category/medical"   "/category/medical"
+    check_http "GET /category/maps"      "/category/maps"
+    check_http "GET /category/bad-id redirects" "/category/nonexistent-category-xyz" "302"
 
     echo ""
     echo -e "${BLUE}── API tests ────────────────────────────────────────${NC}"
