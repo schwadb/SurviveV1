@@ -309,6 +309,16 @@
   Running since {{ now.strftime('%Y-%m-%d') if now is defined else 'offline' }}
 </footer>
 
+<script>
+// Press "/" anywhere to jump to the search box (like GitHub/Wikipedia).
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+    e.preventDefault();
+    document.querySelector('.nav-search input').focus();
+  }
+});
+</script>
+
 {% block scripts %}{% endblock %}
 </body>
 </html>

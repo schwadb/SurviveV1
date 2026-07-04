@@ -111,44 +111,38 @@ main() {
         return 0
     fi
 
-    # Download each category if enabled and not done
-    if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "kiwix" ]]; then
-        RESUME_FLAG=()
-        [[ "$RESUME" == "true" ]] && RESUME_FLAG=(--resume)
-        run_or_dry bash "$REPO_DIR/download/kiwix_content.sh" \
-            --storage "$STORAGE_PATH" \
-            "${RESUME_FLAG[@]}"
-    fi
+    # run_category <name> <enabled Y/N> <script> [extra args...]
+    # With --resume, categories recorded in $PROGRESS_FILE are skipped; each
+    # category is marked done only after its script exits successfully.
+    run_category() {
+        local name="$1" enabled="$2" script="$3"
+        shift 3
+        if [[ -n "$CATEGORY" ]] && [[ "$CATEGORY" != "$name" ]]; then return 0; fi
+        if [[ ! "$enabled" =~ [Yy] ]]; then
+            info "Skipping $name (disabled in survive.conf)"
+            return 0
+        fi
+        if [[ "$RESUME" == "true" ]] && is_done "$name"; then
+            info "Skipping $name (already completed — remove from $PROGRESS_FILE to redo)"
+            return 0
+        fi
+        if run_or_dry bash "$REPO_DIR/download/$script" --storage "$STORAGE_PATH" "$@"; then
+            [[ "$DRY_RUN" == "true" ]] || mark_done "$name"
+        else
+            warn "$name download failed — rerun with --resume to retry just the rest"
+        fi
+    }
 
-    if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "videos" ]]; then
-        [[ "${CONTENT_VIDEOS:-Y}" =~ [Yy] ]] && \
-        run_or_dry bash "$REPO_DIR/download/videos.sh" --storage "$STORAGE_PATH"
-    fi
+    RESUME_FLAG=()
+    [[ "$RESUME" == "true" ]] && RESUME_FLAG=(--resume)
 
-    if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "books" ]]; then
-        [[ "${CONTENT_GUTENBERG:-Y}" =~ [Yy] ]] && \
-        run_or_dry bash "$REPO_DIR/download/books_pdfs.sh" --storage "$STORAGE_PATH"
-    fi
-
-    if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "maps" ]]; then
-        [[ "${CONTENT_MAPS:-Y}" =~ [Yy] ]] && \
-        run_or_dry bash "$REPO_DIR/download/maps.sh" --storage "$STORAGE_PATH"
-    fi
-
-    if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "kolibri" ]]; then
-        [[ "${CONTENT_KOLIBRI:-Y}" =~ [Yy] ]] && \
-        run_or_dry bash "$REPO_DIR/download/kolibri_content.sh" --storage "$STORAGE_PATH"
-    fi
-
-    # Gap-filling content from expert research
-    if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "gaps" ]]; then
-        run_or_dry bash "$REPO_DIR/download/gaps_content.sh" --storage "$STORAGE_PATH"
-    fi
-
-    # Mental health & psychological first aid
-    if [[ -z "$CATEGORY" ]] || [[ "$CATEGORY" == "mental_health" ]]; then
-        run_or_dry bash "$REPO_DIR/download/mental_health.sh" --storage "$STORAGE_PATH"
-    fi
+    run_category kiwix         "Y"                          kiwix_content.sh "${RESUME_FLAG[@]}"
+    run_category videos        "${CONTENT_VIDEOS:-Y}"       videos.sh
+    run_category books         "${CONTENT_GUTENBERG:-Y}"    books_pdfs.sh
+    run_category maps          "${CONTENT_MAPS:-Y}"         maps.sh
+    run_category kolibri       "${CONTENT_KOLIBRI:-Y}"      kolibri_content.sh
+    run_category gaps          "Y"                          gaps_content.sh
+    run_category mental_health "Y"                          mental_health.sh
 
     section "Download Complete"
     df -h "$STORAGE_PATH"

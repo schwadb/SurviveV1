@@ -79,6 +79,7 @@ def _inject_globals():
         "PORT_OLLAMA": PORT_OLLAMA,
         "storage_mounted": STORAGE_MOUNTED,
         "now": datetime.now(),
+        "TIMEOUT_AI_CHAT": TIMEOUT_AI_CHAT,
     }
 
 
@@ -505,6 +506,30 @@ def api_status():
 @app.route("/api/recent")
 def api_recent():
     return jsonify(get_recent_downloads())
+
+
+def _compute_connectivity() -> dict:
+    """Probe outbound internet from the Pi itself (DNS-free TCP dial to public IPs)."""
+    online = False
+    for probe_host in ("1.1.1.1", "8.8.8.8"):
+        try:
+            with socket.create_connection((probe_host, 53), timeout=2):
+                online = True
+                break
+        except OSError:
+            continue
+    return {"online": online}
+
+
+_connectivity_cache = _TTLCache(30.0)  # re-probe at most every 30 s
+
+
+@app.route("/api/connectivity")
+def api_connectivity():
+    """Server-side internet check. The browser cannot probe external hosts
+    itself (blocked by our connect-src 'self' CSP), and the Pi's connectivity
+    is what matters for downloads anyway."""
+    return jsonify(_connectivity_cache.get(_compute_connectivity))
 
 
 @app.route("/status")

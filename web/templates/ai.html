@@ -247,22 +247,11 @@
       </div>
 
       <div class="chat-messages" id="chatMessages">
+        {# The bubble uses white-space: pre-wrap, so the text is built in JS to
+           avoid rendering the template's own indentation. #}
         <div class="message">
           <div class="message-avatar">🤖</div>
-          <div class="message-bubble">
-            Hello! I'm your offline survival AI assistant running locally on your Raspberry Pi.
-
-I can help with:
-• Water purification &amp; sourcing
-• Medical emergencies &amp; first aid
-• Food production &amp; preservation
-• Shelter building
-• Fire starting &amp; navigation
-• Energy systems
-• Communications
-
-What survival challenge can I help you with?
-          </div>
+          <div class="message-bubble" id="welcomeBubble"></div>
         </div>
       </div>
 
@@ -279,8 +268,7 @@ What survival challenge can I help you with?
                   placeholder="Ask about survival, medical, food, water, energy..."
                   rows="1"
                   onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendMessage()}"
-                  oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'">
-        </textarea>
+                  oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
         <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
         <button class="btn btn-secondary" id="cancelBtn" onclick="cancelRequest()"
                 style="height:40px; display:none;">Cancel</button>
@@ -295,6 +283,22 @@ What survival challenge can I help you with?
 const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
+
+const WELCOME_TEXT = [
+  "Hello! I'm your offline survival AI assistant running locally on your Raspberry Pi.",
+  '',
+  'I can help with:',
+  '• Water purification & sourcing',
+  '• Medical emergencies & first aid',
+  '• Food production & preservation',
+  '• Shelter building',
+  '• Fire starting & navigation',
+  '• Energy systems',
+  '• Communications',
+  '',
+  'What survival challenge can I help you with?',
+].join('\n');
+document.getElementById('welcomeBubble').textContent = WELCOME_TEXT;
 
 function scrollToBottom() {
   chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -358,16 +362,18 @@ async function sendMessage() {
   const model = document.getElementById('modelSelect').value;
   _currentController = new AbortController();
 
-  // Client-side timeout: warn at 55s (server timeout is 60s)
+  // Client-side warning shortly before the server-side timeout expires.
+  // SERVER_TIMEOUT_MS comes from SURVIVE_AI_CHAT_TIMEOUT in survive.conf.
+  const SERVER_TIMEOUT_MS = {{ (TIMEOUT_AI_CHAT * 1000)|int }};
   const warnTimer = setTimeout(() => {
     if (document.getElementById('typingIndicator')) {
       const note = document.createElement('div');
       note.style.cssText = 'font-size:11px; color:var(--warning); margin-top:6px;';
-      note.textContent = 'Still thinking… large models can take up to 60 seconds on Pi hardware.';
+      note.textContent = `Still thinking… large models can take up to ${Math.round(SERVER_TIMEOUT_MS/1000)} seconds on Pi hardware.`;
       const tip = document.getElementById('typingIndicator');
       if (tip) tip.querySelector('.message-bubble').appendChild(note);
     }
-  }, 55000);
+  }, Math.max(SERVER_TIMEOUT_MS - 5000, 1000));
 
   try {
     const res = await fetch('/api/ai/chat', {

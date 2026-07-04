@@ -100,12 +100,12 @@
     {% if parent is not none %}
     <a href="/files?path={{ parent }}" class="btn btn-secondary btn-sm">← Up</a>
     {% endif %}
-    <button class="filter-btn active" onclick="filterFiles('all')">All</button>
-    <button class="filter-btn" onclick="filterFiles('dir')">📁 Folders</button>
-    <button class="filter-btn" onclick="filterFiles('pdf')">📄 PDFs</button>
-    <button class="filter-btn" onclick="filterFiles('epub')">📖 Books</button>
-    <button class="filter-btn" onclick="filterFiles('mp4')">🎬 Videos</button>
-    <button class="filter-btn" onclick="filterFiles('zim')">📚 ZIM</button>
+    <button class="filter-btn active" onclick="filterFiles('all', this)">All</button>
+    <button class="filter-btn" onclick="filterFiles('dir', this)">📁 Folders</button>
+    <button class="filter-btn" onclick="filterFiles('pdf', this)">📄 PDFs</button>
+    <button class="filter-btn" onclick="filterFiles('epub', this)">📖 Books</button>
+    <button class="filter-btn" onclick="filterFiles('mp4', this)">🎬 Videos</button>
+    <button class="filter-btn" onclick="filterFiles('zim', this)">📚 ZIM</button>
     <span style="color: var(--text-dim); font-size: 12px; margin-left: auto;">
       {{ items|length }} items
     </span>
@@ -163,9 +163,9 @@
 
 {% block scripts %}
 <script>
-function filterFiles(type) {
+function filterFiles(type, btn) {
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
+  btn.classList.add('active');
 
   document.querySelectorAll('#fileGrid .file-card').forEach(card => {
     if (type === 'all') {

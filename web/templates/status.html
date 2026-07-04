@@ -113,17 +113,21 @@
           <div class="service-port">localhost:{{ svc.port }}</div>
         </div>
         {% if svc.running %}
-          <a href="http://localhost:{{ svc.port }}" target="_blank"
+          <a href="http://localhost:{{ svc.port }}" target="_blank" data-service="{{ name }}"
              class="badge badge-green" style="text-decoration:none;">● UP</a>
         {% else %}
-          <span class="badge badge-red">● DOWN</span>
+          <span class="badge badge-red" data-service="{{ name }}">● DOWN</span>
         {% endif %}
       </div>
       {% endfor %}
 
-      <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);">
-        <button onclick="fetch('/api/status').then(r=>r.json()).then(d=>location.reload())"
+      <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
+                  display:flex; align-items:center; gap:10px;">
+        <button onclick="refreshStatus(true)" id="refreshBtn"
                 class="btn btn-secondary btn-sm">Refresh Status</button>
+        <span id="refreshNote" style="font-size:11px; color:var(--text-dim);">
+          Auto-refreshes every 15 s
+        </span>
       </div>
     </div>
 
@@ -212,4 +216,39 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Live status refresh — updates service badges in place, no page reload.
+function applyStatus(data) {
+  Object.entries(data.services || {}).forEach(([name, svc]) => {
+    const badge = document.querySelector(`[data-service="${name}"]`);
+    if (!badge) return;
+    if (svc.running) {
+      badge.className = 'badge badge-green';
+      badge.textContent = '● UP';
+    } else {
+      badge.className = 'badge badge-red';
+      badge.textContent = '● DOWN';
+    }
+  });
+}
+
+function refreshStatus(manual) {
+  const btn = document.getElementById('refreshBtn');
+  const note = document.getElementById('refreshNote');
+  if (manual) { btn.disabled = true; note.textContent = 'Refreshing…'; }
+  fetch('/api/status', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(data => {
+      applyStatus(data);
+      note.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    })
+    .catch(() => { note.textContent = 'Refresh failed — dashboard unreachable'; })
+    .finally(() => { btn.disabled = false; });
+}
+
+setInterval(() => refreshStatus(false), 15000);
+</script>
 {% endblock %}

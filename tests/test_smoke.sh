@@ -108,6 +108,7 @@ run_tests() {
     echo -e "${BLUE}── API tests ────────────────────────────────────────${NC}"
     check_json "GET /api/status"  "/api/status"
     check_json "GET /api/recent"  "/api/recent"
+    check_json "GET /api/connectivity" "/api/connectivity"
 
     echo ""
     echo -e "${BLUE}── Security tests ───────────────────────────────────${NC}"
