@@ -58,6 +58,8 @@ sudo bash install/wizard.sh
 
 `install/bootstrap.sh` checks system requirements, installs git, clones the repo, and hands off to `install/wizard.sh`. The wizard handles drive detection/formatting, hostname, map region, writes `config/survive.conf`, then calls `setup/install.sh`.
 
+The `/install-pi` skill (`.claude/skills/install-pi/SKILL.md`) contains the full end-to-end install guide — OS flashing through verification and troubleshooting. Use it when a user asks how to install SurviveV1 on a Pi.
+
 ### Content and AI
 
 ```bash
