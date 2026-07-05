@@ -26,8 +26,25 @@ feature-mapping table.
 - **Statement import**: pick a bank/credit-card export file — CSV or OFX/QFX (Quicken) —
   or paste CSV; automatic duplicate detection makes re-importing overlapping months safe,
   and rules auto-categorize imported rows. CSV export via share sheet (mobile) or download (web)
+- **Quick budgeting**: "Copy last month" one-tap budget fill; move-money validated
+  against the source envelope's available balance
+- **Uncategorized inbox**: one-tap filter chip in Activity showing the count of
+  transactions still needing a category
+- **Backup & restore**: full-data JSON backup exported as a real file (share sheet on
+  mobile, download on web) and restored via file picker with structural validation
+- **App lock**: Face ID / fingerprint / device passcode required on launch and on
+  return from background (expo-local-authentication; Android & iOS)
 - **Dark mode** (system/light/dark), colorblind-safe validated chart palette
 - **Privacy-first**: 100% on-device via AsyncStorage — no bank logins, no cloud, no ads
+
+## Security model
+
+- All data stays on-device (AsyncStorage); the app makes zero network requests.
+- Optional biometric/passcode app lock gates the UI on cold start and resume.
+- Statement and backup files are read locally via the OS file picker; nothing is uploaded.
+- Backup JSON files are unencrypted by design (portability) — the UI warns users to
+  store them safely. Encrypted backups via expo-secure-store-derived keys are on the
+  roadmap.
 
 ## Running it
 
@@ -69,3 +86,6 @@ and identical across Android, iOS, and web.
   dark mode — zero console/page errors
 - Statement import drive: QFX file import, duplicate-skip on re-import, CSV file
   import with rule-based auto-categorization — zero errors
+- Improvement-pass drive: uncategorized filter, date quick-chips, over-move blocked,
+  copy-last-month, backup export → clear-all → restore round-trip, invalid backup
+  rejected — zero errors

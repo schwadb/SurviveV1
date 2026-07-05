@@ -17,6 +17,7 @@ export function BudgetScreen() {
   const [editingEnvelope, setEditingEnvelope] = useState<string | null>(null);
   const [showNewEnvelope, setShowNewEnvelope] = useState(false);
   const [showMove, setShowMove] = useState(false);
+  const [copied, setCopied] = useState<number | null>(null);
 
   const rta = readyToAssign(store, month);
   const cats = store.categories.filter((c) => !c.archived && c.id !== INCOME_CATEGORY_ID);
@@ -43,10 +44,16 @@ export function BudgetScreen() {
           <View style={{ alignItems: 'flex-end', gap: 6 }}>
             <Pill label="Move money" onPress={() => setShowMove(true)} />
             <Pill label="+ Envelope" onPress={() => setShowNewEnvelope(true)} />
+            <Pill label="Copy last month" onPress={() => setCopied(store.copyBudgetFromPreviousMonth(month))} />
           </View>
         </Row>
         <Label style={{ marginTop: 4 }}>
           Assigned {fmt(totalAssigned(store, month))} this month · every dollar gets a job
+          {copied !== null
+            ? copied > 0
+              ? ` · copied ${copied} envelope${copied === 1 ? '' : 's'} from last month`
+              : ' · nothing new to copy from last month'
+            : ''}
         </Label>
       </Card>
 

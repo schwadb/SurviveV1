@@ -1,31 +1,27 @@
-import React, { useState } from 'react';
-import { Platform, Pressable, ScrollView, Share, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import { File as FsFile } from 'expo-file-system';
 import { useStore } from '../store';
 import { spacing, type } from '../theme';
 import { Amount, Button, Card, Label, Pill, ProgressBar, Row, SectionHeader, useTheme } from '../components/ui';
 import { AccountForm, BillForm, ContributeForm, GoalForm, RuleForm, StatementImportForm } from '../components/forms';
+import { lockAvailable } from '../components/AppLock';
 import { accountBalance, isCredit, netWorth, upcomingBills } from '../logic/budget';
 import { fmt } from '../utils/money';
-import { dateLabel, monthKey } from '../utils/dates';
+import { dateLabel, monthKey, todayIso } from '../utils/dates';
 import { transactionsToCsv } from '../utils/csv';
+import { parseBackup, serializeBackup } from '../utils/backup';
+import { exportTextFile } from '../utils/share';
 
 const TYPE_LABEL: Record<string, string> = {
   checking: 'Checking', savings: 'Savings', cash: 'Cash',
   credit: 'Credit Card', investment: 'Investment', loan: 'Loan',
 };
 
-async function exportCsv(csv: string) {
-  if (Platform.OS === 'web') {
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'survive-budget-transactions.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  } else {
-    await Share.share({ message: csv, title: 'Survive Budget transactions.csv' });
-  }
+function notify(title: string, message: string) {
+  if (Platform.OS === 'web') window.alert(`${title}\n${message}`);
+  else Alert.alert(title, message);
 }
 
 export function MoreScreen() {
@@ -38,6 +34,31 @@ export function MoreScreen() {
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [confirmReset, setConfirmReset] = useState<'demo' | 'clear' | null>(null);
+  const [canLock, setCanLock] = useState(false);
+  const [pendingRestore, setPendingRestore] = useState<{ name: string; text: string } | null>(null);
+
+  useEffect(() => {
+    void lockAvailable().then(setCanLock);
+  }, []);
+
+  const pickBackupFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/json', 'text/*', '*/*'],
+        copyToCacheDirectory: true,
+        multiple: false,
+        base64: false,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+      const text = asset.file ? await asset.file.text() : await new FsFile(asset.uri).text();
+      const { error } = parseBackup(text);
+      if (error) return notify('Cannot restore', error);
+      setPendingRestore({ name: asset.name, text });
+    } catch (e) {
+      notify('Could not read file', e instanceof Error ? e.message : 'Unknown error.');
+    }
+  };
 
   const nw = netWorth(store);
   const bills = upcomingBills(store, 60);
@@ -178,7 +199,7 @@ export function MoreScreen() {
             variant="ghost"
             onPress={() => {
               const n = store.applyRulesToExisting();
-              if (Platform.OS === 'web') window.alert(`Categorized ${n} transaction${n === 1 ? '' : 's'}.`);
+              notify('Rules applied', `Categorized ${n} transaction${n === 1 ? '' : 's'}.`);
             }}
           />
         </View>
@@ -187,12 +208,73 @@ export function MoreScreen() {
       <SectionHeader title="Data" right={null} />
       <Card>
         <View style={{ gap: spacing.sm }}>
-          <Button title="Export transactions (CSV)" variant="ghost" onPress={() => exportCsv(transactionsToCsv(store))} />
+          <Button
+            title="Export transactions (CSV)"
+            variant="ghost"
+            onPress={() => exportTextFile('survive-budget-transactions.csv', 'text/csv', transactionsToCsv(store))}
+          />
           <Button title="Import statement (CSV / OFX / QFX)" variant="ghost" onPress={() => setShowImport(true)} />
+          <Button
+            title="Export full backup (JSON)"
+            variant="ghost"
+            onPress={() =>
+              exportTextFile(
+                `survive-budget-backup-${todayIso()}.json`,
+                'application/json',
+                serializeBackup(store, new Date().toISOString()),
+              )
+            }
+          />
+          {pendingRestore ? (
+            <View style={{ gap: spacing.sm }}>
+              <Label>
+                Restore “{pendingRestore.name}”? This replaces ALL current data with the backup.
+              </Label>
+              <Button
+                title="Yes, restore backup"
+                variant="danger"
+                onPress={() => {
+                  const { data } = parseBackup(pendingRestore.text);
+                  if (data) {
+                    store.restoreBackup(data);
+                    notify('Restore complete', 'All data replaced from the backup.');
+                  }
+                  setPendingRestore(null);
+                }}
+              />
+              <Button title="Cancel" variant="ghost" onPress={() => setPendingRestore(null)} />
+            </View>
+          ) : (
+            <Button title="Restore backup (JSON)" variant="ghost" onPress={pickBackupFile} />
+          )}
         </View>
         <Label style={{ marginTop: spacing.md }}>
           🔒 Privacy-first: all data lives on this device. No bank logins, no cloud, no ads.
+          Backup files are unencrypted — store them somewhere safe.
         </Label>
+      </Card>
+
+      <SectionHeader title="Security" right={null} />
+      <Card>
+        {canLock ? (
+          <Row style={{ justifyContent: 'space-between' }}>
+            <View style={{ flex: 1, paddingRight: spacing.md }}>
+              <Text style={[type.body, { color: t.inkPrimary }]}>App lock</Text>
+              <Label>Require Face ID / fingerprint / passcode on launch and when returning to the app</Label>
+            </View>
+            <Switch
+              value={store.settings.appLock ?? false}
+              onValueChange={(v) => store.updateSettings({ appLock: v })}
+              trackColor={{ true: t.good }}
+            />
+          </Row>
+        ) : (
+          <Label>
+            {Platform.OS === 'web'
+              ? 'App lock (Face ID / fingerprint) is available in the Android and iOS apps.'
+              : 'App lock needs a device with biometrics or a passcode enrolled.'}
+          </Label>
+        )}
       </Card>
 
       <SectionHeader title="Appearance" right={null} />

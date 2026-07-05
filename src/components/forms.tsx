@@ -4,11 +4,12 @@ import * as DocumentPicker from 'expo-document-picker';
 import { File as FsFile } from 'expo-file-system';
 import { useStore } from '../store';
 import { INCOME_CATEGORY_ID, Transaction } from '../types';
-import { parseAmount } from '../utils/money';
-import { todayIso } from '../utils/dates';
+import { fmt, parseAmount } from '../utils/money';
+import { envelopeAvailable } from '../logic/budget';
+import { todayIso, yesterdayIso } from '../utils/dates';
 import { parseTransactionsCsv } from '../utils/csv';
 import { looksLikeOfx, parseOfx } from '../utils/ofx';
-import { Button, ChipPicker, Field, Label, Row, Sheet, useTheme } from './ui';
+import { Button, ChipPicker, Field, Label, Pill, Row, Sheet, useTheme } from './ui';
 import { spacing, type } from '../theme';
 
 function notify(title: string, message: string) {
@@ -84,6 +85,10 @@ export function TransactionForm({
       </Row>
       <Field label="Payee" value={payee} onChangeText={setPayee} placeholder="Fresh Market" autoFocus={!isEdit} />
       <Field label="Amount" value={amountText} onChangeText={setAmountText} placeholder="12.34" keyboardType="decimal-pad" />
+      <Row style={{ gap: spacing.sm, marginBottom: spacing.sm }}>
+        <Pill label="Today" active={date === todayIso()} onPress={() => setDate(todayIso())} />
+        <Pill label="Yesterday" active={date === yesterdayIso()} onPress={() => setDate(yesterdayIso())} />
+      </Row>
       <Field label="Date (yyyy-mm-dd)" value={date} onChangeText={setDate} placeholder={todayIso()} />
       <Label style={{ marginBottom: 4 }}>Account</Label>
       <ChipPicker items={accounts} selectedId={accountId} onSelect={setAccountId} labelFor={(a) => a.name} />
@@ -220,6 +225,14 @@ export function MoveMoneyForm({
     const cents = parseAmount(text);
     if (!fromId || !toId || fromId === toId) return notify('Pick envelopes', 'Choose two different envelopes.');
     if (cents === null || cents <= 0) return notify('Bad amount', 'Enter a positive amount.');
+    const from = cats.find((c) => c.id === fromId);
+    const available = from ? envelopeAvailable(store, from, month) : 0;
+    if (cents > available) {
+      return notify(
+        'Not enough in envelope',
+        `${from?.emoji ?? ''} ${from?.name ?? 'That envelope'} only has ${fmt(available)} available.`,
+      );
+    }
     store.moveMoney(month, fromId, toId, cents);
     onClose();
     setText('');

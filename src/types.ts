@@ -87,6 +87,8 @@ export interface Settings {
   currency: string; // ISO code, display only
   /** Show In My Pocket hero on home. */
   showSafeToSpend: boolean;
+  /** Require biometric/passcode unlock on launch and resume (native only). */
+  appLock?: boolean;
 }
 
 export interface AppData {

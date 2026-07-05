@@ -6,7 +6,7 @@ import {
 } from './types';
 import { makeSeedData, SCHEMA_VERSION } from './data/seed';
 import { applyRules } from './logic/budget';
-import { monthKey, todayIso } from './utils/dates';
+import { addMonths, monthKey, todayIso } from './utils/dates';
 
 let idCounter = Date.now() % 1000000;
 export const newId = (prefix: string) => `${prefix}-${++idCounter}-${Math.random().toString(36).slice(2, 7)}`;
@@ -21,6 +21,8 @@ interface Actions {
 
   assign: (month: string, categoryId: string, amount: number) => void;
   moveMoney: (month: string, fromId: string, toId: string, amount: number) => void;
+  /** Copy the previous month's assignments into `month` where it has none. */
+  copyBudgetFromPreviousMonth: (month: string) => number;
 
   addCategory: (c: Omit<Category, 'id'>) => void;
   updateCategory: (id: string, patch: Partial<Category>) => void;
@@ -47,6 +49,8 @@ interface Actions {
   updateSettings: (patch: Partial<Settings>) => void;
   resetToDemo: () => void;
   clearAllData: () => void;
+  /** Replace all data from a validated backup file. */
+  restoreBackup: (data: AppData) => void;
   /** Import statement rows, skipping (date, amount, payee) duplicates. */
   importTransactions: (rows: Omit<Transaction, 'id' | 'cleared'>[]) => { imported: number; skipped: number };
 }
@@ -90,6 +94,21 @@ export const useStore = create<Store>()(
           if (toId) m[toId] = (m[toId] ?? 0) + amount;
           return { budgets: { ...s.budgets, [month]: m } };
         }),
+
+      copyBudgetFromPreviousMonth: (month) => {
+        const s = get();
+        const prev = s.budgets[addMonths(month, -1)] ?? {};
+        const cur = { ...(s.budgets[month] ?? {}) };
+        let copied = 0;
+        for (const [catId, amount] of Object.entries(prev)) {
+          if (!cur[catId] && amount > 0) {
+            cur[catId] = amount;
+            copied++;
+          }
+        }
+        if (copied > 0) set({ budgets: { ...s.budgets, [month]: cur } });
+        return copied;
+      },
 
       addCategory: (c) => set((s) => ({ categories: [...s.categories, { ...c, id: newId('cat') }] })),
       updateCategory: (id, patch) =>
@@ -152,6 +171,7 @@ export const useStore = create<Store>()(
       updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
       resetToDemo: () => set({ ...makeSeedData() }),
       clearAllData: () => set({ ...emptyData() }),
+      restoreBackup: (data) => set({ ...data }),
       importTransactions: (rows) => {
         const s = get();
         // Banks re-export overlapping date ranges; dedupe on the natural key.

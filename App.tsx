@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native'
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/components/ui';
+import { AppLock } from './src/components/AppLock';
 import { darkTheme, lightTheme, type } from './src/theme';
 import { useStore } from './src/store';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -88,7 +89,9 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeProvider value={theme}>
         <StatusBar style={theme.dark ? 'light' : 'dark'} />
-        <Main />
+        <AppLock>
+          <Main />
+        </AppLock>
       </ThemeProvider>
     </SafeAreaProvider>
   );

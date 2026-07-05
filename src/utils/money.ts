@@ -2,8 +2,8 @@
 export function fmt(cents: number, opts: { sign?: boolean; compact?: boolean } = {}): string {
   const sign = cents < 0 ? '-' : opts.sign && cents > 0 ? '+' : '';
   const abs = Math.abs(cents);
-  if (opts.compact && abs >= 100000_00) {
-    return `${sign}$${(abs / 100000_0 / 10).toFixed(1)}M`;
+  if (opts.compact && abs >= 1000000_00) {
+    return `${sign}$${(abs / 1000000_00).toFixed(1)}M`;
   }
   if (opts.compact && abs >= 10000_00) {
     return `${sign}$${Math.round(abs / 1000_00)}k`;

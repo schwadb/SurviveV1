@@ -17,10 +17,16 @@ export function TransactionsScreen() {
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [showAdd, setShowAdd] = useState(false);
 
+  const uncategorizedCount = useMemo(
+    () => store.transactions.filter((tx) => tx.categoryId === null).length,
+    [store.transactions],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return sortTransactions(store.transactions).filter((tx) => {
-      if (filterCat && tx.categoryId !== filterCat) return false;
+      if (filterCat === 'uncategorized' && tx.categoryId !== null) return false;
+      if (filterCat && filterCat !== 'uncategorized' && tx.categoryId !== filterCat) return false;
       if (filterAcct && tx.accountId !== filterAcct) return false;
       if (!q) return true;
       const cat = store.categories.find((c) => c.id === tx.categoryId);
@@ -66,6 +72,14 @@ export function TransactionsScreen() {
         />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.sm }}>
           <Row style={{ gap: spacing.sm }}>
+            {uncategorizedCount > 0 && (
+              <Pill
+                label={`❓ Uncategorized · ${uncategorizedCount}`}
+                tone="warning"
+                active={filterCat === 'uncategorized'}
+                onPress={() => setFilterCat(filterCat === 'uncategorized' ? null : 'uncategorized')}
+              />
+            )}
             {store.accounts.filter((a) => !a.archived).map((a) => (
               <Pill
                 key={a.id}
@@ -96,7 +110,7 @@ export function TransactionsScreen() {
               <Card style={{ paddingVertical: 2 }}>
                 {g.items.map((tx, i) => {
                   const cat = catFor(tx);
-                  const isIncome = tx.categoryId === INCOME_CATEGORY_ID || tx.amount > 0;
+                  const isIncome = tx.categoryId === INCOME_CATEGORY_ID;
                   return (
                     <Pressable
                       key={tx.id}
