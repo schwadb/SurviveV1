@@ -1,10 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Platform, Switch, Text, View } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import { File as FsFile } from 'expo-file-system';
 import { useStore } from '../store';
 import { INCOME_CATEGORY_ID, Transaction } from '../types';
 import { parseAmount } from '../utils/money';
 import { todayIso } from '../utils/dates';
 import { parseTransactionsCsv } from '../utils/csv';
+import { looksLikeOfx, parseOfx } from '../utils/ofx';
 import { Button, ChipPicker, Field, Label, Row, Sheet, useTheme } from './ui';
 import { spacing, type } from '../theme';
 
@@ -462,42 +465,99 @@ export function RuleForm({ visible, onClose }: { visible: boolean; onClose: () =
   );
 }
 
-export function CsvImportForm({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+interface ParsedStatement {
+  rows: { date: string; payee: string; amount: number; categoryName?: string }[];
+  errors: string[];
+  format: 'csv' | 'ofx';
+}
+
+function parseStatement(text: string): ParsedStatement {
+  if (looksLikeOfx(text)) {
+    const { rows, errors } = parseOfx(text);
+    return { rows, errors, format: 'ofx' };
+  }
+  const { rows, errors } = parseTransactionsCsv(text);
+  return { rows, errors, format: 'csv' };
+}
+
+/**
+ * Import bank / credit-card statements: pick an exported file (CSV or
+ * OFX/QFX — the formats banks offer under "download transactions") or
+ * paste CSV text. Rules auto-categorize; duplicates are skipped.
+ */
+export function StatementImportForm({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const store = useStore();
   const [text, setText] = useState('');
+  const [fileName, setFileName] = useState<string | null>(null);
   const accounts = store.accounts.filter((a) => !a.archived);
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? '');
 
-  const preview = useMemo(() => (text.trim() ? parseTransactionsCsv(text) : null), [text]);
+  const preview = useMemo(() => (text.trim() ? parseStatement(text) : null), [text]);
+
+  const pickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/*', 'application/x-ofx', 'application/vnd.intu.qfx', 'application/octet-stream', '*/*'],
+        copyToCacheDirectory: true,
+        multiple: false,
+        base64: false,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+      // Web returns a DOM File; native gives a cache URI for expo-file-system.
+      const content = asset.file ? await asset.file.text() : await new FsFile(asset.uri).text();
+      setText(content);
+      setFileName(asset.name);
+    } catch (e) {
+      notify('Could not read file', e instanceof Error ? e.message : 'Unknown error.');
+    }
+  };
 
   const doImport = () => {
-    if (!preview || preview.rows.length === 0) return notify('Nothing to import', 'Paste CSV with date, payee, amount columns.');
+    if (!preview || preview.rows.length === 0) {
+      return notify('Nothing to import', 'Pick a CSV or OFX/QFX statement file, or paste CSV text.');
+    }
     if (!accountId) return notify('No account', 'Pick an account for the imported transactions.');
     const byName = new Map(store.categories.map((c) => [c.name.toLowerCase(), c.id]));
-    const count = store.importTransactions(
+    const { imported, skipped } = store.importTransactions(
       preview.rows.map((r) => ({
         date: r.date, payee: r.payee, amount: r.amount, accountId,
         categoryId: r.categoryName ? byName.get(r.categoryName.toLowerCase()) ?? null : null,
       })),
     );
     setText('');
+    setFileName(null);
     onClose();
-    notify('Import complete', `Imported ${count} transactions.`);
+    notify(
+      'Import complete',
+      `Imported ${imported} transaction${imported === 1 ? '' : 's'}` +
+        (skipped > 0 ? `, skipped ${skipped} duplicate${skipped === 1 ? '' : 's'}` : '') +
+        '. Rules categorized what they could — the rest show as Uncategorized in Activity.',
+    );
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="Import CSV">
+    <Sheet visible={visible} onClose={onClose} title="Import Statement">
       <Label style={{ marginBottom: spacing.sm }}>
-        Paste bank-export CSV. Needs a header row with date, payee/description and amount
-        (negative = spending). Optional category column.
+        Import a bank or credit-card statement export — CSV or OFX/QFX (Quicken) files,
+        the formats every bank offers under “download transactions”. Duplicates are
+        skipped automatically, so re-importing overlapping months is safe.
       </Label>
+      <Button title={fileName ? `📄 ${fileName}` : '📁 Choose statement file…'} variant="ghost" onPress={pickFile} />
+      <View style={{ height: spacing.md }} />
       <Label style={{ marginBottom: 4 }}>Into account</Label>
       <ChipPicker items={accounts} selectedId={accountId} onSelect={setAccountId} labelFor={(a) => a.name} />
-      <Field label="CSV text" value={text} onChangeText={setText} multiline placeholder={'date,payee,amount\n2026-07-01,Coffee,-4.50'} />
+      <Field
+        label="…or paste CSV text"
+        value={fileName ? `(loaded from ${fileName})` : text}
+        onChangeText={(v) => { setText(v); setFileName(null); }}
+        multiline
+        placeholder={'date,payee,amount\n2026-07-01,Coffee,-4.50'}
+      />
       {preview && (
         <Label style={{ marginBottom: spacing.md }}>
-          {preview.rows.length} rows ready
-          {preview.errors.length > 0 ? ` · ${preview.errors.length} skipped (${preview.errors[0]})` : ''}
+          {preview.format.toUpperCase()} detected · {preview.rows.length} transactions ready
+          {preview.errors.length > 0 ? ` · ${preview.errors.length} rows skipped (${preview.errors[0]})` : ''}
         </Label>
       )}
       <Button title="Import" onPress={doImport} disabled={!preview || preview.rows.length === 0} />

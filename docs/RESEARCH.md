@@ -78,7 +78,7 @@ Google Play listings, and user communities (r/ynab, r/MonarchMoney, r/PocketGuar
 | Auto-categorization rules | Monarch/PocketGuard | ✅ rules engine + retroactive apply |
 | Transaction search & filters | (Goodbudget's gap) | ✅ full-text search + account/category filters |
 | Savings goals with progress | all four | ✅ goals with contribute/withdraw |
-| CSV import & export | Monarch/YNAB/Goodbudget | ✅ paste-import + share/download export |
+| Statement/file import (CSV, OFX/QFX) & export | Monarch/YNAB/Goodbudget bank-file import | ✅ file picker + paste, duplicate-skip, rules auto-categorize |
 | Overspend warnings with reserved status colors | PocketGuard | ✅ envelope "overspent — tap to cover" |
 | Dark mode | table stakes | ✅ system/light/dark |
 | Privacy / manual-first, offline | YNAB manual mode | ✅ 100% on-device, no bank credentials |

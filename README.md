@@ -23,7 +23,9 @@ feature-mapping table.
 - **Savings goals** with progress bars and contribute/withdraw
 - **Reports**: spending-by-category donut, 6-month income-vs-spending bars, savings
   rate, net-worth trend line, recurring/subscription detection
-- **CSV import (paste) and export** (share sheet on mobile, download on web)
+- **Statement import**: pick a bank/credit-card export file — CSV or OFX/QFX (Quicken) —
+  or paste CSV; automatic duplicate detection makes re-importing overlapping months safe,
+  and rules auto-categorize imported rows. CSV export via share sheet (mobile) or download (web)
 - **Dark mode** (system/light/dark), colorblind-safe validated chart palette
 - **Privacy-first**: 100% on-device via AsyncStorage — no bank logins, no cloud, no ads
 
@@ -65,3 +67,5 @@ and identical across Android, iOS, and web.
 - Playwright end-to-end drive of the web build: every tab, add/search/persist
   transaction, envelope assign, move money, mark bill paid, goal contribution,
   dark mode — zero console/page errors
+- Statement import drive: QFX file import, duplicate-skip on re-import, CSV file
+  import with rule-based auto-categorization — zero errors

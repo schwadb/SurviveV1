@@ -3,7 +3,7 @@ import { Platform, Pressable, ScrollView, Share, Text, View } from 'react-native
 import { useStore } from '../store';
 import { spacing, type } from '../theme';
 import { Amount, Button, Card, Label, Pill, ProgressBar, Row, SectionHeader, useTheme } from '../components/ui';
-import { AccountForm, BillForm, ContributeForm, CsvImportForm, GoalForm, RuleForm } from '../components/forms';
+import { AccountForm, BillForm, ContributeForm, GoalForm, RuleForm, StatementImportForm } from '../components/forms';
 import { accountBalance, isCredit, netWorth, upcomingBills } from '../logic/budget';
 import { fmt } from '../utils/money';
 import { dateLabel, monthKey } from '../utils/dates';
@@ -188,7 +188,7 @@ export function MoreScreen() {
       <Card>
         <View style={{ gap: spacing.sm }}>
           <Button title="Export transactions (CSV)" variant="ghost" onPress={() => exportCsv(transactionsToCsv(store))} />
-          <Button title="Import transactions (CSV)" variant="ghost" onPress={() => setShowImport(true)} />
+          <Button title="Import statement (CSV / OFX / QFX)" variant="ghost" onPress={() => setShowImport(true)} />
         </View>
         <Label style={{ marginTop: spacing.md }}>
           🔒 Privacy-first: all data lives on this device. No bank logins, no cloud, no ads.
@@ -242,7 +242,7 @@ export function MoreScreen() {
       <ContributeForm visible={!!contributeId} onClose={() => setContributeId(null)} goalId={contributeId} />
       <BillForm visible={billForm.open} onClose={() => setBillForm({ open: false, id: null })} editingId={billForm.id} />
       <RuleForm visible={showRuleForm} onClose={() => setShowRuleForm(false)} />
-      <CsvImportForm visible={showImport} onClose={() => setShowImport(false)} />
+      <StatementImportForm visible={showImport} onClose={() => setShowImport(false)} />
     </ScrollView>
   );
 }

@@ -47,7 +47,8 @@ interface Actions {
   updateSettings: (patch: Partial<Settings>) => void;
   resetToDemo: () => void;
   clearAllData: () => void;
-  importTransactions: (rows: Omit<Transaction, 'id' | 'cleared'>[]) => number;
+  /** Import statement rows, skipping (date, amount, payee) duplicates. */
+  importTransactions: (rows: Omit<Transaction, 'id' | 'cleared'>[]) => { imported: number; skipped: number };
 }
 
 export type Store = AppData & Actions;
@@ -153,14 +154,23 @@ export const useStore = create<Store>()(
       clearAllData: () => set({ ...emptyData() }),
       importTransactions: (rows) => {
         const s = get();
-        const withIds: Transaction[] = rows.map((r) => ({
-          ...r,
-          categoryId: r.categoryId ?? applyRules(s, r.payee),
-          id: newId('tx'),
-          cleared: true,
-        }));
-        set({ transactions: [...s.transactions, ...withIds] });
-        return withIds.length;
+        // Banks re-export overlapping date ranges; dedupe on the natural key.
+        const seen = new Set(s.transactions.map((t) => `${t.date}|${t.amount}|${t.payee.toLowerCase()}`));
+        const fresh: Transaction[] = [];
+        let skipped = 0;
+        for (const r of rows) {
+          const key = `${r.date}|${r.amount}|${r.payee.toLowerCase()}`;
+          if (seen.has(key)) { skipped++; continue; }
+          seen.add(key);
+          fresh.push({
+            ...r,
+            categoryId: r.categoryId ?? applyRules(s, r.payee),
+            id: newId('tx'),
+            cleared: true,
+          });
+        }
+        if (fresh.length > 0) set({ transactions: [...s.transactions, ...fresh] });
+        return { imported: fresh.length, skipped };
       },
     }),
     {
