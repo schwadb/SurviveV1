@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Satellite, Plane, Ship, Camera, Radio, Search, Settings, Database,
   Shield, Menu, X, Eye, Phone, MapPin, User, AlertTriangle, ChevronRight,
-  Zap, Star, Mail, Sun, Moon, Anchor, Bot, FileSearch,
+  Zap, Star, Mail, Sun, Moon, Anchor, Bot, FileSearch, Network, Lock,
 } from 'lucide-react';
 import { useTheme } from '../../hooks/useLocalStorage';
 
@@ -27,6 +27,7 @@ const navGroups = [
   {
     title: 'INTELLIGENCE',
     items: [
+      { id: 'investigations', label: 'Investigations', icon: Network, color: 'text-indigo-400' },
       { id: 'person', label: 'Person Lookup', icon: User, color: 'text-rose-400' },
       { id: 'phone', label: 'Phone Lookup', icon: Phone, color: 'text-yellow-400' },
       { id: 'address', label: 'Address Lookup', icon: MapPin, color: 'text-teal-400' },
@@ -40,6 +41,7 @@ const navGroups = [
       { id: 'ai-search', label: 'Perplexity AI', icon: Search, color: 'text-violet-400' },
       { id: 'agents', label: 'Agent Recorder', icon: Bot, color: 'text-emerald-400' },
       { id: 'watchlist', label: 'Watchlist', icon: Star, color: 'text-yellow-400' },
+      { id: 'security', label: 'Security & OPSEC', icon: Lock, color: 'text-green-400' },
       { id: 'resources', label: 'Resources', icon: Database, color: 'text-gray-400' },
       { id: 'settings', label: 'Settings', icon: Settings, color: 'text-gray-400' },
     ],
@@ -56,7 +58,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onNavigate, alertCount
   const [mobileOpen, setMobileOpen] = useState(false);
   const { darkMode, toggleTheme } = useTheme();
 
-  const SidebarContent = () => (
+  const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="px-4 py-4 border-b border-gray-800">
@@ -158,12 +160,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onNavigate, alertCount
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <SidebarContent />
+        {sidebarContent}
       </aside>
 
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex flex-col w-64 bg-[#111827] border-r border-gray-800 h-screen sticky top-0">
-        <SidebarContent />
+        {sidebarContent}
       </aside>
     </>
   );

@@ -43,7 +43,7 @@ const ScannerAccess: React.FC = () => {
       s.name.toLowerCase().includes(search.toLowerCase()) ||
       s.location.toLowerCase().includes(search.toLowerCase()) ||
       s.state.toLowerCase().includes(search.toLowerCase()) ||
-      s.tags.some((t) => t.includes(search.toLowerCase()));
+      s.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()));
     const matchType = typeFilter === 'all' || s.type === typeFilter;
     return matchSearch && matchType;
   });

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Aircraft, Satellite } from '../types';
+import { preloadSatLib, computePositionFromTLE } from './orbitEngine';
 
 // ─── Rate Limiter ──────────────────────────────────────────────────────────────
 class RateLimiter {
@@ -121,32 +122,63 @@ export const fetchLiveAircraft = async (
 };
 
 // ─── CelesTrak — Live Satellites ──────────────────────────────────────────────
-export const fetchLiveSatellites = async (group = 'active'): Promise<Satellite[]> => {
+/** Classify orbit regime from mean motion (revolutions per day). */
+function classifyOrbit(meanMotion: number): Satellite['type'] {
+  if (meanMotion >= 11.25) return 'LEO';
+  if (meanMotion >= 2.0) return 'MEO';
+  if (meanMotion >= 0.9) return 'GEO';
+  return 'HEO';
+}
+
+/**
+ * Fetch real TLEs from CelesTrak and compute genuine sub-satellite positions
+ * with satellite.js (via orbitEngine). Replaces the previous placeholder that
+ * returned random coordinates. `group` is any CelesTrak GP group name
+ * (active, stations, starlink, gps-ops, galileo, weather, science, military…).
+ */
+export const fetchLiveSatellites = async (group = 'active', limit = 150): Promise<Satellite[]> => {
   return generalLimiter.throttle(() =>
     withRetry(async () => {
-      const resp = await axios.get(
-        `https://celestrak.org/SOCRATES/query.php?GROUP=${group}&FORMAT=json`,
-        { timeout: 20000 }
+      const resp = await axios.get<string>(
+        `https://celestrak.org/NORAD/elements/gp.php?GROUP=${encodeURIComponent(group)}&FORMAT=tle`,
+        { timeout: 20000, responseType: 'text' }
       );
 
-      if (!Array.isArray(resp.data)) return [];
+      const lines = String(resp.data).split('\n').map((l) => l.replace(/\r$/, ''));
+      await preloadSatLib();
+      const now = new Date();
+      const sats: Satellite[] = [];
 
-      // CelesTrak returns TLE data — we simulate positions for demo
-      // In production, use satellite.js to compute real lat/lng from TLE
-      return resp.data.slice(0, 50).map((sat: Record<string, unknown>, i: number): Satellite => ({
-        id: String(sat.NORAD_CAT_ID ?? i),
-        name: String(sat.OBJECT_NAME ?? `SAT-${i}`),
-        noradId: Number(sat.NORAD_CAT_ID ?? i),
-        type: 'LEO',
-        owner: String(sat.COUNTRY_CODE ?? 'Unknown'),
-        lat: (Math.random() - 0.5) * 160,
-        lng: (Math.random() - 0.5) * 360,
-        altitude: 400 + Math.random() * 800,
-        velocity: 27000 + Math.random() * 2000,
-        inclination: 51 + Math.random() * 47,
-        status: 'active',
-        lastUpdated: new Date().toISOString(),
-      }));
+      for (let i = 0; i + 2 < lines.length && sats.length < limit; i += 3) {
+        const name = lines[i]?.trim();
+        const l1 = lines[i + 1];
+        const l2 = lines[i + 2];
+        if (!name || !l1?.startsWith('1 ') || !l2?.startsWith('2 ')) continue;
+
+        const pos = computePositionFromTLE(l1, l2, now);
+        if (!pos) continue;
+
+        const noradId = parseInt(l1.substring(2, 7).trim(), 10) || 0;
+        const inclination = parseFloat(l2.substring(8, 16)) || 0;
+        const meanMotion = parseFloat(l2.substring(52, 63)) || 0;
+
+        sats.push({
+          id: String(noradId),
+          name,
+          noradId,
+          type: classifyOrbit(meanMotion),
+          owner: 'Unknown',
+          lat: pos.lat,
+          lng: pos.lng,
+          altitude: Math.round(pos.altitudeKm),
+          velocity: Math.round(pos.velocity * 3600), // km/s → km/h
+          inclination: Math.round(inclination * 100) / 100,
+          status: 'active',
+          lastUpdated: now.toISOString(),
+        });
+      }
+
+      return sats;
     }, 2, 3000)
   );
 };
@@ -212,7 +244,7 @@ function navStatusLabel(status: number): string {
 export const perplexitySearch = async (
   query: string,
   apiKey: string,
-  model = 'llama-3.1-sonar-large-128k-online'
+  model = 'sonar'
 ): Promise<{ content: string; citations?: string[] }> => {
   const response = await generalLimiter.throttle(() =>
     withRetry(() =>
@@ -288,14 +320,19 @@ export const lookupPhoneNumber = async (phone: string, apiKey: string) => {
   );
 };
 
-// ─── HaveIBeenPwned ───────────────────────────────────────────────────────────
-export const checkEmailBreach = async (email: string): Promise<unknown[]> => {
+// ─── HaveIBeenPwned (account breaches — requires a paid HIBP key) ──────────────
+// The account-breach endpoint needs a real HIBP API key (there is no free tier).
+// The key must be supplied by the caller; we never ship a placeholder that only
+// ever returns 401. For a keyless breach signal, use pwnedPassword() in
+// services/osint.ts, which checks the free k-anonymity Pwned Passwords range API.
+export const checkEmailBreach = async (email: string, apiKey: string): Promise<unknown[]> => {
+  if (!apiKey) throw new Error('A HaveIBeenPwned API key is required for account breach lookups');
   return generalLimiter.throttle(() =>
     withRetry(async () => {
       const resp = await axios.get(
-        `https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(email)}`,
+        `https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(email)}?truncateResponse=false`,
         {
-          headers: { 'hibp-api-key': 'demo', 'User-Agent': 'WatcherV1-OSINT/1.0' },
+          headers: { 'hibp-api-key': apiKey, 'User-Agent': 'WatcherV1-OSINT/1.0' },
           timeout: 10000,
         }
       );

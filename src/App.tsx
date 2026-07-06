@@ -22,6 +22,8 @@ import Settings from './components/resources/Settings';
 import WatchlistPanel from './components/common/WatchlistPanel';
 import Chokepoints from './pages/Chokepoints';
 import DorkBuilder from './pages/DorkBuilder';
+import Investigations from './pages/Investigations';
+import Security from './pages/Security';
 import TimelineScrubber from './components/common/TimelineScrubber';
 import { useTimeline } from './hooks/useTimeline';
 import { useTheme } from './hooks/useLocalStorage';
@@ -47,6 +49,8 @@ const ROUTE_META: Record<string, { title: string; subtitle: string; isTrackingPa
   '/resources': { title: 'Resource Manager', subtitle: 'Manage OSINT tools, APIs & data sources' },
   '/settings': { title: 'Settings', subtitle: 'Configure API keys, live data & preferences' },
   '/dorks': { title: 'Google Dork Builder', subtitle: 'GHDB-powered recon query builder with 14 exploit categories' },
+  '/investigations': { title: 'Investigations', subtitle: 'Link-analysis graph — pivot entities through live OSINT sources' },
+  '/security': { title: 'Security & OPSEC', subtitle: 'Password exposure, local encryption vault & egress control' },
 };
 
 const App: React.FC = () => {
@@ -136,7 +140,9 @@ const App: React.FC = () => {
             <Route path="/resources" element={<ErrorBoundary fallbackTitle="Resources Error"><ResourceManager /></ErrorBoundary>} />
             <Route path="/settings" element={<ErrorBoundary fallbackTitle="Settings Error"><Settings /></ErrorBoundary>} />
             <Route path="/dorks" element={<ErrorBoundary fallbackTitle="Dork Builder Error"><DorkBuilder /></ErrorBoundary>} />
-            <Route path="*" element={<ErrorBoundary fallbackTitle="Page Error"><Dashboard onNavigate={(s) => navigate(`/${s}`)} /></ErrorBoundary>} />
+            <Route path="/investigations" element={<ErrorBoundary fallbackTitle="Investigations Error"><Investigations /></ErrorBoundary>} />
+            <Route path="/security" element={<ErrorBoundary fallbackTitle="Security Error"><Security /></ErrorBoundary>} />
+            <Route path="*" element={<ErrorBoundary fallbackTitle="Page Error"><Dashboard onNavigate={(s) => navigate(s === 'dashboard' ? '/' : `/${s}`)} /></ErrorBoundary>} />
           </Routes>
         </main>
       </div>

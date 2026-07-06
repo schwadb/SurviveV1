@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Circle, Tooltip, useMap } from 'react-leaflet'
 import { Anchor, Plane, Satellite, AlertTriangle, ChevronRight, Activity } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
@@ -158,7 +158,11 @@ const RISK_BADGE: Record<string, string> = {
 
 function MapFlyTo({ lat, lng, zoom }: { lat: number; lng: number; zoom: number }) {
   const map = useMap()
-  map.flyTo([lat, lng], zoom, { duration: 1.5 })
+  // Side effects belong in an effect, not the render body — running flyTo during
+  // render re-triggered the animation on every parent re-render.
+  useEffect(() => {
+    map.flyTo([lat, lng], zoom, { duration: 1.5 })
+  }, [map, lat, lng, zoom])
   return null
 }
 

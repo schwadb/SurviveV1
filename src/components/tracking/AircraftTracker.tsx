@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Plane, AlertTriangle, RefreshCw, ExternalLink, Search, Filter, Star, MapPin, Download, Zap, Navigation } from 'lucide-react';
 import type { Aircraft, MapFilter } from '../../types';
 import { mockAircraft } from '../../data/mockData';
@@ -38,8 +38,12 @@ const AircraftTracker: React.FC = () => {
   useAirspaceZones(showAirspace);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const knownEmergencies = useRef<Set<string>>(new Set());
+  const watchedSeen = useRef<Set<string>>(new Set());
 
-  const jammingZones = showJamming ? detectJammingZones(aircraft) : [];
+  const jammingZones = useMemo(
+    () => (showJamming ? detectJammingZones(aircraft) : []),
+    [showJamming, aircraft],
+  );
 
   const updateTrails = useCallback((newAircraft: Aircraft[]) => {
     if (!settings.showTrails) return;
@@ -95,20 +99,30 @@ const AircraftTracker: React.FC = () => {
     }
   }, [settings.enableLiveAircraft, userLat, userLng, updateTrails, checkEmergencies]);
 
+  // Always call the latest fetchData from the interval without resetting the
+  // timer every time bounds/geolocation change (which would otherwise leave the
+  // interval calling a stale fetchData with undefined bounds).
+  const fetchDataRef = useRef(fetchData);
+  useEffect(() => { fetchDataRef.current = fetchData; }, [fetchData]);
+
   // Auto-refresh
   useEffect(() => {
-    fetchData();
-    intervalRef.current = setInterval(fetchData, settings.refreshInterval * 1000);
+    fetchDataRef.current();
+    intervalRef.current = setInterval(() => fetchDataRef.current(), settings.refreshInterval * 1000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [settings.refreshInterval, settings.enableLiveAircraft]);
 
-  // Watchlist matching
+  // Watchlist matching — dedupe so each watched aircraft only alerts once.
   useEffect(() => {
     const watchedIcaos = watchlist.filter((w) => w.type === 'aircraft' && w.alertOnSeen).map((w) => w.identifier.toUpperCase());
-    aircraft.filter((ac) => watchedIcaos.includes(ac.icao) || watchedIcaos.includes(ac.callsign)).forEach((ac) => {
-      toast(`👁️ Watched aircraft ${ac.callsign} spotted at ${ac.altitude.toLocaleString()} ft`, { duration: 5000 });
-    });
-  }, [aircraft]);
+    aircraft
+      .filter((ac) => watchedIcaos.includes(ac.icao) || watchedIcaos.includes(ac.callsign))
+      .forEach((ac) => {
+        if (watchedSeen.current.has(ac.icao)) return;
+        watchedSeen.current.add(ac.icao);
+        toast(`👁️ Watched aircraft ${ac.callsign} spotted at ${ac.altitude.toLocaleString()} ft`, { duration: 5000 });
+      });
+  }, [aircraft, watchlist]);
 
   const filtered = aircraft.filter((ac) => {
     const matchSearch =

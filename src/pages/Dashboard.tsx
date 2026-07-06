@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
-  Satellite, Plane, Ship, Camera, Radio, Search, Shield,
-  TrendingUp, Globe, Eye, Activity, ExternalLink
+  Satellite, Plane, Ship, Camera, Radio, Shield,
+  TrendingUp, Globe, Eye, Activity, ExternalLink, Network
 } from 'lucide-react';
 import type { MapFilter } from '../types';
 import { mockSatellites, mockAircraft, mockShips, mockCameras, mockFlockCameras, defaultResources } from '../data/mockData';
@@ -34,14 +34,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     { label: 'Flock Cams', value: mockFlockCameras.filter((c) => c.status === 'active').length, icon: Eye, color: 'text-orange-400', bg: 'bg-orange-900/20', id: 'flock' },
     { label: 'Scanners', value: 5, icon: Radio, color: 'text-green-400', bg: 'bg-green-900/20', id: 'scanners' },
     { label: 'Resources', value: defaultResources.filter((r) => r.isEnabled).length, icon: Shield, color: 'text-gray-400', bg: 'bg-gray-900/40', id: 'resources' },
-    { label: 'Data Sources', value: defaultResources.length, icon: Globe, color: 'text-teal-400', bg: 'bg-teal-900/20', id: 'resources' },
+    { label: 'Data Sources', value: defaultResources.length, icon: Globe, color: 'text-teal-400', bg: 'bg-teal-900/20', id: 'settings' },
   ];
 
   const quickActions = [
     { label: 'Track Satellites', icon: Satellite, color: 'text-indigo-400', id: 'satellites', description: 'Live orbital tracking' },
     { label: 'Flight Tracker', icon: Plane, color: 'text-blue-400', id: 'aircraft', description: 'Real-time ADS-B data' },
     { label: 'Ship AIS', icon: Ship, color: 'text-cyan-400', id: 'ships', description: 'Maritime vessel tracking' },
-    { label: 'Person Search', icon: Search, color: 'text-rose-400', id: 'person', description: 'OSINT people lookup' },
+    { label: 'Investigations', icon: Network, color: 'text-indigo-400', id: 'investigations', description: 'Link-analysis graph' },
     { label: 'AI Research', icon: Activity, color: 'text-violet-400', id: 'ai-search', description: 'Perplexity AI searches' },
     { label: 'Scanners', icon: Radio, color: 'text-green-400', id: 'scanners', description: 'Live radio feeds' },
   ];

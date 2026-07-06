@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import {
-  Mail, Globe, Search, ExternalLink, AlertTriangle, Loader2,
+  Mail, Globe, Search, ExternalLink, AlertTriangle,
   Shield, Database, Server, Key, Lock
 } from 'lucide-react';
 import { useSearchHistory } from '../../hooks/useSearchHistory';
 import SearchHistory from '../common/SearchHistory';
+import LiveRecon from './LiveRecon';
 
 type ActiveTab = 'email' | 'domain' | 'ip';
 
@@ -46,15 +47,14 @@ const IP_TOOLS = [
 const EmailDomainOSINT: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('email');
   const [query, setQuery] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [recon, setRecon] = useState<{ value: string; kind: ActiveTab } | null>(null);
   const { addEntry } = useSearchHistory();
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
-    setIsLoading(true);
-    addEntry({ query: query.trim(), type: activeTab as 'email' | 'domain' });
-    await new Promise((r) => setTimeout(r, 500));
-    setIsLoading(false);
+  const handleSearch = () => {
+    const q = query.trim();
+    if (!q) return;
+    addEntry({ query: q, type: (activeTab === 'ip' ? 'domain' : activeTab) });
+    setRecon({ value: q, kind: activeTab });
   };
 
   const buildUrl = (baseUrl: string) => {
@@ -112,14 +112,17 @@ const EmailDomainOSINT: React.FC = () => {
               type={activeTab === 'email' ? 'email' : 'text'}
             />
           </div>
-          <button onClick={handleSearch} disabled={isLoading || !query.trim()} className="btn-primary">
-            {isLoading ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
-            Search
+          <button onClick={handleSearch} disabled={!query.trim()} className="btn-primary">
+            <Search size={15} />
+            Run Live Recon
           </button>
         </div>
 
         <SearchHistory typeFilter={activeTab} onSelect={setQuery} compact />
       </div>
+
+      {/* Live in-app recon results */}
+      {recon && <LiveRecon key={`${recon.kind}:${recon.value}`} value={recon.value} kind={recon.kind} />}
 
       {/* Quick stats for entered value */}
       {query && (

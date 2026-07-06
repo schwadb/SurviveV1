@@ -71,7 +71,7 @@ const SatelliteTracker: React.FC = () => {
 
   useEffect(() => {
     // Preload satellite.js library so sync computePositionFromTLE calls work
-    preloadSatLib().then(fetchData);
+    preloadSatLib().then(fetchData).catch(() => fetchData());
     intervalRef.current = setInterval(fetchData, settings.refreshInterval * 1000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [settings.refreshInterval, settings.enableLiveSatellites]);
