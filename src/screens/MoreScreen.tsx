@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, Switch, Text, useWindowDimensions, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File as FsFile } from 'expo-file-system';
 import { useStore } from '../store';
@@ -8,8 +8,11 @@ import { Amount, Button, Card, Label, Pill, ProgressBar, Row, SectionHeader, use
 import { AccountForm, BillForm, ContributeForm, GoalForm, RuleForm, StatementImportForm } from '../components/forms';
 import { lockAvailable } from '../components/AppLock';
 import { accountBalance, isCredit, netWorth, upcomingBills } from '../logic/budget';
-import { fmt } from '../utils/money';
-import { dateLabel, monthKey, todayIso } from '../utils/dates';
+import { DebtInput, PayoffStrategy, simulatePayoff } from '../logic/debt';
+import { TrendLine } from '../components/charts';
+import { Field } from '../components/ui';
+import { fmt, parseAmount } from '../utils/money';
+import { addMonths, dateLabel, monthKey, monthLabel, todayIso } from '../utils/dates';
 import { transactionsToCsv } from '../utils/csv';
 import { parseBackup, serializeBackup } from '../utils/backup';
 import { exportTextFile } from '../utils/share';
@@ -22,6 +25,120 @@ const TYPE_LABEL: Record<string, string> = {
 function notify(title: string, message: string) {
   if (Platform.OS === 'web') window.alert(`${title}\n${message}`);
   else Alert.alert(title, message);
+}
+
+/** Avalanche/snowball payoff planner over credit & loan accounts. */
+function DebtPayoffCard() {
+  const t = useTheme();
+  const store = useStore();
+  const { width } = useWindowDimensions();
+  const chartW = Math.min(width, 520) - spacing.lg * 4;
+  const [strategy, setStrategy] = useState<PayoffStrategy>('avalanche');
+  const [extraText, setExtraText] = useState('100');
+
+  const debtAccounts = store.accounts.filter(
+    (a) => !a.archived && isCredit(a) && accountBalance(store, a.id) < 0,
+  );
+  if (debtAccounts.length === 0) {
+    return (
+      <>
+        <SectionHeader title="Debt payoff" right={null} />
+        <Card>
+          <Label>No debt — nice. 🎉 Credit and loan accounts with a negative balance show up here.</Label>
+        </Card>
+      </>
+    );
+  }
+
+  const ready = debtAccounts.filter((a) => a.aprBps !== undefined && a.minPayment !== undefined);
+  const missing = debtAccounts.filter((a) => a.aprBps === undefined || a.minPayment === undefined);
+  const extra = Math.max(0, parseAmount(extraText) ?? 0);
+  const inputs: DebtInput[] = ready.map((a) => ({
+    id: a.id, name: a.name, balance: -accountBalance(store, a.id),
+    aprBps: a.aprBps ?? 0, minPayment: a.minPayment ?? 0,
+  }));
+  const result = inputs.length > 0 ? simulatePayoff(inputs, extra, strategy) : null;
+  const other = inputs.length > 0
+    ? simulatePayoff(inputs, extra, strategy === 'avalanche' ? 'snowball' : 'avalanche')
+    : null;
+  const totalDebt = inputs.reduce((a, d) => a + d.balance, 0);
+
+  // TrendLine renders one label per point — sample the curve down to ≤6.
+  const curvePoints: number[] = [];
+  const curveLabels: string[] = [];
+  if (result && result.curve.length >= 2) {
+    const step = Math.max(1, Math.ceil(result.curve.length / 5));
+    curvePoints.push(totalDebt);
+    curveLabels.push('now');
+    for (let i = step - 1; i < result.curve.length; i += step) {
+      curvePoints.push(result.curve[i]);
+      curveLabels.push(`${i + 1}mo`);
+    }
+    if ((result.curve.length - 1) % step !== step - 1) {
+      curvePoints.push(result.curve[result.curve.length - 1]);
+      curveLabels.push(`${result.curve.length}mo`);
+    }
+  }
+
+  return (
+    <>
+      <SectionHeader title="Debt payoff" right={null} />
+      <Card>
+        <Row style={{ justifyContent: 'space-between', marginBottom: spacing.sm }}>
+          <Label>Total debt</Label>
+          <Amount cents={-totalDebt} size="heading" colorize />
+        </Row>
+        <Row style={{ gap: spacing.sm, marginBottom: spacing.md }}>
+          <Pill label="Avalanche · highest APR first" active={strategy === 'avalanche'} onPress={() => setStrategy('avalanche')} />
+          <Pill label="Snowball · smallest first" active={strategy === 'snowball'} onPress={() => setStrategy('snowball')} />
+        </Row>
+        <Field label="Extra payment per month" value={extraText} onChangeText={setExtraText} keyboardType="decimal-pad" placeholder="100.00" />
+        {result && !result.neverPaysOff && (
+          <>
+            <Row style={{ justifyContent: 'space-between', marginBottom: spacing.sm }}>
+              <View>
+                <Label>Debt-free</Label>
+                <Text style={[type.heading, { color: t.inkPrimary }]}>
+                  {monthLabel(addMonths(monthKey(), result.months))}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Label>Total interest</Label>
+                <Text style={[type.heading, { color: t.inkPrimary, fontVariant: ['tabular-nums'] }]}>
+                  {fmt(result.totalInterest)}
+                </Text>
+              </View>
+            </Row>
+            {other && !other.neverPaysOff && other.totalInterest !== result.totalInterest && (
+              <Label style={{ marginBottom: spacing.sm }}>
+                {result.totalInterest <= other.totalInterest
+                  ? `${strategy} saves ${fmt(other.totalInterest - result.totalInterest)} vs ${strategy === 'avalanche' ? 'snowball' : 'avalanche'}`
+                  : `${strategy === 'avalanche' ? 'snowball' : 'avalanche'} would save ${fmt(result.totalInterest - other.totalInterest)}`}
+              </Label>
+            )}
+            {curvePoints.length >= 2 && (
+              <TrendLine points={curvePoints} labels={curveLabels} width={chartW} color={t.series[0]} />
+            )}
+            <Label style={{ marginTop: spacing.sm, fontSize: 11 }}>
+              Assumes no new spending on these accounts.
+            </Label>
+          </>
+        )}
+        {result?.neverPaysOff && (
+          <Text style={[type.caption, { color: t.critical }]}>
+            ⚠ These payments never pay off the balance — interest outruns them. Raise the
+            minimums or the extra payment.
+          </Text>
+        )}
+        {missing.length > 0 && (
+          <Label style={{ marginTop: spacing.sm }}>
+            ⚠ APR needed: add APR and minimum payment to {missing.map((a) => a.name).join(', ')} (tap
+            the account above) to include {missing.length === 1 ? 'it' : 'them'} in the plan.
+          </Label>
+        )}
+      </Card>
+    </>
+  );
 }
 
 export function MoreScreen() {
@@ -124,6 +241,8 @@ export function MoreScreen() {
           })
         )}
       </Card>
+
+      <DebtPayoffCard />
 
       <SectionHeader title="Recurring bills" right={<Pill label="+ Add" onPress={() => setBillForm({ open: true, id: null })} />} />
       <Card>

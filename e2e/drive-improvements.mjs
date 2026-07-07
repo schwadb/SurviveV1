@@ -81,12 +81,48 @@ await page.waitForTimeout(400);
 const copiedNote = await page.getByText(/copied 8 envelopes from last month/).count();
 if (copiedNote === 0) errors.push('FLOW: copy-last-month did not report copying 8 envelopes');
 await page.screenshot({ path: `${OUT}/18-copy-last-month.png` });
+
+// --- Auto-assign: August is fully copied (== targets), September is empty ---
+await page.getByText('Auto-assign').click();
+await page.waitForTimeout(400);
+if ((await page.getByText(/all targets already funded/).count()) === 0) {
+  errors.push('FLOW: auto-assign after copy should report targets already funded');
+}
+await page.getByText('›').click();
+await page.waitForTimeout(500);
+await page.getByText('Auto-assign').click();
+await page.waitForTimeout(400);
+if ((await page.getByText(/auto-assigned \$3,145\.00 across 8 envelopes/).count()) === 0) {
+  errors.push('FLOW: auto-assign did not fund 8 envelopes in the empty month');
+}
+if ((await page.getByText(/▲ .* to target/).count()) !== 0) {
+  errors.push('FLOW: target chips still show underfunded after auto-assign');
+}
+await page.screenshot({ path: `${OUT}/20-auto-assign.png` });
+await page.getByText('‹').click();
+await page.waitForTimeout(300);
 await page.getByText('‹').click();
 await page.waitForTimeout(400);
 
 // --- Backup export (web download) ---
 await page.getByText('More', { exact: true }).last().click();
 await page.waitForTimeout(600);
+
+// --- Debt payoff card (seeded Rewards Card has APR + min payment) ---
+await page.getByText('Debt payoff', { exact: true }).scrollIntoViewIfNeeded();
+await page.waitForTimeout(300);
+if ((await page.getByText('Debt-free', { exact: true }).count()) === 0) {
+  errors.push('FLOW: debt payoff card missing Debt-free date');
+}
+if ((await page.getByText('Total interest').count()) === 0) {
+  errors.push('FLOW: debt payoff card missing total interest');
+}
+await page.getByText(/Snowball · smallest first/).click();
+await page.waitForTimeout(300);
+if ((await page.getByText('Debt-free', { exact: true }).count()) === 0) {
+  errors.push('FLOW: debt payoff card broke after strategy switch');
+}
+await page.screenshot({ path: `${OUT}/21-debt-payoff.png` });
 const downloadPromise = page.waitForEvent('download');
 await page.getByText('Export full backup (JSON)').click();
 const download = await downloadPromise;

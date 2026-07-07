@@ -12,6 +12,10 @@ export interface Account {
   /** On-budget accounts feed Ready to Assign / In My Pocket. */
   onBudget: boolean;
   archived?: boolean;
+  /** Annual interest rate in basis points (2499 = 24.99%), credit/loan only. */
+  aprBps?: number;
+  /** Monthly minimum payment in cents, credit/loan only. */
+  minPayment?: number;
 }
 
 export interface CategoryGroup {

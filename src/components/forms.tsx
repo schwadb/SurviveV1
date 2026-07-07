@@ -280,6 +280,8 @@ export function AccountForm({
   const [balanceText, setBalanceText] = useState(editing ? (editing.openingBalance / 100).toFixed(2) : '');
   const [accountType, setAccountType] = useState(editing?.type ?? 'checking');
   const [onBudget, setOnBudget] = useState(editing?.onBudget ?? true);
+  const [aprText, setAprText] = useState(editing?.aprBps ? (editing.aprBps / 100).toFixed(2) : '');
+  const [minPayText, setMinPayText] = useState(editing?.minPayment ? (editing.minPayment / 100).toFixed(2) : '');
 
   const [seedKey, setSeedKey] = useState(editingId ?? 'new');
   const currentKey = editingId ?? 'new';
@@ -289,6 +291,8 @@ export function AccountForm({
     setBalanceText(editing ? (editing.openingBalance / 100).toFixed(2) : '');
     setAccountType(editing?.type ?? 'checking');
     setOnBudget(editing?.onBudget ?? true);
+    setAprText(editing?.aprBps ? (editing.aprBps / 100).toFixed(2) : '');
+    setMinPayText(editing?.minPayment ? (editing.minPayment / 100).toFixed(2) : '');
   }
 
   const types = [
@@ -297,15 +301,28 @@ export function AccountForm({
     { id: 'investment', label: 'Investment' }, { id: 'loan', label: 'Loan' },
   ] as const;
 
+  const isDebtType = accountType === 'credit' || accountType === 'loan';
+
   const save = () => {
     const cents = parseAmount(balanceText || '0');
     if (!name.trim()) return notify('Missing name', 'Give the account a name.');
     if (cents === null) return notify('Bad balance', 'Enter a starting balance like 1500.00 (negative for debt).');
-    if (editing) {
-      store.updateAccount(editing.id, { name: name.trim(), openingBalance: cents, type: accountType, onBudget });
-    } else {
-      store.addAccount({ name: name.trim(), openingBalance: cents, type: accountType, onBudget });
+    // parseAmount already yields ×100, so "24.99" → 2499 basis points.
+    const aprBps = isDebtType && aprText.trim() ? parseAmount(aprText) : null;
+    if (isDebtType && aprText.trim() && (aprBps === null || aprBps < 0 || aprBps > 10000)) {
+      return notify('Bad APR', 'Enter an annual rate like 24.99 (percent, 0-100).');
     }
+    const minPayment = isDebtType && minPayText.trim() ? parseAmount(minPayText) : null;
+    if (isDebtType && minPayText.trim() && (minPayment === null || minPayment < 0)) {
+      return notify('Bad minimum payment', 'Enter a monthly amount like 35.00.');
+    }
+    const patch = {
+      name: name.trim(), openingBalance: cents, type: accountType, onBudget,
+      aprBps: aprBps && aprBps > 0 ? aprBps : undefined,
+      minPayment: minPayment && minPayment > 0 ? minPayment : undefined,
+    };
+    if (editing) store.updateAccount(editing.id, patch);
+    else store.addAccount(patch);
     onClose();
   };
 
@@ -320,6 +337,12 @@ export function AccountForm({
         onSelect={(id) => setAccountType(id as typeof accountType)}
         labelFor={(item) => types.find((x) => x.id === item.id)?.label ?? item.id}
       />
+      {isDebtType && (
+        <>
+          <Field label="APR % (annual, for the debt payoff planner)" value={aprText} onChangeText={setAprText} keyboardType="decimal-pad" placeholder="24.99" />
+          <Field label="Minimum payment / month" value={minPayText} onChangeText={setMinPayText} keyboardType="decimal-pad" placeholder="35.00" />
+        </>
+      )}
       <Row style={{ justifyContent: 'space-between', marginBottom: spacing.lg }}>
         <View style={{ flex: 1, paddingRight: spacing.md }}>
           <Text style={[type.body, { color: t.inkPrimary }]}>On budget</Text>

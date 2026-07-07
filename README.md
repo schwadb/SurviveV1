@@ -21,6 +21,9 @@ feature-mapping table.
 - **Accounts & net worth**: checking/savings/cash/credit/investment/loan, on-budget vs
   tracking, computed balances
 - **Savings goals** with progress bars and contribute/withdraw
+- **Debt payoff planner**: avalanche vs snowball simulation over credit/loan accounts
+  (APR + minimum payment per account), debt-free date, total interest, strategy
+  comparison, payoff curve, and a "never pays off" warning when interest outruns payments
 - **Reports**: spending-by-category donut, 6-month income-vs-spending bars, savings
   rate, net-worth trend line, recurring/subscription detection
 - **Statement import**: pick a bank/credit-card export file — CSV or OFX/QFX (Quicken) —

@@ -17,7 +17,7 @@ export function makeSeedData(): AppData {
   const accounts: AppData['accounts'] = [
     { id: 'acct-check', name: 'Everyday Checking', type: 'checking', openingBalance: 412500, onBudget: true },
     { id: 'acct-save', name: 'High-Yield Savings', type: 'savings', openingBalance: 1250000, onBudget: true },
-    { id: 'acct-credit', name: 'Rewards Card', type: 'credit', openingBalance: -21500, onBudget: true },
+    { id: 'acct-credit', name: 'Rewards Card', type: 'credit', openingBalance: -21500, onBudget: true, aprBps: 2499, minPayment: 3500 },
     { id: 'acct-invest', name: 'Index Funds', type: 'investment', openingBalance: 2860000, onBudget: false },
   ];
 

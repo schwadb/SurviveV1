@@ -80,11 +80,12 @@ Google Play listings, and user communities (r/ynab, r/MonarchMoney, r/PocketGuar
 | Category targets + Auto-Assign | YNAB Targets | ✅ monthly targets, one-tap auto-assign from RTA |
 | Transaction search & filters | (Goodbudget's gap) | ✅ full-text search + account/category filters |
 | Savings goals with progress | all four | ✅ goals with contribute/withdraw |
+| Debt payoff planner (avalanche/snowball) | PocketGuard Plus / YNAB loan calculator | ✅ simulator with strategy comparison + payoff curve |
 | Statement/file import (CSV, OFX/QFX) & export | Monarch/YNAB/Goodbudget bank-file import | ✅ file picker + paste, duplicate-skip, rules auto-categorize |
 | Overspend warnings with reserved status colors | PocketGuard | ✅ envelope "overspent — tap to cover" |
 | Dark mode | table stakes | ✅ system/light/dark |
 | Privacy / manual-first, offline | YNAB manual mode | ✅ 100% on-device, no bank credentials |
 
-Deliberately out of scope for v1 (roadmap): real bank aggregation (the #1 complaint
+Deliberately out of scope (roadmap): real bank aggregation (the #1 complaint
 driver; would need Plaid + a backend), multi-device household sync, AI assistant,
 investment holdings detail.
