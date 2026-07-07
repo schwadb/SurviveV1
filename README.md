@@ -36,7 +36,9 @@ feature-mapping table.
 - **Uncategorized inbox**: one-tap filter chip in Activity showing the count of
   transactions still needing a category
 - **Backup & restore**: full-data JSON backup exported as a real file (share sheet on
-  mobile, download on web) and restored via file picker with structural validation
+  mobile, download on web) and restored via file picker with structural validation —
+  plus **encrypted backups** (AES-256-GCM, scrypt-derived key from a passphrase)
+  auto-detected on restore
 - **App lock**: Face ID / fingerprint / device passcode required on launch and on
   return from background (expo-local-authentication; Android & iOS)
 - **Bill reminders**: opt-in local notifications at 9:00 on due dates plus a
@@ -50,9 +52,11 @@ feature-mapping table.
 - All data stays on-device (AsyncStorage); the app makes zero network requests.
 - Optional biometric/passcode app lock gates the UI on cold start and resume.
 - Statement and backup files are read locally via the OS file picker; nothing is uploaded.
-- Backup JSON files are unencrypted by design (portability) — the UI warns users to
-  store them safely. Encrypted backups via expo-secure-store-derived keys are on the
-  roadmap.
+- Backups come in two flavors: plain JSON (portable, with an in-UI warning) and
+  AES-256-GCM encrypted with an scrypt-derived key from a user passphrase (pure-JS
+  @noble/ciphers + @noble/hashes — no WebCrypto dependency, so it runs identically
+  on Hermes and web). Restore auto-detects the format; wrong passphrases and
+  tampered files fail safely, and hostile KDF parameters are rejected.
 
 ## Running it
 

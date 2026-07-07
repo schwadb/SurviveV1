@@ -1,5 +1,7 @@
 # PLAN: Bill due-date reminders (local notifications)
 
+> **Status: ✅ COMPLETED** — implemented, unit-tested, and verified end-to-end.
+
 **Rank: 2 of 5.** "Bill tracking, due dates, and reminders" is a consensus
 must-have in every 2026 budgeting-app roundup (see `docs/RESEARCH.md` §
 "Consensus must-haves", item 3). The app tracks bills and shows due/overdue

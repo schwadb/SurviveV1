@@ -5,7 +5,8 @@ import { File as FsFile } from 'expo-file-system';
 import { useStore } from '../store';
 import { spacing, type } from '../theme';
 import { Amount, Button, Card, Label, Pill, ProgressBar, Row, SectionHeader, useTheme } from '../components/ui';
-import { AccountForm, BillForm, ContributeForm, GoalForm, RuleForm, StatementImportForm } from '../components/forms';
+import * as Crypto from 'expo-crypto';
+import { AccountForm, BillForm, ContributeForm, GoalForm, PassphraseSheet, RuleForm, StatementImportForm } from '../components/forms';
 import { lockAvailable } from '../components/AppLock';
 import { accountBalance, isCredit, netWorth, upcomingBills } from '../logic/budget';
 import { DebtInput, PayoffStrategy, simulatePayoff } from '../logic/debt';
@@ -15,6 +16,7 @@ import { fmt, parseAmount } from '../utils/money';
 import { addMonths, dateLabel, monthKey, monthLabel, todayIso } from '../utils/dates';
 import { transactionsToCsv } from '../utils/csv';
 import { parseBackup, serializeBackup } from '../utils/backup';
+import { decryptBackup, encryptBackup, isEncryptedBackup } from '../utils/cryptoBackup';
 import { exportTextFile } from '../utils/share';
 
 const TYPE_LABEL: Record<string, string> = {
@@ -153,6 +155,9 @@ export function MoreScreen() {
   const [confirmReset, setConfirmReset] = useState<'demo' | 'clear' | null>(null);
   const [canLock, setCanLock] = useState(false);
   const [pendingRestore, setPendingRestore] = useState<{ name: string; text: string } | null>(null);
+  const [showEncryptSheet, setShowEncryptSheet] = useState(false);
+  const [pendingDecrypt, setPendingDecrypt] = useState<{ name: string; text: string } | null>(null);
+  const [decryptError, setDecryptError] = useState<string | null>(null);
 
   useEffect(() => {
     void lockAvailable().then(setCanLock);
@@ -169,12 +174,46 @@ export function MoreScreen() {
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
       const text = asset.file ? await asset.file.text() : await new FsFile(asset.uri).text();
+      if (isEncryptedBackup(text)) {
+        setDecryptError(null);
+        setPendingDecrypt({ name: asset.name, text });
+        return;
+      }
       const { error } = parseBackup(text);
       if (error) return notify('Cannot restore', error);
       setPendingRestore({ name: asset.name, text });
     } catch (e) {
       notify('Could not read file', e instanceof Error ? e.message : 'Unknown error.');
     }
+  };
+
+  const exportEncrypted = (passphrase: string) => {
+    setShowEncryptSheet(false);
+    const cipherText = encryptBackup(
+      serializeBackup(store, new Date().toISOString()),
+      passphrase,
+      (n) => Crypto.getRandomBytes(n),
+    );
+    void exportTextFile(`survive-budget-backup-${todayIso()}.enc.json`, 'application/json', cipherText);
+  };
+
+  const unlockAndStage = (passphrase: string) => {
+    if (!pendingDecrypt) return;
+    const { json, error } = decryptBackup(pendingDecrypt.text, passphrase);
+    if (error || !json) {
+      setDecryptError(error ?? 'Could not decrypt.');
+      return;
+    }
+    const parsed = parseBackup(json);
+    if (parsed.error) {
+      setDecryptError(parsed.error);
+      return;
+    }
+    // Decryption proves authenticity; the pendingRestore confirm step below
+    // is still required before anything is overwritten.
+    setPendingRestore({ name: pendingDecrypt.name, text: json });
+    setPendingDecrypt(null);
+    setDecryptError(null);
   };
 
   const nw = netWorth(store);
@@ -366,6 +405,7 @@ export function MoreScreen() {
           ) : (
             <Button title="Restore backup (JSON)" variant="ghost" onPress={pickBackupFile} />
           )}
+          <Button title="Export encrypted backup (AES-256)" variant="ghost" onPress={() => setShowEncryptSheet(true)} />
         </View>
         <Label style={{ marginTop: spacing.md }}>
           🔒 Privacy-first: all data lives on this device. No bank logins, no cloud, no ads.
@@ -476,6 +516,19 @@ export function MoreScreen() {
       <BillForm visible={billForm.open} onClose={() => setBillForm({ open: false, id: null })} editingId={billForm.id} />
       <RuleForm visible={showRuleForm} onClose={() => setShowRuleForm(false)} />
       <StatementImportForm visible={showImport} onClose={() => setShowImport(false)} />
+      <PassphraseSheet
+        visible={showEncryptSheet}
+        mode="export"
+        onClose={() => setShowEncryptSheet(false)}
+        onSubmit={exportEncrypted}
+      />
+      <PassphraseSheet
+        visible={!!pendingDecrypt}
+        mode="restore"
+        onClose={() => { setPendingDecrypt(null); setDecryptError(null); }}
+        onSubmit={unlockAndStage}
+        error={decryptError}
+      />
     </ScrollView>
   );
 }

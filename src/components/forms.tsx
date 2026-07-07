@@ -537,6 +537,71 @@ function parseStatement(text: string): ParsedStatement {
 }
 
 /**
+ * Passphrase entry for encrypted backups. `export` mode asks twice and
+ * enforces a minimum length; `restore` mode asks once and surfaces decrypt
+ * errors inline so the user can retry without reopening the sheet.
+ * The passphrase lives only in this component's local state — never in the
+ * (persisted) store.
+ */
+export function PassphraseSheet({
+  visible, mode, onClose, onSubmit, error,
+}: {
+  visible: boolean;
+  mode: 'export' | 'restore';
+  onClose: () => void;
+  onSubmit: (passphrase: string) => void;
+  error?: string | null;
+}) {
+  const t = useTheme();
+  const [pass, setPass] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const submit = () => {
+    if (mode === 'export') {
+      if (pass.length < 8) return setLocalError('Use at least 8 characters.');
+      if (pass !== confirm) return setLocalError('Passphrases do not match.');
+    } else if (!pass) {
+      return setLocalError('Enter the backup passphrase.');
+    }
+    setLocalError(null);
+    onSubmit(pass);
+    setPass('');
+    setConfirm('');
+  };
+
+  const close = () => {
+    setPass('');
+    setConfirm('');
+    setLocalError(null);
+    onClose();
+  };
+
+  const shown = localError ?? error;
+  return (
+    <Sheet
+      visible={visible}
+      onClose={close}
+      title={mode === 'export' ? 'Encrypt Backup' : 'Unlock Backup'}
+    >
+      <Label style={{ marginBottom: spacing.sm }}>
+        {mode === 'export'
+          ? 'The backup file will be AES-256 encrypted with this passphrase. There is no recovery if you forget it.'
+          : 'Enter the passphrase this backup was encrypted with.'}
+      </Label>
+      <Field label="Passphrase" value={pass} onChangeText={setPass} placeholder="" autoFocus />
+      {mode === 'export' && (
+        <Field label="Confirm passphrase" value={confirm} onChangeText={setConfirm} placeholder="" />
+      )}
+      {shown ? (
+        <Text style={[type.caption, { color: t.critical, marginBottom: spacing.md }]}>{shown}</Text>
+      ) : null}
+      <Button title={mode === 'export' ? 'Encrypt & Export' : 'Unlock'} onPress={submit} />
+    </Sheet>
+  );
+}
+
+/**
  * Import bank / credit-card statements: pick an exported file (CSV or
  * OFX/QFX — the formats banks offer under "download transactions") or
  * paste CSV text. Rules auto-categorize; duplicates are skipped.

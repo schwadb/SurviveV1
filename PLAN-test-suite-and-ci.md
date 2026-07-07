@@ -1,5 +1,7 @@
 # PLAN: Test suite + CI for Survive Budget
 
+> **Status: ✅ COMPLETED** — implemented, unit-tested, and verified end-to-end.
+
 **Rank: 1 of 5 (do this first).** Every other plan builds features on top of
 `src/logic/` and `src/utils/`; today those have zero committed tests. The three
 Playwright drives that verified the app live only in an ephemeral scratchpad and

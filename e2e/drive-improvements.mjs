@@ -82,15 +82,21 @@ const copiedNote = await page.getByText(/copied 8 envelopes from last month/).co
 if (copiedNote === 0) errors.push('FLOW: copy-last-month did not report copying 8 envelopes');
 await page.screenshot({ path: `${OUT}/18-copy-last-month.png` });
 
-// --- Auto-assign: August is fully copied (== targets), September is empty ---
-await page.getByText('Auto-assign').click();
+// --- Auto-assign: August copied July, where $5 was moved out of Dining ---
+// so exactly one envelope is $5 under target; a second run is a no-op.
+await page.getByText('Auto-assign', { exact: true }).click();
+await page.waitForTimeout(400);
+if ((await page.getByText(/auto-assigned \$5\.00 across 1 envelope/).count()) === 0) {
+  errors.push('FLOW: auto-assign should top up the $5 moved out of Dining');
+}
+await page.getByText('Auto-assign', { exact: true }).click();
 await page.waitForTimeout(400);
 if ((await page.getByText(/all targets already funded/).count()) === 0) {
-  errors.push('FLOW: auto-assign after copy should report targets already funded');
+  errors.push('FLOW: second auto-assign run should be a no-op');
 }
 await page.getByText('›').click();
 await page.waitForTimeout(500);
-await page.getByText('Auto-assign').click();
+await page.getByText('Auto-assign', { exact: true }).click();
 await page.waitForTimeout(400);
 if ((await page.getByText(/auto-assigned \$3,145\.00 across 8 envelopes/).count()) === 0) {
   errors.push('FLOW: auto-assign did not fund 8 envelopes in the empty month');
@@ -174,6 +180,51 @@ await page.waitForTimeout(600);
 if (!dialogs.some((d) => d.includes('not a Survive Budget backup'))) {
   errors.push(`FLOW: invalid backup not rejected, dialogs=${JSON.stringify(dialogs)}`);
 }
+
+// --- Encrypted backup: export → clear → wrong passphrase → right passphrase ---
+const encDownloadPromise = page.waitForEvent('download');
+await page.getByText('Export encrypted backup (AES-256)').click();
+await page.waitForTimeout(400);
+await page.getByRole('dialog').getByText('Passphrase', { exact: true }).waitFor();
+const passInputs = page.getByRole('dialog').locator('input:not([type="checkbox"])');
+await passInputs.nth(0).fill('hunter2hunter2');
+await passInputs.nth(1).fill('hunter2hunter2');
+await page.getByText('Encrypt & Export').click();
+const encDownload = await encDownloadPromise;
+const encPath = `${OUT}/test-backup.enc.json`;
+await encDownload.saveAs(encPath);
+const encEnvelope = JSON.parse(readFileSync(encPath, 'utf8'));
+if (encEnvelope.app !== 'survive-budget-encrypted' || !encEnvelope.ct) {
+  errors.push('FLOW: encrypted backup envelope malformed');
+}
+await page.waitForTimeout(400);
+
+// Clear everything, then restore the encrypted file.
+await page.getByText('Clear all data').click();
+await page.waitForTimeout(300);
+await page.getByText('Yes, delete everything').click();
+await page.waitForTimeout(600);
+const encChooser = page.waitForEvent('filechooser');
+await page.getByText('Restore backup (JSON)').click();
+await (await encChooser).setFiles(encPath);
+await page.waitForTimeout(600);
+// Wrong passphrase first: inline error, data untouched.
+await page.getByRole('dialog').locator('input:not([type="checkbox"])').first().fill('wrong-passphrase');
+await page.getByText('Unlock', { exact: true }).click();
+await page.waitForTimeout(1200);
+if ((await page.getByText('Wrong passphrase or corrupted file.').count()) === 0) {
+  errors.push('FLOW: wrong passphrase did not surface the safe error');
+}
+// Right passphrase → confirm step → restored.
+await page.getByRole('dialog').locator('input:not([type="checkbox"])').first().fill('hunter2hunter2');
+await page.getByText('Unlock', { exact: true }).click();
+await page.waitForTimeout(1200);
+await page.getByText('Yes, restore backup').click();
+await page.waitForTimeout(700);
+if ((await page.getByText('Everyday Checking').count()) === 0) {
+  errors.push('FLOW: encrypted restore did not bring data back');
+}
+await page.screenshot({ path: `${OUT}/22-encrypted-restore.png` });
 
 // --- Smoke every tab for console errors ---
 for (const tab of ['Home', 'Budget', 'Activity', 'Reports', 'More']) {

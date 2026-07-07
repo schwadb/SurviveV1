@@ -95,7 +95,7 @@ if (await markPaid.count() > 0) {
 // Contribute to a goal
 await page.getByText('🗾 Japan Trip').click();
 await page.waitForTimeout(400);
-await page.locator('input:not([type="checkbox"])').first().fill('50');
+await page.getByRole('dialog').locator('input:not([type="checkbox"])').first().fill('50');
 await page.getByText('Add to Goal').click();
 await page.waitForTimeout(500);
 

@@ -1,5 +1,7 @@
 # PLAN: Envelope targets + Auto-Assign
 
+> **Status: ✅ COMPLETED** — implemented, unit-tested, and verified end-to-end.
+
 **Rank: 3 of 5.** YNAB's "Targets" + "Auto-Assign" is its most-praised budgeting
 mechanic (see `docs/RESEARCH.md`: PCMag highlights Auto-Assign; YNAB features
 list "Targets" and "Category Templates"). The app already has "Copy last month";

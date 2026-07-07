@@ -1,5 +1,7 @@
 # PLAN: Passphrase-encrypted backups
 
+> **Status: ✅ COMPLETED** — implemented, unit-tested, and verified end-to-end.
+
 **Rank: 5 of 5.** The README's Security model section explicitly flags the gap:
 "Backup JSON files are unencrypted by design (portability)… Encrypted backups
 … are on the roadmap." A backup file contains the user's complete financial

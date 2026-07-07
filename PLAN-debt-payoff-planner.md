@@ -1,5 +1,7 @@
 # PLAN: Debt payoff planner (avalanche / snowball)
 
+> **Status: ✅ COMPLETED** — implemented, unit-tested, and verified end-to-end.
+
 **Rank: 4 of 5.** Explicit v1 roadmap item (`docs/RESEARCH.md` last paragraph)
 and a signature paid feature of two competitors: PocketGuard Plus's "Debt
 Payoff Plan" and YNAB's "Loan Calculator" (interest/time saved from extra
