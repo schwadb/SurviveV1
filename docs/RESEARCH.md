@@ -71,6 +71,7 @@ Google Play listings, and user communities (r/ynab, r/MonarchMoney, r/PocketGuar
 | "In My Pocket" safe-to-spend | PocketGuard | ✅ Home hero number |
 | "Pace" overspend prediction | PocketGuard | ✅ spending-pace meter on Home |
 | Bill tracker w/ due dates, overdue flags, mark-paid | PocketGuard/Monarch | ✅ Bills section + Home upcoming list |
+| Bill due-date reminders/notifications | consensus must-have #3 | ✅ local notifications, due-date + T-3 heads-up |
 | Net worth dashboard + trend | Monarch | ✅ Accounts section + Reports chart |
 | Accounts incl. credit/loan/investment, on-budget vs tracking | Monarch/YNAB | ✅ |
 | Reports: category donut, income vs spending, savings rate | Monarch | ✅ Reports tab |
@@ -84,5 +85,5 @@ Google Play listings, and user communities (r/ynab, r/MonarchMoney, r/PocketGuar
 | Privacy / manual-first, offline | YNAB manual mode | ✅ 100% on-device, no bank credentials |
 
 Deliberately out of scope for v1 (roadmap): real bank aggregation (the #1 complaint
-driver; would need Plaid + a backend), multi-device household sync, push notifications,
-debt-payoff planner (avalanche/snowball), AI assistant, investment holdings detail.
+driver; would need Plaid + a backend), multi-device household sync, AI assistant,
+investment holdings detail.

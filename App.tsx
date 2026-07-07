@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/components/ui';
@@ -59,6 +59,38 @@ function TabBar({ active, onSelect }: { active: TabKey; onSelect: (k: TabKey) =>
   );
 }
 
+/** Keeps scheduled bill reminders in sync with bills + the settings toggle. */
+function ReminderSync() {
+  // Select narrowly: subscribing to the whole store would re-sync on every
+  // transaction edit and hammer the scheduler.
+  const bills = useStore((s) => s.bills);
+  const enabled = useStore((s) => s.settings.billReminders ?? false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    let cancelled = false;
+    void (async () => {
+      const { planBillReminders } = await import('./src/logic/reminders');
+      const { cancelAllReminders, syncScheduledNotifications } = await import(
+        './src/services/notifications'
+      );
+      if (cancelled) return;
+      if (!enabled) {
+        await cancelAllReminders();
+        return;
+      }
+      const now = new Date();
+      const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      await syncScheduledNotifications(planBillReminders(bills, todayIso, now.getHours()));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bills, enabled]);
+
+  return null;
+}
+
 function Main() {
   const [tab, setTab] = useState<TabKey>('home');
   const t = useTheme();
@@ -90,6 +122,7 @@ export default function App() {
       <ThemeProvider value={theme}>
         <StatusBar style={theme.dark ? 'light' : 'dark'} />
         <AppLock>
+          <ReminderSync />
           <Main />
         </AppLock>
       </ThemeProvider>

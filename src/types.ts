@@ -89,6 +89,8 @@ export interface Settings {
   showSafeToSpend: boolean;
   /** Require biometric/passcode unlock on launch and resume (native only). */
   appLock?: boolean;
+  /** Local notifications for upcoming bill due dates (native only). */
+  billReminders?: boolean;
 }
 
 export interface AppData {

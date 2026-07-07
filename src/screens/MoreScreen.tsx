@@ -254,6 +254,38 @@ export function MoreScreen() {
         </Label>
       </Card>
 
+      <SectionHeader title="Notifications" right={null} />
+      <Card>
+        {Platform.OS === 'web' ? (
+          <Label>Bill reminders are available in the Android and iOS apps.</Label>
+        ) : (
+          <Row style={{ justifyContent: 'space-between' }}>
+            <View style={{ flex: 1, paddingRight: spacing.md }}>
+              <Text style={[type.body, { color: t.inkPrimary }]}>Bill reminders</Text>
+              <Label>Notify at 9:00 on due dates, plus 3 days ahead for bills without autopay</Label>
+            </View>
+            <Switch
+              value={store.settings.billReminders ?? false}
+              onValueChange={async (v) => {
+                if (v) {
+                  const { ensureNotificationPermissions } = await import('../services/notifications');
+                  const ok = await ensureNotificationPermissions();
+                  if (!ok) {
+                    notify(
+                      'Notifications disabled',
+                      'Enable notifications for Survive Budget in system settings, then try again.',
+                    );
+                    return;
+                  }
+                }
+                store.updateSettings({ billReminders: v });
+              }}
+              trackColor={{ true: t.good }}
+            />
+          </Row>
+        )}
+      </Card>
+
       <SectionHeader title="Security" right={null} />
       <Card>
         {canLock ? (

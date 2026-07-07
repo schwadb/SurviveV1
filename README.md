@@ -34,6 +34,9 @@ feature-mapping table.
   mobile, download on web) and restored via file picker with structural validation
 - **App lock**: Face ID / fingerprint / device passcode required on launch and on
   return from background (expo-local-authentication; Android & iOS)
+- **Bill reminders**: opt-in local notifications at 9:00 on due dates plus a
+  3-days-ahead heads-up for bills without autopay (expo-notifications; Android &
+  iOS — full fidelity needs a dev build, not Expo Go)
 - **Dark mode** (system/light/dark), colorblind-safe validated chart palette
 - **Privacy-first**: 100% on-device via AsyncStorage — no bank logins, no cloud, no ads
 
