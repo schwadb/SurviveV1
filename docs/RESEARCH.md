@@ -77,6 +77,7 @@ Google Play listings, and user communities (r/ynab, r/MonarchMoney, r/PocketGuar
 | Reports: category donut, income vs spending, savings rate | Monarch | ✅ Reports tab |
 | Recurring/subscription detection | Monarch | ✅ payee-frequency detection in Reports |
 | Auto-categorization rules | Monarch/PocketGuard | ✅ rules engine + retroactive apply |
+| Category targets + Auto-Assign | YNAB Targets | ✅ monthly targets, one-tap auto-assign from RTA |
 | Transaction search & filters | (Goodbudget's gap) | ✅ full-text search + account/category filters |
 | Savings goals with progress | all four | ✅ goals with contribute/withdraw |
 | Statement/file import (CSV, OFX/QFX) & export | Monarch/YNAB/Goodbudget bank-file import | ✅ file picker + paste, duplicate-skip, rules auto-categorize |

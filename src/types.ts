@@ -30,6 +30,8 @@ export interface Category {
   colorSlot: number;
   /** Envelope rollover: unspent money carries into the next month. */
   rollover: boolean;
+  /** Assign this much each month (YNAB-style monthly target), cents. */
+  monthlyTarget?: number;
   sortOrder: number;
   archived?: boolean;
 }

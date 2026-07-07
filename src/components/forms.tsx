@@ -127,6 +127,9 @@ export function EnvelopeForm({
   const [emoji, setEmoji] = useState(editing?.emoji ?? '📦');
   const [groupId, setGroupId] = useState(editing?.groupId ?? store.groups[0]?.id ?? '');
   const [rollover, setRollover] = useState(editing?.rollover ?? false);
+  const [targetText, setTargetText] = useState(
+    editing?.monthlyTarget ? (editing.monthlyTarget / 100).toFixed(2) : '',
+  );
 
   const [seedKey, setSeedKey] = useState(editingId ?? 'new');
   const currentKey = editingId ?? 'new';
@@ -136,18 +139,28 @@ export function EnvelopeForm({
     setEmoji(editing?.emoji ?? '📦');
     setGroupId(editing?.groupId ?? store.groups[0]?.id ?? '');
     setRollover(editing?.rollover ?? false);
+    setTargetText(editing?.monthlyTarget ? (editing.monthlyTarget / 100).toFixed(2) : '');
   }
 
   const save = () => {
     if (!name.trim()) return notify('Missing name', 'Give the envelope a name.');
+    const targetCents = targetText.trim() ? parseAmount(targetText) : null;
+    if (targetText.trim() && (targetCents === null || targetCents < 0)) {
+      return notify('Bad target', 'Enter a target like 250.00, or leave it empty.');
+    }
+    // Empty or 0 clears the target — never store 0 (it would render an
+    // "on target" chip on every untargeted envelope).
+    const monthlyTarget = targetCents && targetCents > 0 ? targetCents : undefined;
     if (editing) {
-      store.updateCategory(editing.id, { name: name.trim(), emoji: emoji.trim() || '📦', groupId, rollover });
+      store.updateCategory(editing.id, {
+        name: name.trim(), emoji: emoji.trim() || '📦', groupId, rollover, monthlyTarget,
+      });
     } else {
       const used = new Set(store.categories.map((c) => c.colorSlot));
       let slot = 0;
       while (used.has(slot) && slot < 7) slot++;
       store.addCategory({
-        name: name.trim(), emoji: emoji.trim() || '📦', groupId, rollover,
+        name: name.trim(), emoji: emoji.trim() || '📦', groupId, rollover, monthlyTarget,
         colorSlot: slot, sortOrder: store.categories.length,
       });
     }
@@ -158,6 +171,13 @@ export function EnvelopeForm({
     <Sheet visible={visible} onClose={onClose} title={editing ? 'Edit Envelope' : 'New Envelope'}>
       <Field label="Name" value={name} onChangeText={setName} placeholder="Groceries" autoFocus />
       <Field label="Emoji" value={emoji} onChangeText={setEmoji} placeholder="🛒" />
+      <Field
+        label="Monthly target (optional) — assign this much each month"
+        value={targetText}
+        onChangeText={setTargetText}
+        keyboardType="decimal-pad"
+        placeholder="250.00"
+      />
       <Label style={{ marginBottom: 4 }}>Group</Label>
       <ChipPicker items={store.groups} selectedId={groupId} onSelect={setGroupId} labelFor={(g) => g.name} />
       <Row style={{ justifyContent: 'space-between', marginBottom: spacing.lg }}>

@@ -5,7 +5,7 @@ import {
   Account, AppData, Bill, Category, CategoryGroup, Goal, Rule, Settings, Transaction,
 } from './types';
 import { makeSeedData, SCHEMA_VERSION } from './data/seed';
-import { applyRules } from './logic/budget';
+import { applyRules, planAutoAssign, targetShortfall } from './logic/budget';
 import { addMonths, monthKey, todayIso } from './utils/dates';
 
 let idCounter = Date.now() % 1000000;
@@ -23,6 +23,8 @@ interface Actions {
   moveMoney: (month: string, fromId: string, toId: string, amount: number) => void;
   /** Copy the previous month's assignments into `month` where it has none. */
   copyBudgetFromPreviousMonth: (month: string) => number;
+  /** Fill under-target envelopes up to their monthly targets from RTA. */
+  autoAssign: (month: string) => { assigned: number; filled: number; shortfall: number };
 
   addCategory: (c: Omit<Category, 'id'>) => void;
   updateCategory: (id: string, patch: Partial<Category>) => void;
@@ -108,6 +110,23 @@ export const useStore = create<Store>()(
         }
         if (copied > 0) set({ budgets: { ...s.budgets, [month]: cur } });
         return copied;
+      },
+
+      autoAssign: (month) => {
+        const s = get();
+        const plan = planAutoAssign(s, month);
+        if (plan.length > 0) {
+          // One set() for the whole plan — per-category assigns would fire a
+          // re-render per envelope.
+          const cur = { ...(s.budgets[month] ?? {}) };
+          for (const p of plan) cur[p.categoryId] = (cur[p.categoryId] ?? 0) + p.add;
+          set({ budgets: { ...s.budgets, [month]: cur } });
+        }
+        return {
+          assigned: plan.reduce((a, p) => a + p.add, 0),
+          filled: plan.length,
+          shortfall: targetShortfall(s, month, plan),
+        };
       },
 
       addCategory: (c) => set((s) => ({ categories: [...s.categories, { ...c, id: newId('cat') }] })),

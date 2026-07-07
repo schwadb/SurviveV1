@@ -17,7 +17,7 @@ export function BudgetScreen() {
   const [editingEnvelope, setEditingEnvelope] = useState<string | null>(null);
   const [showNewEnvelope, setShowNewEnvelope] = useState(false);
   const [showMove, setShowMove] = useState(false);
-  const [copied, setCopied] = useState<number | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   const rta = readyToAssign(store, month);
   const cats = store.categories.filter((c) => !c.archived && c.id !== INCOME_CATEGORY_ID);
@@ -26,11 +26,11 @@ export function BudgetScreen() {
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120 }}>
       <Row style={{ justifyContent: 'space-between', marginBottom: spacing.md }}>
-        <Pressable onPress={() => setMonth(addMonths(month, -1))} hitSlop={10}>
+        <Pressable onPress={() => { setMonth(addMonths(month, -1)); setNote(null); }} hitSlop={10}>
           <Text style={{ color: t.accent, fontSize: 22 }}>‹</Text>
         </Pressable>
         <Text style={[type.title, { color: t.inkPrimary }]}>{monthLabel(month)}</Text>
-        <Pressable onPress={() => setMonth(addMonths(month, 1))} hitSlop={10}>
+        <Pressable onPress={() => { setMonth(addMonths(month, 1)); setNote(null); }} hitSlop={10}>
           <Text style={{ color: t.accent, fontSize: 22 }}>›</Text>
         </Pressable>
       </Row>
@@ -44,16 +44,32 @@ export function BudgetScreen() {
           <View style={{ alignItems: 'flex-end', gap: 6 }}>
             <Pill label="Move money" onPress={() => setShowMove(true)} />
             <Pill label="+ Envelope" onPress={() => setShowNewEnvelope(true)} />
-            <Pill label="Copy last month" onPress={() => setCopied(store.copyBudgetFromPreviousMonth(month))} />
+            <Pill
+              label="Copy last month"
+              onPress={() => {
+                const n = store.copyBudgetFromPreviousMonth(month);
+                setNote(n > 0 ? `copied ${n} envelope${n === 1 ? '' : 's'} from last month` : 'nothing new to copy from last month');
+              }}
+            />
+            <Pill
+              label="Auto-assign"
+              onPress={() => {
+                const r = store.autoAssign(month);
+                setNote(
+                  r.assigned > 0
+                    ? `auto-assigned ${fmt(r.assigned)} across ${r.filled} envelope${r.filled === 1 ? '' : 's'}` +
+                      (r.shortfall > 0 ? ` · ${fmt(r.shortfall)} short of targets` : '')
+                    : r.shortfall > 0
+                      ? `nothing to assign · ${fmt(r.shortfall)} short of targets`
+                      : 'all targets already funded',
+                );
+              }}
+            />
           </View>
         </Row>
         <Label style={{ marginTop: 4 }}>
           Assigned {fmt(totalAssigned(store, month))} this month · every dollar gets a job
-          {copied !== null
-            ? copied > 0
-              ? ` · copied ${copied} envelope${copied === 1 ? '' : 's'} from last month`
-              : ' · nothing new to copy from last month'
-            : ''}
+          {note ? ` · ${note}` : ''}
         </Label>
       </Card>
 
@@ -99,9 +115,18 @@ export function BudgetScreen() {
                     <Row style={{ justifyContent: 'space-between', marginTop: 4 }}>
                       <Label style={{ fontSize: 11 }}>
                         {fmt(spentThisMonth)} of {fmt(asg)} spent
+                        {c.monthlyTarget
+                          ? asg >= c.monthlyTarget
+                            ? '  ·  ✓ target ' + fmt(c.monthlyTarget)
+                            : ''
+                          : ''}
                       </Label>
                       {over ? (
                         <Text style={[type.tiny, { color: t.critical }]}>⚠ overspent — tap to cover</Text>
+                      ) : c.monthlyTarget && asg < c.monthlyTarget ? (
+                        <Text style={[type.tiny, { color: t.warning }]}>
+                          ▲ {fmt(c.monthlyTarget - asg)} to target
+                        </Text>
                       ) : (
                         <Label style={{ fontSize: 11 }}>tap to assign · hold to edit</Label>
                       )}

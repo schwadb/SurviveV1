@@ -26,8 +26,10 @@ feature-mapping table.
 - **Statement import**: pick a bank/credit-card export file — CSV or OFX/QFX (Quicken) —
   or paste CSV; automatic duplicate detection makes re-importing overlapping months safe,
   and rules auto-categorize imported rows. CSV export via share sheet (mobile) or download (web)
-- **Quick budgeting**: "Copy last month" one-tap budget fill; move-money validated
-  against the source envelope's available balance
+- **Quick budgeting**: per-envelope monthly targets with funded/underfunded chips,
+  one-tap **Auto-assign** (fills under-target envelopes from Ready to Assign, never
+  over-assigning), "Copy last month" budget fill; move-money validated against the
+  source envelope's available balance
 - **Uncategorized inbox**: one-tap filter chip in Activity showing the count of
   transactions still needing a category
 - **Backup & restore**: full-data JSON backup exported as a real file (share sheet on

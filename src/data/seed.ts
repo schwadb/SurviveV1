@@ -29,14 +29,14 @@ export function makeSeedData(): AppData {
 
   const categories: AppData['categories'] = [
     { id: INCOME_CATEGORY_ID, groupId: 'grp-everyday', name: 'Income', emoji: '💰', colorSlot: 3, rollover: false, sortOrder: 99, archived: true },
-    { id: 'cat-rent', groupId: 'grp-bills', name: 'Rent', emoji: '🏠', colorSlot: 0, rollover: false, sortOrder: 0 },
-    { id: 'cat-utils', groupId: 'grp-bills', name: 'Utilities', emoji: '💡', colorSlot: 1, rollover: false, sortOrder: 1 },
-    { id: 'cat-subs', groupId: 'grp-bills', name: 'Subscriptions', emoji: '📺', colorSlot: 2, rollover: false, sortOrder: 2 },
-    { id: 'cat-groceries', groupId: 'grp-everyday', name: 'Groceries', emoji: '🛒', colorSlot: 3, rollover: false, sortOrder: 0 },
-    { id: 'cat-dining', groupId: 'grp-everyday', name: 'Dining Out', emoji: '🍜', colorSlot: 4, rollover: false, sortOrder: 1 },
-    { id: 'cat-transport', groupId: 'grp-everyday', name: 'Transport', emoji: '⛽', colorSlot: 5, rollover: false, sortOrder: 2 },
-    { id: 'cat-fun', groupId: 'grp-lifestyle', name: 'Fun Money', emoji: '🎉', colorSlot: 6, rollover: true, sortOrder: 0 },
-    { id: 'cat-health', groupId: 'grp-lifestyle', name: 'Health & Fitness', emoji: '💪', colorSlot: 7, rollover: true, sortOrder: 1 },
+    { id: 'cat-rent', groupId: 'grp-bills', name: 'Rent', emoji: '🏠', colorSlot: 0, rollover: false, sortOrder: 0, monthlyTarget: 165000 },
+    { id: 'cat-utils', groupId: 'grp-bills', name: 'Utilities', emoji: '💡', colorSlot: 1, rollover: false, sortOrder: 1, monthlyTarget: 22000 },
+    { id: 'cat-subs', groupId: 'grp-bills', name: 'Subscriptions', emoji: '📺', colorSlot: 2, rollover: false, sortOrder: 2, monthlyTarget: 6500 },
+    { id: 'cat-groceries', groupId: 'grp-everyday', name: 'Groceries', emoji: '🛒', colorSlot: 3, rollover: false, sortOrder: 0, monthlyTarget: 55000 },
+    { id: 'cat-dining', groupId: 'grp-everyday', name: 'Dining Out', emoji: '🍜', colorSlot: 4, rollover: false, sortOrder: 1, monthlyTarget: 25000 },
+    { id: 'cat-transport', groupId: 'grp-everyday', name: 'Transport', emoji: '⛽', colorSlot: 5, rollover: false, sortOrder: 2, monthlyTarget: 18000 },
+    { id: 'cat-fun', groupId: 'grp-lifestyle', name: 'Fun Money', emoji: '🎉', colorSlot: 6, rollover: true, sortOrder: 0, monthlyTarget: 15000 },
+    { id: 'cat-health', groupId: 'grp-lifestyle', name: 'Health & Fitness', emoji: '💪', colorSlot: 7, rollover: true, sortOrder: 1, monthlyTarget: 8000 },
   ];
 
   const budgets: AppData['budgets'] = {};

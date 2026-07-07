@@ -116,6 +116,52 @@ export function inMyPocket(data: AppData, month: string = monthKey()): number {
   return readyToAssign(data, month) - uncoveredBills;
 }
 
+export interface AutoAssignPlan {
+  categoryId: string;
+  add: number; // cents to add to this month's assignment
+}
+
+/**
+ * Fill every under-target envelope up to its monthly target, in the order
+ * the Budget screen renders (group sortOrder, then category sortOrder),
+ * never allocating more than Ready to Assign. Targets compare against
+ * assigned-this-month, NOT the rollover-inclusive available balance —
+ * a rollover envelope with money carried over still gets its monthly refill.
+ */
+export function planAutoAssign(data: AppData, month: string): AutoAssignPlan[] {
+  let pool = readyToAssign(data, month);
+  if (pool <= 0) return [];
+  const groupOrder = new Map(data.groups.map((g) => [g.id, g.sortOrder]));
+  const candidates = data.categories
+    .filter((c) => !c.archived && c.id !== INCOME_CATEGORY_ID && (c.monthlyTarget ?? 0) > 0)
+    .sort((a, b) =>
+      (groupOrder.get(a.groupId) ?? 0) - (groupOrder.get(b.groupId) ?? 0) ||
+      a.sortOrder - b.sortOrder,
+    );
+  const plan: AutoAssignPlan[] = [];
+  for (const c of candidates) {
+    if (pool <= 0) break;
+    const deficit = (c.monthlyTarget ?? 0) - assigned(data, c.id, month);
+    if (deficit <= 0) continue;
+    const add = Math.min(deficit, pool);
+    plan.push({ categoryId: c.id, add });
+    pool -= add; // decrement locally; readyToAssign can't see the unapplied plan
+  }
+  return plan;
+}
+
+/** Total remaining target deficit after applying a plan (for "short of targets"). */
+export function targetShortfall(data: AppData, month: string, plan: AutoAssignPlan[]): number {
+  const added = new Map(plan.map((p) => [p.categoryId, p.add]));
+  let short = 0;
+  for (const c of data.categories) {
+    if (c.archived || c.id === INCOME_CATEGORY_ID || !(c.monthlyTarget && c.monthlyTarget > 0)) continue;
+    const deficit = c.monthlyTarget - assigned(data, c.id, month) - (added.get(c.id) ?? 0);
+    if (deficit > 0) short += deficit;
+  }
+  return short;
+}
+
 export interface CategorySpend {
   category: Category;
   spent: number; // positive cents
