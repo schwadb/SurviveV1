@@ -79,13 +79,16 @@ and identical across Android, iOS, and web.
 
 ## Verification
 
-- `npx tsc --noEmit` — strict TypeScript, clean
-- `npx expo export --platform web` — production bundle builds
-- Playwright end-to-end drive of the web build: every tab, add/search/persist
-  transaction, envelope assign, move money, mark bill paid, goal contribution,
-  dark mode — zero console/page errors
-- Statement import drive: QFX file import, duplicate-skip on re-import, CSV file
-  import with rule-based auto-categorization — zero errors
-- Improvement-pass drive: uncategorized filter, date quick-chips, over-move blocked,
-  copy-last-month, backup export → clear-all → restore round-trip, invalid backup
-  rejected — zero errors
+```bash
+npm run typecheck   # strict TypeScript
+npm test            # vitest unit suite (budget math, parsers, backup)
+npm run e2e         # builds the web bundle and runs 3 Playwright drives
+```
+
+The e2e drives cover: every tab and core flow (add/search/persist transaction,
+envelope assign, move money, mark bill paid, goal contribution, dark mode,
+reload persistence); statement import (QFX + CSV files, duplicate-skip on
+re-import, rule auto-categorization); and the improvement flows (uncategorized
+filter, date quick-chips, over-move blocked, copy-last-month, backup export →
+clear-all → restore round-trip, invalid backup rejected). CI (`budget-ci`)
+runs typecheck + unit tests + web export on every push.
