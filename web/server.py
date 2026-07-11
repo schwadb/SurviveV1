@@ -11,6 +11,7 @@ import re
 import secrets
 import shutil
 import socket
+import sys
 import threading
 import time
 import urllib.request
@@ -18,12 +19,14 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 from flask import (
-    Flask, render_template, jsonify, request,
+    Flask, render_template, jsonify, request, Response,
     send_from_directory, redirect, url_for, abort
 )
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_compress import Compress
+from jinja2 import FileSystemBytecodeCache
 
 from constants import (  # noqa: E402
     CATEGORIES,
@@ -46,10 +49,20 @@ app = Flask(__name__)
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_HTTPONLY=True,
-    # Cap POST body size: the chat API only needs a JSON envelope; large bodies
-    # would pin the Pi's memory before rate limiting or JSON parsing can reject them.
     MAX_CONTENT_LENGTH=64 * 1024,  # 64 KB
+    COMPRESS_MIMETYPES=[
+        "text/html", "text/css", "text/xml", "text/plain",
+        "application/json", "application/javascript",
+    ],
+    COMPRESS_MIN_SIZE=500,
 )
+
+Compress(app)
+
+_jinja_cache_dir = Path("/tmp/survive_jinja2_cache")
+_jinja_cache_dir.mkdir(parents=True, exist_ok=True)
+app.jinja_env.bytecode_cache = FileSystemBytecodeCache(str(_jinja_cache_dir))
+app.jinja_env.auto_reload = os.environ.get("FLASK_DEBUG") == "1"
 
 # CSRF is enabled for HTML form POSTs. JSON APIs are exempted individually
 # and defended by a strict application/json Content-Type check instead --
@@ -162,6 +175,7 @@ class _TTLCache:
 
 _content_stats_cache = _TTLCache(_CACHE_TTL)
 _recent_cache = _TTLCache(_CACHE_TTL)
+_storage_info_cache = _TTLCache(_CACHE_TTL)
 
 
 def _safe_walk(root: Path):
@@ -174,7 +188,7 @@ def _safe_walk(root: Path):
                 yield Path(dirpath) / name
 
 
-def get_storage_info():
+def _compute_storage_info():
     """Return disk usage for the storage path."""
     try:
         total, used, free = shutil.disk_usage(str(STORAGE_PATH))
@@ -187,6 +201,10 @@ def get_storage_info():
     except OSError as e:
         logging.warning("Could not read disk usage: %s", e)
         return {"total_gb": 0, "used_gb": 0, "free_gb": 0, "percent": 0}
+
+
+def get_storage_info():
+    return _storage_info_cache.get(_compute_storage_info)
 
 
 def check_service(svc_port: int) -> bool:
@@ -326,6 +344,10 @@ def browse_files():
         browse_dir = (STORAGE_PATH / rel_path).resolve() if rel_path else storage_root
         browse_dir.relative_to(storage_root)
     except (ValueError, OSError):
+        logging.warning(
+            "Path traversal blocked in /files: %s from %s",
+            rel_path, request.remote_addr,
+        )
         abort(403)
     if not browse_dir.exists() or not browse_dir.is_dir():
         abort(404)
@@ -359,17 +381,19 @@ def browse_files():
 
 @app.route("/serve/<path:filepath>")
 def serve_file(filepath):
-    """Serve a file from storage."""
+    """Serve a file from storage with cache headers."""
     full_path = (STORAGE_PATH / filepath).resolve()
     storage_root = STORAGE_PATH.resolve()
-    # Prevent path traversal — ensure the resolved path is inside storage root
     try:
         full_path.relative_to(storage_root)
     except ValueError:
+        logging.warning("Path traversal blocked: %s from %s", filepath, request.remote_addr)
         return render_template("error.html", code=403, message="Access forbidden"), 403
     if not full_path.exists():
         return render_template("error.html", code=404, message="File not found"), 404
-    return send_from_directory(str(full_path.parent), full_path.name)
+    resp = send_from_directory(str(full_path.parent), full_path.name)
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
 
 
 @app.route("/search")
@@ -427,61 +451,85 @@ def ai_page():
     return render_template("ai.html", ai_running=ai_running, models=models, categories=CATEGORIES)
 
 
+_SYSTEM_PROMPT = (
+    "You are a survival expert assistant running offline on a Raspberry Pi. "
+    "Help with practical survival, medicine, food, water, shelter, energy, "
+    "and skills. Be concise and practical. No internet available."
+)
+_MAX_HISTORY = 20
+
+
+def _validate_chat_request():
+    """Validate and parse an AI chat POST. Returns (data, model, error_response)."""
+    if (request.content_type or "").split(";")[0].strip() != "application/json":
+        return None, None, (jsonify({"error": "Content-Type must be application/json"}), 415)
+
+    data = request.get_json(silent=True)
+    if not data or "message" not in data:
+        return None, None, (jsonify({"error": "No message"}), 400)
+
+    model = data.get("model", os.environ.get("SURVIVE_AI_MODEL", "survive"))
+    if not re.fullmatch(r"[a-zA-Z0-9:.\-_]{1,100}", model):
+        return None, None, (jsonify({"error": "Invalid model name"}), 400)
+
+    return data, model, None
+
+
+def _build_messages(data):
+    """Build the Ollama messages array with conversation history."""
+    messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    history = data.get("history", [])
+    for msg in history[-_MAX_HISTORY:]:
+        role = msg.get("role", "")
+        content = str(msg.get("content", ""))[:4096]
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": str(data["message"])[:4096]})
+    return messages
+
+
 @app.route("/api/ai/chat", methods=["POST"])
 @csrf.exempt
 @limiter.limit("5 per minute")
 def ai_chat():
-    """Proxy to local Ollama API."""
-    # Strict Content-Type check: browsers cannot send application/json
-    # cross-origin without a CORS preflight, so this blocks CSRF-style
-    # form POSTs from a malicious page while the user is on the dashboard.
-    if (request.content_type or "").split(";")[0].strip() != "application/json":
-        return jsonify({"error": "Content-Type must be application/json"}), 415
+    """Streaming proxy to local Ollama API via Server-Sent Events."""
+    data, model, err = _validate_chat_request()
+    if err:
+        return err
 
-    data = request.get_json(silent=True)
-    if not data or "message" not in data:
-        return jsonify({"error": "No message"}), 400
+    messages = _build_messages(data)
 
-    model = data.get("model", os.environ.get("SURVIVE_AI_MODEL", "survive"))
-    # Validate model name: allow alphanumeric, colon, dot, dash, underscore only.
-    # Prevents path traversal or injection into the Ollama API URL.
-    if not re.fullmatch(r"[a-zA-Z0-9:.\-_]{1,100}", model):
-        return jsonify({"error": "Invalid model name"}), 400
-
-    message = str(data["message"])[:4096]  # bound message length to one context window
-
-    try:
-        payload = json.dumps({
-            "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a survival expert assistant running offline on a Raspberry Pi. "
-                        "Help with practical survival, medicine, food, water, shelter, energy, "
-                        "and skills. Be concise and practical. No internet available."
-                    ),
-                },
-                {"role": "user", "content": message},
-            ],
-            "stream": False,
-        }).encode()
-
-        req = urllib.request.Request(
-            f"http://localhost:{PORT_OLLAMA}/api/chat",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=TIMEOUT_AI_CHAT) as r:
-            result = json.loads(r.read())
-            return jsonify({
-                "response": result.get("message", {}).get("content", "No response"),
+    def generate():
+        try:
+            payload = json.dumps({
                 "model": model,
-            })
-    except (OSError, json.JSONDecodeError):
-        # Log the real error server-side; never leak internals to the client.
-        logging.exception("AI chat proxy error")
-        return jsonify({"error": "AI service unavailable"}), 502
+                "messages": messages,
+                "stream": True,
+            }).encode()
+            req = urllib.request.Request(
+                f"http://localhost:{PORT_OLLAMA}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=TIMEOUT_AI_CHAT) as r:
+                for line in r:
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                        token = chunk.get("message", {}).get("content", "")
+                        if token:
+                            yield f"data: {json.dumps({'token': token})}\n\n"
+                        if chunk.get("done"):
+                            yield f"data: {json.dumps({'done': True})}\n\n"
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            logging.exception("AI chat streaming error")
+            yield f"data: {json.dumps({'error': 'AI service unavailable'})}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.route("/health")
@@ -560,9 +608,35 @@ def server_error(_e):
     return render_template("error.html", code=500, message="Internal server error"), 500
 
 
+@app.route("/inventory")
+def inventory_page():
+    return render_template("inventory.html", categories=CATEGORIES)
+
+
+@app.route("/checklists")
+def checklists_page():
+    return render_template("checklists.html", categories=CATEGORIES)
+
+
+@app.route("/scenarios")
+def scenarios_page():
+    return render_template("scenarios.html", categories=CATEGORIES)
+
+
+@app.route("/print")
+def print_reference():
+    return render_template("print.html", categories=CATEGORIES)
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
+    raw_port = os.environ.get("PORT", "8080")
     host = os.environ.get("HOST", "0.0.0.0")
-    # Debug mode disabled in production — never expose stack traces to users
+    try:
+        port = int(raw_port)
+        if not 1 <= port <= 65535:
+            raise ValueError
+    except (ValueError, TypeError):
+        logging.error("Invalid PORT=%r — must be 1-65535", raw_port)
+        sys.exit(1)
     logging.info("SurviveV1 Dashboard starting on %s:%d", host, port)
     app.run(host=host, port=port, debug=False)

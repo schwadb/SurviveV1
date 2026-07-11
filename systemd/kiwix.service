@@ -13,7 +13,11 @@ ExecStart=/usr/local/bin/kiwix-serve \
     --library /mnt/survive/.kiwix_library.xml \
     --port 8081 \
     --address 0.0.0.0 \
-    --threads 2
+    --threads 2 \
+    --monitorLibrary \
+    --blockexternal \
+    --ipConnectionLimit 6 \
+    --searchLimit 8
 Restart=on-failure
 RestartSec=10
 StartLimitIntervalSec=60

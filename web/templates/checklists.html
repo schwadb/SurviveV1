@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Emergency Checklists{% endblock %}
+
+{% block head %}
+<style>
+  .cl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .cl-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .cl-header {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer;
+  }
+  .cl-header:hover { background: var(--surface2); }
+  .cl-icon { font-size: 24px; }
+  .cl-title { font-weight: 600; font-size: 14px; flex: 1; }
+  .cl-progress { font-size: 12px; color: var(--text-dim); }
+  .cl-items { padding: 8px 16px; }
+  .cl-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .cl-item:last-child { border-bottom: none; }
+  .cl-item input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+  .cl-item.checked label { color: var(--text-dim); text-decoration: line-through; }
+  @media (max-width: 768px) { .cl-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">✅ Emergency Checklists</div>
+  <div class="page-sub">Interactive checklists saved locally — check off items as you prepare</div>
+
+  <div style="margin-bottom:16px;display:flex;gap:8px;">
+    <button class="btn btn-secondary btn-sm" onclick="resetAll()">Reset All</button>
+    <button class="btn btn-secondary btn-sm" onclick="printChecklists()">Print</button>
+  </div>
+
+  <div class="cl-grid" id="checklistGrid"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CL_KEY = 'survive_checklists';
+const CHECKLISTS = [
+  { id: 'bugout', icon: '🎒', title: '72-Hour Bug-Out Bag', items: [
+    'Water (1 gallon/person/day x 3 days)', 'Water purification tablets/filter',
+    'Food (3 days non-perishable)', 'First aid kit', 'Flashlight + extra batteries',
+    'Multi-tool or knife', 'Fire starter (lighter, matches, ferro rod)',
+    'Emergency blanket / tarp', 'Rain poncho', 'Change of clothes',
+    'Important documents (copies)', 'Cash (small bills)', 'Radio (hand-crank or battery)',
+    'Whistle', 'Dust mask / N95', 'Local maps', 'Compass',
+    'Paracord (50 ft)', 'Duct tape', 'Prescription medications',
+  ]},
+  { id: 'shelter', icon: '🏠', title: 'Shelter-in-Place', items: [
+    'Water (1 gallon/person/day x 14 days)', 'Food supply (14 days)',
+    'Manual can opener', 'Battery/hand-crank radio', 'Flashlights + batteries',
+    'First aid kit', 'Whistle', 'Plastic sheeting + duct tape (for sealing)',
+    'Wrench/pliers (to turn off utilities)', 'Garbage bags + ties',
+    'Prescription medications (30-day supply)', 'Baby/pet supplies (if applicable)',
+    'Fire extinguisher', 'Bleach (unscented, for water purification)',
+    'Bucket with tight lid (sanitation)',
+  ]},
+  { id: 'vehicle', icon: '🚗', title: 'Vehicle Emergency Kit', items: [
+    'Jumper cables', 'Flashlight + batteries', 'First aid kit',
+    'Reflective triangles / flares', 'Tire pressure gauge',
+    'Tire repair kit / spare tire + jack', 'Blanket', 'Water bottles',
+    'Non-perishable snacks', 'Phone charger (car adapter)',
+    'Basic tool kit', 'Duct tape', 'Rain poncho', 'Maps',
+    'Small fire extinguisher',
+  ]},
+  { id: 'firstaid', icon: '🩹', title: 'First Aid Kit', items: [
+    'Adhesive bandages (assorted)', 'Sterile gauze pads (4x4)',
+    'Rolled gauze / ACE bandage', 'Medical tape', 'Trauma shears',
+    'Tweezers', 'Nitrile gloves (multiple pairs)', 'Tourniquet (CAT or SOF-T)',
+    'Israeli bandage / pressure dressing', 'SAM splint',
+    'Antibiotic ointment', 'Antiseptic wipes', 'Pain relievers (ibuprofen, acetaminophen)',
+    'Antihistamine (diphenhydramine)', 'Anti-diarrheal', 'Electrolyte packets',
+    'Moleskin (for blisters)', 'Thermometer', 'CPR pocket mask',
+    'Emergency blanket',
+  ]},
+  { id: 'comms', icon: '📡', title: 'Communications Plan', items: [
+    'Designate out-of-area contact person', 'Share contact info with all family members',
+    'Set primary meeting point (near home)', 'Set secondary meeting point (outside neighborhood)',
+    'Program emergency numbers in all phones', 'Get battery/hand-crank radio',
+    'Learn local emergency frequencies', 'Create family contact card (wallet-sized)',
+    'Practice communication plan quarterly', 'Store ham radio + charger (if licensed)',
+    'Download offline maps for your area', 'Charge backup battery packs',
+  ]},
+  { id: 'water', icon: '💧', title: 'Water Preparedness', items: [
+    'Store 1 gallon per person per day (minimum 3 days)',
+    'Water purification tablets (backup)', 'Gravity water filter (e.g., Berkey, Sawyer)',
+    'Unscented bleach (8 drops per gallon)', 'Collapsible water containers',
+    'Know nearest natural water sources', 'Water BOB for bathtub (advance warning)',
+    'Pool shock (calcium hypochlorite) for bulk purification',
+    'SODIS knowledge (solar disinfection)', 'Rain collection barrel (if legal)',
+  ]},
+];
+
+let state = JSON.parse(localStorage.getItem(CL_KEY) || '{}');
+
+function saveState() { localStorage.setItem(CL_KEY, JSON.stringify(state)); }
+
+function renderAll() {
+  const grid = document.getElementById('checklistGrid');
+  grid.innerHTML = CHECKLISTS.map(cl => {
+    if (!state[cl.id]) state[cl.id] = {};
+    const checked = Object.values(state[cl.id]).filter(Boolean).length;
+    const total = cl.items.length;
+    const pct = Math.round(checked / total * 100);
+    return `<div class="cl-card">
+      <div class="cl-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+        <span class="cl-icon">${cl.icon}</span>
+        <span class="cl-title">${cl.title}</span>
+        <span class="cl-progress">${checked}/${total} (${pct}%)</span>
+      </div>
+      <div class="cl-items">
+        ${cl.items.map((item, i) => {
+          const isChecked = state[cl.id][i];
+          return `<div class="cl-item ${isChecked ? 'checked' : ''}">
+            <input type="checkbox" ${isChecked ? 'checked' : ''}
+                   onchange="toggleItem('${cl.id}', ${i}, this.checked)">
+            <label>${item}</label>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleItem(clId, idx, checked) {
+  state[clId][idx] = checked;
+  saveState();
+  renderAll();
+}
+
+function resetAll() {
+  if (!confirm('Reset all checklists? This cannot be undone.')) return;
+  state = {};
+  saveState();
+  renderAll();
+}
+
+function printChecklists() { window.print(); }
+
+renderAll();
+</script>
+{% endblock %}

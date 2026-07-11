@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Print Reference{% endblock %}
+
+{% block head %}
+<style>
+  .print-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .ref-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; break-inside: avoid;
+  }
+  .ref-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .ref-card ol, .ref-card ul { padding-left: 18px; font-size: 12px; line-height: 1.8; }
+  .ref-card li { margin-bottom: 2px; }
+  .ref-card .note { font-size: 11px; color: var(--warning); font-style: italic; margin-top: 8px; }
+  .ref-card table { width: 100%; font-size: 11px; border-collapse: collapse; }
+  .ref-card th, .ref-card td { padding: 4px 6px; border: 1px solid var(--border); text-align: left; }
+  .ref-card th { background: var(--surface2); }
+  @media (max-width: 768px) { .print-grid { grid-template-columns: 1fr; } }
+  @media print {
+    nav, footer, .no-print, .page-sub { display: none !important; }
+    body { background: #fff; color: #000; font-size: 10px; }
+    .print-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .ref-card { border: 1px solid #ccc; padding: 8px; break-inside: avoid; }
+    .ref-card h3 { font-size: 11px; }
+    .ref-card ol, .ref-card ul { font-size: 9px; line-height: 1.5; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">🖨️ Printable Quick Reference</div>
+  <div class="page-sub">Print these cards and keep them with your supplies — if the device dies, you still have knowledge</div>
+
+  <div class="no-print" style="margin-bottom:16px;">
+    <button class="btn btn-primary" onclick="window.print()">Print Reference Cards</button>
+  </div>
+
+  <div class="print-grid">
+    <div class="ref-card">
+      <h3>❤️ CPR (Adult)</h3>
+      <ol>
+        <li>Check scene safety and responsiveness</li>
+        <li>Call for help / send someone for AED</li>
+        <li>Check breathing (10 seconds max)</li>
+        <li>Begin chest compressions: center of chest, 2 inches deep, 100-120/min</li>
+        <li>30 compressions, then 2 rescue breaths (head-tilt/chin-lift)</li>
+        <li>Continue 30:2 cycles until help arrives or patient recovers</li>
+        <li>If AED arrives: turn on, follow voice prompts, resume CPR between shocks</li>
+      </ol>
+      <div class="note">Push hard, push fast. Minimize interruptions. "Staying Alive" by Bee Gees = 100 BPM</div>
+    </div>
+
+    <div class="ref-card">
+      <h3>🩸 Severe Bleeding Control</h3>
+      <ol>
+        <li>Apply direct pressure with clean cloth — press HARD</li>
+        <li>If blood soaks through, add more material on top (don't remove)</li>
+        <li>Elevate injured limb above heart level if possible</li>
+        <li>If bleeding doesn't stop: apply tourniquet 2-3" above wound</li>
+        <li>Tighten tourniquet until bleeding stops</li>
+        <li>Note the time tourniquet was applied (write on forehead or arm)</li>
+        <li>Do NOT remove tourniquet — only a medical professional should</li>
+      </ol>
+    </div>
+
+    <div class="ref-card">
+      <h3>💧 Water Purification</h3>
+      <table>
+        <tr><th>Method</th><th>How</th><th>Time</th></tr>
+        <tr><td>Boiling</td><td>Rolling boil</td><td>1 min (3 min above 6,500 ft)</td></tr>
+        <tr><td>Bleach</td><td>8 drops per gallon (unscented)</td><td>30 min</td></tr>
+        <tr><td>Iodine tablets</td><td>Per package directions</td><td>30 min</td></tr>
+        <tr><td>UV (SODIS)</td><td>Clear bottle in direct sun</td><td>6-48 hours</td></tr>
+        <tr><td>Filter</td><td>0.1 micron or smaller</td><td>Immediate</td></tr>
+      </table>
+      <div class="note">Always filter sediment first (cloth/coffee filter). Double-treat if water is questionable.</div>
+    </div>
+
+    <div class="ref-card">
+      <h3>🔥 Fire Starting Methods</h3>
+      <ul>
+        <li><strong>Lighter/matches:</strong> Fastest. Keep dry in waterproof container</li>
+        <li><strong>Ferro rod:</strong> Scrape at 45° into fine tinder. Works when wet</li>
+        <li><strong>Magnifying glass:</strong> Focus sun on char cloth or dark tinder</li>
+        <li><strong>Bow drill:</strong> Friction method — hardwood spindle on softwood board</li>
+        <li><strong>Battery + steel wool:</strong> Touch terminals to fine steel wool</li>
+      </ul>
+      <div class="note">Tinder progression: char cloth → dry grass → small twigs → pencil-thick → finger-thick → wrist-thick</div>
+    </div>
+
+    <div class="ref-card">
+      <h3>🏕️ Emergency Shelter Priorities</h3>
+      <ol>
+        <li>Get out of wind and rain/snow FIRST — hypothermia kills fast</li>
+        <li>Insulate from ground: leaves, pine needles, branches (4+ inches)</li>
+        <li>Small shelter = warmer. Just big enough to lie down in</li>
+        <li>Debris hut: ridgepole against tree, ribs of branches, pile leaves 3ft thick</li>
+        <li>Snow cave: dig into snowbank, sleep platform above entrance</li>
+        <li>Tarp: A-frame lean-to with paracord between two trees</li>
+      </ol>
+    </div>
+
+    <div class="ref-card">
+      <h3>📡 Emergency Signals</h3>
+      <table>
+        <tr><th>Signal</th><th>Meaning</th></tr>
+        <tr><td>3 of anything (fires, blasts, flashes)</td><td>Universal distress</td></tr>
+        <tr><td>SOS (... --- ...)</td><td>International distress</td></tr>
+        <tr><td>Ground X</td><td>Need medical help (air rescue)</td></tr>
+        <tr><td>Ground V</td><td>Need assistance</td></tr>
+        <tr><td>Ground → (arrow)</td><td>Traveling this direction</td></tr>
+        <tr><td>Whistle: 1 long blast</td><td>Attention / where are you?</td></tr>
+        <tr><td>Whistle: 2 blasts</td><td>Come to me</td></tr>
+        <tr><td>Whistle: 3 blasts</td><td>Help / emergency</td></tr>
+      </table>
+    </div>
+
+    <div class="ref-card">
+      <h3>🧭 Navigation Without GPS</h3>
+      <ul>
+        <li><strong>Sun rises East, sets West</strong> (roughly)</li>
+        <li><strong>North Star:</strong> Find Big Dipper, follow pointer stars to Polaris</li>
+        <li><strong>Stick shadow:</strong> Mark tip of shadow, wait 15 min, mark again. Line = E-W</li>
+        <li><strong>Watch compass:</strong> Point hour hand at sun, halfway to 12 = South</li>
+        <li><strong>Moss:</strong> Unreliable alone, but often thicker on north side of trees</li>
+        <li><strong>Follow water downhill</strong> to find streams → rivers → civilization</li>
+      </ul>
+    </div>
+
+    <div class="ref-card">
+      <h3>🌡️ Hypothermia Recognition & Treatment</h3>
+      <table>
+        <tr><th>Stage</th><th>Signs</th><th>Action</th></tr>
+        <tr><td>Mild</td><td>Shivering, cold hands/feet, fumbling</td><td>Warm shelter, dry clothes, warm drinks</td></tr>
+        <tr><td>Moderate</td><td>Violent shivering, confusion, slurred speech</td><td>Remove wet clothes, insulate, body heat from another person</td></tr>
+        <tr><td>Severe</td><td>Shivering stops, unconscious, weak pulse</td><td>Handle gently, insulate, warm core first. No rubbing. Seek help immediately</td></tr>
+      </table>
+      <div class="note">Never give alcohol. Never rub frostbitten skin. Warm slowly — rapid warming causes shock.</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

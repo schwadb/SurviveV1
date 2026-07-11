@@ -1,7 +1,8 @@
 Flask==3.0.3
 flask-wtf==1.2.1
-flask-limiter==3.8.0
+flask-limiter==3.11.0
+flask-compress==1.17
 gunicorn==22.0.0
-requests==2.31.0
-tqdm==4.66.2
-pyyaml==6.0.1
+requests==2.32.3
+tqdm==4.67.1
+pyyaml==6.0.2

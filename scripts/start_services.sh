@@ -171,13 +171,13 @@ main() {
     info "Starting SurviveV1 services..."
     preflight_check
 
-    start_manual dashboard
-    start_manual kiwix
-    start_manual ollama
-    start_manual maps
-    start_manual kolibri
-    start_manual jellyfin
-    start_manual calibre
+    start_service dashboard survive-dashboard "Dashboard"
+    start_service kiwix survive-kiwix "Kiwix"
+    start_service ollama survive-ollama "Ollama AI"
+    start_service maps survive-maps "Maps"
+    start_service kolibri survive-kolibri "Kolibri"
+    start_service jellyfin jellyfin "Jellyfin"
+    start_service calibre survive-calibre "Calibre-Web"
 
     # Wait up to 15 s for the dashboard to respond before printing URLs
     local retries=30

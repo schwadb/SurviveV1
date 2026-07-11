@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}Supply Inventory{% endblock %}
+
+{% block head %}
+<style>
+  .inv-grid { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
+  .inv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .inv-table th {
+    text-align: left; padding: 10px 12px;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-dim); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .inv-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .inv-table tr:hover td { background: var(--surface2); }
+  .exp-soon { color: var(--warning); font-weight: 600; }
+  .exp-expired { color: var(--danger); font-weight: 600; }
+  .exp-ok { color: var(--accent); }
+  .add-form { display: grid; gap: 10px; }
+  .add-form input, .add-form select {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); padding: 8px 12px; border-radius: var(--radius);
+    font-size: 13px;
+  }
+  .add-form input:focus, .add-form select:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+  .summary-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px; text-align: center;
+  }
+  .summary-val { font-size: 24px; font-weight: 700; color: var(--accent); }
+  .summary-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; }
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filter-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text-dim); padding: 5px 12px; border-radius: 20px;
+    font-size: 12px; cursor: pointer; transition: all 0.15s;
+  }
+  .filter-btn.active, .filter-btn:hover {
+    border-color: var(--accent); color: var(--accent);
+    background: rgba(63,185,80,0.1);
+  }
+  @media (max-width: 768px) {
+    .inv-grid { grid-template-columns: 1fr; }
+    .summary-cards { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">📦 Supply Inventory</div>
+  <div class="page-sub">Track supplies, expiration dates, and coverage — all stored locally in your browser</div>
+
+  <div class="summary-cards">
+    <div class="summary-card">
+      <div class="summary-val" id="totalItems">0</div>
+      <div class="summary-label">Total Items</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-val" id="expiringCount" style="color:var(--warning)">0</div>
+      <div class="summary-label">Expiring Soon</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-val" id="coverageDays">0</div>
+      <div class="summary-label">Days of Water</div>
+    </div>
+  </div>
+
+  <div class="inv-grid">
+    <div>
+      <div class="filter-bar">
+        <button class="filter-btn active" onclick="filterCategory('all', this)">All</button>
+        <button class="filter-btn" onclick="filterCategory('food', this)">Food</button>
+        <button class="filter-btn" onclick="filterCategory('water', this)">Water</button>
+        <button class="filter-btn" onclick="filterCategory('medical', this)">Medical</button>
+        <button class="filter-btn" onclick="filterCategory('tools', this)">Tools</button>
+        <button class="filter-btn" onclick="filterCategory('fuel', this)">Fuel</button>
+        <button class="filter-btn" onclick="filterCategory('other', this)">Other</button>
+      </div>
+
+      <div class="card">
+        <table class="inv-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Category</th>
+              <th>Qty</th>
+              <th>Expires</th>
+              <th>Location</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="invBody">
+            <tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:40px;">
+              No items yet. Add supplies using the form.
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-title">Add Item</div>
+        <div class="add-form">
+          <input type="text" id="itemName" placeholder="Item name">
+          <select id="itemCategory">
+            <option value="food">Food</option>
+            <option value="water">Water</option>
+            <option value="medical">Medical</option>
+            <option value="tools">Tools</option>
+            <option value="fuel">Fuel</option>
+            <option value="other">Other</option>
+          </select>
+          <input type="number" id="itemQty" placeholder="Quantity" min="1" value="1">
+          <input type="date" id="itemExpiry" placeholder="Expiration date">
+          <input type="text" id="itemLocation" placeholder="Location (e.g., Pantry)">
+          <button class="btn btn-primary" onclick="addItem()">Add to Inventory</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Actions</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button class="btn btn-secondary" onclick="exportInventory()">Export CSV</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">Import CSV</button>
+          <input type="file" id="importFile" accept=".csv" style="display:none" onchange="importInventory(event)">
+          <button class="btn btn-secondary" onclick="if(confirm('Clear all items?'))clearInventory()">Clear All</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STORAGE_KEY = 'survive_inventory';
+let items = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+let currentFilter = 'all';
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  render();
+}
+
+function expiryClass(dateStr) {
+  if (!dateStr) return 'exp-ok';
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = (d - now) / 86400000;
+  if (diff < 0) return 'exp-expired';
+  if (diff < 30) return 'exp-soon';
+  return 'exp-ok';
+}
+
+function expiryLabel(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.ceil((d - now) / 86400000);
+  if (diff < 0) return `Expired ${-diff}d ago`;
+  if (diff === 0) return 'Today';
+  if (diff < 30) return `${diff} days`;
+  return dateStr;
+}
+
+function render() {
+  const filtered = currentFilter === 'all' ? items : items.filter(i => i.category === currentFilter);
+  const tbody = document.getElementById('invBody');
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:40px;">No items found.</td></tr>';
+  } else {
+    tbody.innerHTML = filtered.map((item, idx) => {
+      const realIdx = items.indexOf(item);
+      const ec = expiryClass(item.expiry);
+      return `<tr>
+        <td>${item.name}</td>
+        <td><span class="badge badge-blue">${item.category}</span></td>
+        <td>${item.qty}</td>
+        <td class="${ec}">${expiryLabel(item.expiry)}</td>
+        <td style="color:var(--text-dim)">${item.location || '—'}</td>
+        <td><button onclick="removeItem(${realIdx})" class="btn btn-secondary btn-sm" style="color:var(--danger)">✕</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('totalItems').textContent = items.length;
+  document.getElementById('expiringCount').textContent = items.filter(i => expiryClass(i.expiry) !== 'exp-ok').length;
+  const waterItems = items.filter(i => i.category === 'water');
+  const totalGallons = waterItems.reduce((s, i) => s + (i.qty || 0), 0);
+  document.getElementById('coverageDays').textContent = Math.floor(totalGallons);
+}
+
+function addItem() {
+  const name = document.getElementById('itemName').value.trim();
+  if (!name) return;
+  items.push({
+    name,
+    category: document.getElementById('itemCategory').value,
+    qty: parseInt(document.getElementById('itemQty').value) || 1,
+    expiry: document.getElementById('itemExpiry').value || '',
+    location: document.getElementById('itemLocation').value.trim(),
+    added: new Date().toISOString().slice(0, 10),
+  });
+  document.getElementById('itemName').value = '';
+  document.getElementById('itemExpiry').value = '';
+  document.getElementById('itemLocation').value = '';
+  save();
+}
+
+function removeItem(idx) { items.splice(idx, 1); save(); }
+
+function clearInventory() { items = []; save(); }
+
+function filterCategory(cat, btn) {
+  currentFilter = cat;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  render();
+}
+
+function exportInventory() {
+  const csv = 'Name,Category,Qty,Expiry,Location,Added\n' +
+    items.map(i => [i.name, i.category, i.qty, i.expiry, i.location, i.added].join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'survive_inventory.csv';
+  a.click();
+}
+
+function importInventory(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const lines = reader.result.split('\n').slice(1);
+    for (const line of lines) {
+      const [name, category, qty, expiry, location, added] = line.split(',');
+      if (name) items.push({ name, category: category || 'other', qty: parseInt(qty) || 1, expiry: expiry || '', location: location || '', added: added || '' });
+    }
+    save();
+  };
+  reader.readAsText(file);
+}
+
+render();
+</script>
+{% endblock %}

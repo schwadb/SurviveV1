@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% block title %}Scenario Guides{% endblock %}
+
+{% block head %}
+<style>
+  .sc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .sc-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .sc-card:hover { border-color: var(--text-dim); transform: translateY(-2px); }
+  .sc-icon { font-size: 36px; margin-bottom: 10px; }
+  .sc-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+  .sc-desc { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+  .sc-detail { display: none; }
+  .sc-detail.open { display: block; }
+  .sc-section {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+  }
+  .sc-section h3 { font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .sc-step {
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px; line-height: 1.6; display: flex; gap: 10px;
+  }
+  .sc-step:last-child { border-bottom: none; }
+  .sc-num {
+    background: var(--accent); color: #000; width: 22px; height: 22px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 2px;
+  }
+  .back-btn { margin-bottom: 16px; }
+  .phase-tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+  .phase-tab {
+    padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text-dim); transition: all 0.15s;
+  }
+  .phase-tab.active { background: var(--accent); color: #000; border-color: var(--accent); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div id="scenarioList">
+    <div class="page-title">🆘 Scenario Guides</div>
+    <div class="page-sub">Step-by-step walkthroughs for specific emergency scenarios</div>
+    <div class="sc-grid" id="scenarioGrid"></div>
+  </div>
+  <div id="scenarioDetail" class="sc-detail"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SCENARIOS = [
+  { id: 'griddown', icon: '⚡', title: 'Grid Down / Power Outage',
+    desc: 'Extended power failure — no electricity, no communications infrastructure.',
+    phases: [
+      { name: 'First Hour', steps: [
+        'Check if outage is local (ask neighbors) or widespread.',
+        'Turn off or unplug appliances to prevent surge damage when power returns.',
+        'Locate flashlights, candles, and battery-powered radio.',
+        'Check phone for emergency alerts. Conserve phone battery (airplane mode).',
+        'Gather family members and brief them on the situation.',
+      ]},
+      { name: 'First 24 Hours', steps: [
+        'Keep refrigerator/freezer closed (food stays cold 4-48 hours).',
+        'Use perishable food first, then freezer items, then shelf-stable.',
+        'Fill bathtubs and containers with water while pressure lasts.',
+        'Set up alternative lighting: solar lanterns, oil lamps, candles (fire safety).',
+        'Monitor battery radio for official updates (NOAA Weather Radio).',
+        'Check on elderly/vulnerable neighbors.',
+      ]},
+      { name: '72 Hours', steps: [
+        'Implement water rationing: 1 gallon per person per day minimum.',
+        'Begin cooking with camp stove, grill, or fire pit (OUTDOORS ONLY for fuel-burning).',
+        'Establish a communication plan if phones are down (designated meeting point).',
+        'Secure your home — lock doors, close curtains. Power outages increase crime risk.',
+        'Begin using your emergency food supply.',
+        'Pool resources with trusted neighbors.',
+      ]},
+      { name: 'Long Term', steps: [
+        'Set up solar panels, generator, or alternative power if available.',
+        'Establish a water purification routine (filter, boil, or chemical treatment).',
+        'Start or expand a garden for food self-sufficiency.',
+        'Form a neighborhood watch / mutual aid group.',
+        'Preserve food: smoking, drying, salting, canning.',
+        'Establish trade/barter relationships with neighbors.',
+      ]},
+    ]},
+  { id: 'natural', icon: '🌪️', title: 'Natural Disaster',
+    desc: 'Earthquake, hurricane, tornado, flood, or wildfire response.',
+    phases: [
+      { name: 'Immediate', steps: [
+        'EARTHQUAKE: Drop, Cover, Hold On. Move away from windows.',
+        'TORNADO: Go to interior room on lowest floor. Cover head.',
+        'HURRICANE: Stay away from windows. Move to interior room.',
+        'FLOOD: Move to higher ground immediately. Never walk/drive through flood water.',
+        'WILDFIRE: Evacuate early. Close all windows/doors. Wet down roof if time allows.',
+      ]},
+      { name: 'First 24 Hours', steps: [
+        'Account for all family members. Provide first aid as needed.',
+        'Check for gas leaks (smell, hissing). If suspected, leave immediately.',
+        'Check for structural damage. Do not enter damaged buildings.',
+        'Listen to emergency radio for instructions and shelter locations.',
+        'Document damage with photos for insurance.',
+        'Use stored water and food. Do not use tap water until cleared.',
+      ]},
+      { name: '72 Hours', steps: [
+        'Register with Red Cross Safe and Well (if communications available).',
+        'Begin cleanup only when authorities say it is safe.',
+        'Wear protective gear for cleanup: gloves, N95 mask, sturdy shoes.',
+        'Discard all food that contacted flood water.',
+        'Watch for delayed hazards: downed power lines, weakened structures.',
+        'Apply for FEMA assistance if available.',
+      ]},
+      { name: 'Recovery', steps: [
+        'Work with insurance for damage claims.',
+        'Rebuild supplies that were used or damaged.',
+        'Update your emergency plan based on lessons learned.',
+        'Consider improvements: storm shutters, elevated utilities, go bags.',
+        'Seek mental health support — disaster trauma is real and normal.',
+      ]},
+    ]},
+  { id: 'wilderness', icon: '🏔️', title: 'Wilderness Survival',
+    desc: 'Lost, stranded, or injured in the wilderness without supplies.',
+    phases: [
+      { name: 'S.T.O.P.', steps: [
+        'SIT down. Do not panic. Panicked movement wastes energy and causes injury.',
+        'THINK about your situation. When were you last on trail? What resources do you have?',
+        'OBSERVE your surroundings. Look for shelter, water, landmarks, signs of civilization.',
+        'PLAN your next steps based on your assessment.',
+        'Stay put if rescue is likely. Signal your location.',
+      ]},
+      { name: 'Priorities (Rule of 3s)', steps: [
+        '3 MINUTES without air: Clear airway, treat any breathing emergencies first.',
+        '3 HOURS without shelter: Build or find shelter from wind/rain/cold/sun.',
+        '3 DAYS without water: Find water source. Purify by boiling (1 min at rolling boil).',
+        '3 WEEKS without food: Forage only what you can positively identify.',
+        'Fire: warmth, water purification, signaling, morale. Learn 3+ methods.',
+      ]},
+      { name: 'Signaling', steps: [
+        'Three of anything = universal distress signal (3 fires, 3 whistle blasts, 3 flashes).',
+        'Use a signal mirror toward aircraft or distant observers.',
+        'Create ground-to-air signals: large X or SOS from rocks/logs in clearing.',
+        'Stay near your signal area during daylight hours.',
+        'Whistle carries further than voice and requires less energy.',
+      ]},
+      { name: 'Movement', steps: [
+        'Only move if: rescue is not coming, you know your direction, and you are able.',
+        'Follow water downhill — streams lead to rivers, rivers lead to civilization.',
+        'Mark your trail (stacked rocks, broken branches) in case you need to backtrack.',
+        'Travel during daylight only. Rest at night.',
+        'Conserve energy. Rest 10 minutes every hour of walking.',
+      ]},
+    ]},
+  { id: 'medical', icon: '🏥', title: 'Medical Emergency (No Hospital)',
+    desc: 'Serious injury or illness when professional medical care is unavailable.',
+    phases: [
+      { name: 'Assess', steps: [
+        'Scene safety first: ensure no ongoing danger to you or patient.',
+        'Check responsiveness: tap shoulders, ask "Are you okay?"',
+        'Check breathing: look, listen, feel for 10 seconds.',
+        'Check for severe bleeding: scan head to toe, front and back.',
+        'C-spine precaution if trauma suspected: stabilize head/neck.',
+      ]},
+      { name: 'Life Threats', steps: [
+        'BLEEDING: Direct pressure with clean cloth. Tourniquet for life-threatening limb bleeding (2-3 inches above wound, note time).',
+        'NOT BREATHING: Head-tilt/chin-lift. Begin CPR if no pulse (30 compressions : 2 breaths).',
+        'SHOCK: Lay flat, elevate legs 12 inches, keep warm, give small sips of water if conscious.',
+        'CHOKING: 5 back blows, 5 abdominal thrusts (Heimlich). Repeat.',
+        'BURNS: Cool with clean running water 10+ minutes. Cover loosely. Do NOT pop blisters.',
+      ]},
+      { name: 'Wound Care', steps: [
+        'Clean wound with cleanest water available. Irrigate thoroughly.',
+        'Remove debris with sterile tweezers.',
+        'Apply antibiotic ointment if available.',
+        'Close with butterfly strips or wound closure strips (not deep wounds).',
+        'Dress with sterile gauze, change daily. Watch for infection signs.',
+        'INFECTION SIGNS: increasing redness, warmth, swelling, red streaks, pus, fever.',
+      ]},
+      { name: 'Ongoing Care', steps: [
+        'Monitor vital signs every 4 hours: breathing rate, pulse, temperature, consciousness.',
+        'Keep patient hydrated: small frequent sips of clean water.',
+        'Manage pain: ibuprofen (anti-inflammatory) or acetaminophen.',
+        'Splint suspected fractures: immobilize joint above and below.',
+        'Elevate injured extremities to reduce swelling.',
+        'Seek professional medical care as soon as available.',
+      ]},
+    ]},
+  { id: 'pandemic', icon: '😷', title: 'Pandemic / Quarantine',
+    desc: 'Infectious disease outbreak requiring isolation and self-sufficiency.',
+    phases: [
+      { name: 'Early Warning', steps: [
+        'Stock up on essentials: 30-day food, water, medications, hygiene supplies.',
+        'Fill prescriptions for 90 days if possible.',
+        'Stock N95/KN95 masks, nitrile gloves, hand sanitizer, disinfectant.',
+        'Set up a sick room: separate bedroom with its own bathroom if possible.',
+        'Identify critical contacts and establish communication plan.',
+      ]},
+      { name: 'Active Outbreak', steps: [
+        'Minimize trips outside. Batch errands.',
+        'Wear mask in public. Wash hands 20+ seconds frequently.',
+        'Disinfect high-touch surfaces daily: doorknobs, light switches, phones.',
+        'Monitor household members for symptoms.',
+        'If someone is sick: isolate immediately in designated sick room.',
+        'Designate one caregiver with PPE. Minimize others contact.',
+      ]},
+      { name: 'Extended Isolation', steps: [
+        'Ration supplies. Track consumption rate vs. remaining stock.',
+        'Maintain routine: wake time, meals, exercise, learning, sleep.',
+        'Stay mentally active: books, projects, learning new skills.',
+        'Stay physically active: exercise at home, yard work, stretching.',
+        'Stay connected: phone calls, video calls, radio contact.',
+        'Monitor official guidance for changes in recommendations.',
+      ]},
+      { name: 'Recovery', steps: [
+        'Re-enter gradually. Continue hygiene practices.',
+        'Restock all supplies that were used.',
+        'Debrief with family: what worked, what to improve.',
+        'Update your emergency plan and supply lists.',
+        'Seek mental health support if needed — prolonged isolation has lasting effects.',
+      ]},
+    ]},
+];
+
+function showScenarioList() {
+  document.getElementById('scenarioList').style.display = 'block';
+  document.getElementById('scenarioDetail').className = 'sc-detail';
+  document.getElementById('scenarioDetail').innerHTML = '';
+}
+
+function showScenario(id) {
+  const sc = SCENARIOS.find(s => s.id === id);
+  if (!sc) return;
+  document.getElementById('scenarioList').style.display = 'none';
+  const detail = document.getElementById('scenarioDetail');
+  detail.className = 'sc-detail open';
+
+  detail.innerHTML = `
+    <button class="btn btn-secondary back-btn" onclick="showScenarioList()">← Back to Scenarios</button>
+    <div class="page-title">${sc.icon} ${sc.title}</div>
+    <div class="page-sub">${sc.desc}</div>
+    <div class="phase-tabs">
+      ${sc.phases.map((p, i) => `<div class="phase-tab ${i===0?'active':''}" onclick="showPhase(${i}, this)">${p.name}</div>`).join('')}
+    </div>
+    ${sc.phases.map((p, i) => `
+      <div class="sc-section phase-content" style="${i>0?'display:none':''}">
+        <h3>${p.name}</h3>
+        ${p.steps.map((s, j) => `<div class="sc-step"><div class="sc-num">${j+1}</div><div>${s}</div></div>`).join('')}
+      </div>
+    `).join('')}
+  `;
+}
+
+function showPhase(idx, tab) {
+  document.querySelectorAll('.phase-tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  document.querySelectorAll('.phase-content').forEach((el, i) => {
+    el.style.display = i === idx ? 'block' : 'none';
+  });
+}
+
+document.getElementById('scenarioGrid').innerHTML = SCENARIOS.map(sc =>
+  `<div class="sc-card" onclick="showScenario('${sc.id}')">
+    <div class="sc-icon">${sc.icon}</div>
+    <div class="sc-title">${sc.title}</div>
+    <div class="sc-desc">${sc.desc}</div>
+  </div>`
+).join('');
+</script>
+{% endblock %}
