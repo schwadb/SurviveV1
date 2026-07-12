@@ -54,6 +54,11 @@ export interface Transaction {
   /** Set when created by marking a bill paid. */
   billId?: string;
   cleared: boolean;
+  /**
+   * Split across categories (2–8 legs). When present, `categoryId` is null and
+   * the leg amounts sum to `amount` (all negative, same sign as `amount`).
+   */
+  splits?: { categoryId: string | null; amount: number }[];
 }
 
 /** Per month (yyyy-mm) per category assignment, YNAB "assign every dollar". */

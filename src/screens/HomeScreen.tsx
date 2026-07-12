@@ -10,18 +10,20 @@ import {
 import { fmt, fmtShort } from '../utils/money';
 import { dateLabel, daysInMonth, monthKey, monthLabel, todayIso } from '../utils/dates';
 import { sortTransactions } from '../logic/budget';
+import { getIndex } from '../logic/derived';
 import { INCOME_CATEGORY_ID } from '../types';
 
 export function HomeScreen({ onGoToTab }: { onGoToTab: (tab: string) => void }) {
   const t = useTheme();
   const store = useStore();
   const month = monthKey();
+  const index = getIndex(store);
 
-  const pocket = inMyPocket(store, month);
-  const rta = readyToAssign(store, month);
-  const nw = netWorth(store);
-  const income = incomeForMonth(store, month);
-  const spent = spendingForMonth(store, month);
+  const pocket = inMyPocket(store, month, index);
+  const rta = readyToAssign(store, month, index);
+  const nw = netWorth(store, index);
+  const income = incomeForMonth(store, month, index);
+  const spent = spendingForMonth(store, month, index);
   const budgeted = totalAssigned(store, month);
   const bills = upcomingBills(store).slice(0, 4);
   const recent = sortTransactions(store.transactions).slice(0, 5);

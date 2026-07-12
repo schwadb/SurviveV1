@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Account, AppData, Bill, Category, CategoryGroup, Goal, Rule, Settings, Transaction,
 } from './types';
-import { makeSeedData, SCHEMA_VERSION } from './data/seed';
+import { makeLargeSeedData, makeSeedData, SCHEMA_VERSION } from './data/seed';
 import { applyRules, planAutoAssign, targetShortfall } from './logic/budget';
 import { addMonths, monthKey, todayIso } from './utils/dates';
 
@@ -51,6 +51,8 @@ interface Actions {
   updateSettings: (patch: Partial<Settings>) => void;
   resetToDemo: () => void;
   clearAllData: () => void;
+  /** Dev/testing only: load demo data plus ~10k synthetic transactions. */
+  loadLargeDemo: () => void;
   /** Replace all data from a validated backup file. */
   restoreBackup: (data: AppData) => void;
   /** Import statement rows, skipping (date, amount, payee) duplicates. */
@@ -190,6 +192,7 @@ export const useStore = create<Store>()(
       updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
       resetToDemo: () => set({ ...makeSeedData() }),
       clearAllData: () => set({ ...emptyData() }),
+      loadLargeDemo: () => set({ ...makeLargeSeedData() }),
       restoreBackup: (data) => set({ ...data }),
       importTransactions: (rows) => {
         const s = get();

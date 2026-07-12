@@ -5,6 +5,7 @@ import { spacing, type } from '../theme';
 import { Amount, Card, Label, Pill, ProgressBar, Row, useTheme } from '../components/ui';
 import { AssignForm, EnvelopeForm, MoveMoneyForm } from '../components/forms';
 import { assigned, categoryActivity, envelopeAvailable, readyToAssign, totalAssigned } from '../logic/budget';
+import { getIndex } from '../logic/derived';
 import { addMonths, monthKey, monthLabel } from '../utils/dates';
 import { fmt } from '../utils/money';
 import { INCOME_CATEGORY_ID } from '../types';
@@ -19,7 +20,8 @@ export function BudgetScreen() {
   const [showMove, setShowMove] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  const rta = readyToAssign(store, month);
+  const index = getIndex(store);
+  const rta = readyToAssign(store, month, index);
   const cats = store.categories.filter((c) => !c.archived && c.id !== INCOME_CATEGORY_ID);
   const groups = [...store.groups].sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -86,9 +88,9 @@ export function BudgetScreen() {
             <Card style={{ paddingVertical: 4 }}>
               {groupCats.map((c, i) => {
                 const asg = assigned(store, c.id, month);
-                const activity = categoryActivity(store, c.id, month);
+                const activity = categoryActivity(store, c.id, month, index);
                 const spentThisMonth = -Math.min(0, activity);
-                const avail = envelopeAvailable(store, c, month);
+                const avail = envelopeAvailable(store, c, month, index);
                 const frac = asg > 0 ? spentThisMonth / asg : spentThisMonth > 0 ? 2 : 0;
                 const over = avail < 0;
                 return (

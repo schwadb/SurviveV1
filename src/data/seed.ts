@@ -123,3 +123,31 @@ export function makeSeedData(): AppData {
     schemaVersion: SCHEMA_VERSION,
   };
 }
+
+/**
+ * Demo data plus `txCount` synthetic historical transactions spread over the
+ * last ~6 years, for exercising the app at realistic volume (perf test + a
+ * dev-only loader). Deterministic (no Math.random) so results are stable.
+ */
+export function makeLargeSeedData(txCount = 10000): AppData {
+  const base = makeSeedData();
+  const spendCats = ['cat-groceries', 'cat-dining', 'cat-transport', 'cat-fun', 'cat-utils'];
+  const payees = ['Fresh Market', 'Noodle House', 'Shell Gas', 'Cinema City', 'City Power & Light', 'Corner Store', 'Bus Pass', 'Book Nook'];
+  const m0 = monthKey();
+  const bulk: AppData['transactions'] = [];
+  for (let i = 0; i < txCount; i++) {
+    const month = addMonths(m0, -(i % 72)); // spread across 6 years
+    const day = String(1 + (i % 27)).padStart(2, '0');
+    const isIncome = i % 20 === 0;
+    bulk.push({
+      id: `bulk-${i}`,
+      accountId: i % 3 === 0 ? 'acct-check' : i % 3 === 1 ? 'acct-credit' : 'acct-save',
+      categoryId: isIncome ? INCOME_CATEGORY_ID : spendCats[i % spendCats.length],
+      payee: isIncome ? 'Side Gig' : payees[i % payees.length],
+      amount: isIncome ? 5000 + (i % 100) * 10 : -(500 + (i % 12000)),
+      date: `${month}-${day}`,
+      cleared: true,
+    });
+  }
+  return { ...base, transactions: [...base.transactions, ...bulk] };
+}

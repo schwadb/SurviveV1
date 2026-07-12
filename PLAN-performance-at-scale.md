@@ -1,5 +1,7 @@
 # PLAN: Performance at real data volume
 
+> **Status: ✅ COMPLETED** — implemented, equivalence-tested, and verified at 10k transactions.
+
 **Rank: 2 of 5.** Two latent defects bite as soon as a user accumulates real
 history (a year of statements ≈ 2,000–10,000 transactions):
 

@@ -5,7 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 const HERE = new URL('.', import.meta.url).pathname;
 const ROOT = new URL('..', import.meta.url).pathname;
 const PORT = process.env.E2E_PORT ?? '4173';
-const DRIVES = ['drive-app.mjs', 'drive-import.mjs', 'drive-improvements.mjs'];
+const DRIVES = ['drive-app.mjs', 'drive-import.mjs', 'drive-improvements.mjs', 'drive-scale.mjs'];
 
 function sh(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, { stdio: 'inherit', cwd: ROOT, ...opts });

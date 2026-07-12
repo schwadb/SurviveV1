@@ -9,6 +9,7 @@ import * as Crypto from 'expo-crypto';
 import { AccountForm, BillForm, ContributeForm, GoalForm, PassphraseSheet, RuleForm, StatementImportForm } from '../components/forms';
 import { lockAvailable } from '../components/AppLock';
 import { accountBalance, isCredit, netWorth, upcomingBills } from '../logic/budget';
+import { getIndex } from '../logic/derived';
 import { DebtInput, PayoffStrategy, simulatePayoff } from '../logic/debt';
 import { TrendLine } from '../components/charts';
 import { Field } from '../components/ui';
@@ -33,13 +34,14 @@ function notify(title: string, message: string) {
 function DebtPayoffCard() {
   const t = useTheme();
   const store = useStore();
+  const index = getIndex(store);
   const { width } = useWindowDimensions();
   const chartW = Math.min(width, 520) - spacing.lg * 4;
   const [strategy, setStrategy] = useState<PayoffStrategy>('avalanche');
   const [extraText, setExtraText] = useState('100');
 
   const debtAccounts = store.accounts.filter(
-    (a) => !a.archived && isCredit(a) && accountBalance(store, a.id) < 0,
+    (a) => !a.archived && isCredit(a) && accountBalance(store, a.id, index) < 0,
   );
   if (debtAccounts.length === 0) {
     return (
@@ -56,7 +58,7 @@ function DebtPayoffCard() {
   const missing = debtAccounts.filter((a) => a.aprBps === undefined || a.minPayment === undefined);
   const extra = Math.max(0, parseAmount(extraText) ?? 0);
   const inputs: DebtInput[] = ready.map((a) => ({
-    id: a.id, name: a.name, balance: -accountBalance(store, a.id),
+    id: a.id, name: a.name, balance: -accountBalance(store, a.id, index),
     aprBps: a.aprBps ?? 0, minPayment: a.minPayment ?? 0,
   }));
   const result = inputs.length > 0 ? simulatePayoff(inputs, extra, strategy) : null;
@@ -216,7 +218,8 @@ export function MoreScreen() {
     setDecryptError(null);
   };
 
-  const nw = netWorth(store);
+  const index = getIndex(store);
+  const nw = netWorth(store, index);
   const bills = upcomingBills(store, 60);
   const month = monthKey();
   const payAccount = store.accounts.find((a) => a.onBudget && !isCredit(a)) ?? store.accounts[0];
@@ -232,7 +235,7 @@ export function MoreScreen() {
           <Amount cents={nw.total} size="heading" />
         </Row>
         {store.accounts.filter((a) => !a.archived).map((a, i) => {
-          const bal = accountBalance(store, a.id);
+          const bal = accountBalance(store, a.id, index);
           return (
             <Pressable
               key={a.id}
@@ -506,6 +509,11 @@ export function MoreScreen() {
           <View style={{ gap: spacing.sm }}>
             <Button title="Reset to demo data" variant="ghost" onPress={() => setConfirmReset('demo')} />
             <Button title="Clear all data" variant="ghost" onPress={() => setConfirmReset('clear')} />
+            {/* Testing utility: loads demo + ~10k synthetic transactions to
+                exercise the app at scale. Not __DEV__-gated so it survives the
+                production web export the e2e scale drive runs against; it only
+                loads demo data, so it is safer than the two buttons above. */}
+            <Button title="Load 10k demo transactions (testing)" variant="ghost" onPress={() => store.loadLargeDemo()} />
           </View>
         )}
       </Card>

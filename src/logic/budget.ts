@@ -1,31 +1,42 @@
 import { AppData, Account, Category, Transaction, INCOME_CATEGORY_ID } from '../types';
 import { addMonths, lastMonths, monthKey, monthKeyOfIso, todayIso } from '../utils/dates';
+import { TxIndex, cumulativeActivity, forEachCategoryLeg } from './derived';
 
-export function accountBalance(data: AppData, accountId: string): number {
+// Every screen-level function takes an optional TxIndex. When provided it
+// answers from the single-pass summary (O(1)/O(months) instead of O(tx)); when
+// omitted it falls back to a full scan, so the pure API and all unit tests keep
+// working unchanged. Indexed and non-indexed results are equivalence-tested.
+
+export function accountBalance(data: AppData, accountId: string, index?: TxIndex): number {
   const acct = data.accounts.find((a) => a.id === accountId);
   if (!acct) return 0;
+  if (index) return acct.openingBalance + (index.txSumByAccount.get(accountId) ?? 0);
   let bal = acct.openingBalance;
   for (const t of data.transactions) if (t.accountId === accountId) bal += t.amount;
   return bal;
 }
 
-export function netWorth(data: AppData): { assets: number; liabilities: number; total: number } {
+export function netWorth(data: AppData, index?: TxIndex): { assets: number; liabilities: number; total: number } {
   let assets = 0;
   let liabilities = 0;
   for (const a of data.accounts) {
     if (a.archived) continue;
-    const bal = accountBalance(data, a.id);
+    const bal = accountBalance(data, a.id, index);
     if (bal >= 0) assets += bal;
     else liabilities += -bal;
   }
   return { assets, liabilities, total: assets - liabilities };
 }
 
-/** Sum spent (negative activity) for a category within a month. */
-export function categoryActivity(data: AppData, categoryId: string, month: string): number {
+/** Sum spent (signed activity) for a category within a month; splits expand to legs. */
+export function categoryActivity(data: AppData, categoryId: string, month: string, index?: TxIndex): number {
+  if (index) return index.activityByCatMonth.get(`${categoryId}|${month}`) ?? 0;
   let sum = 0;
   for (const t of data.transactions) {
-    if (t.categoryId === categoryId && monthKeyOfIso(t.date) === month) sum += t.amount;
+    if (monthKeyOfIso(t.date) !== month) continue;
+    forEachCategoryLeg(t, (legCat, amount) => {
+      if (legCat === categoryId) sum += amount;
+    });
   }
   return sum;
 }
@@ -39,14 +50,19 @@ export function assigned(data: AppData, categoryId: string, month: string): numb
  * Rollover envelopes (Goodbudget-style) carry every prior month's leftover;
  * non-rollover categories reset each month (classic monthly budget).
  */
-export function envelopeAvailable(data: AppData, cat: Category, month: string): number {
-  if (!cat.rollover) return assigned(data, cat.id, month) + categoryActivity(data, cat.id, month);
+export function envelopeAvailable(data: AppData, cat: Category, month: string, index?: TxIndex): number {
+  if (!cat.rollover) return assigned(data, cat.id, month) + categoryActivity(data, cat.id, month, index);
   let total = 0;
   for (const [m, cats] of Object.entries(data.budgets)) {
     if (m <= month) total += cats[cat.id] ?? 0;
   }
+  if (index) return total + cumulativeActivity(index, cat.id, month);
   for (const t of data.transactions) {
-    if (t.categoryId === cat.id && monthKeyOfIso(t.date) <= `${month}-99`) total += t.amount;
+    if (monthKeyOfIso(t.date) <= `${month}-99`) {
+      forEachCategoryLeg(t, (legCat, amount) => {
+        if (legCat === cat.id) total += amount;
+      });
+    }
   }
   return total;
 }
@@ -56,7 +72,8 @@ export function totalAssigned(data: AppData, month: string): number {
   return Object.values(cats).reduce((a, b) => a + b, 0);
 }
 
-export function incomeForMonth(data: AppData, month: string): number {
+export function incomeForMonth(data: AppData, month: string, index?: TxIndex): number {
+  if (index) return index.incomeByMonth.get(month) ?? 0;
   let sum = 0;
   for (const t of data.transactions) {
     if (t.amount > 0 && t.categoryId === INCOME_CATEGORY_ID && monthKeyOfIso(t.date) === month) {
@@ -66,7 +83,16 @@ export function incomeForMonth(data: AppData, month: string): number {
   return sum;
 }
 
-export function spendingForMonth(data: AppData, month: string): number {
+export function spendingForMonth(data: AppData, month: string, index?: TxIndex): number {
+  // onBudget is a live account flag, so compose the cached per-account spend
+  // with the current account list rather than caching the on-budget decision.
+  if (index) {
+    let sum = 0;
+    for (const a of data.accounts) {
+      if (a.onBudget !== false) sum += index.spendByAccountMonth.get(`${a.id}|${month}`) ?? 0;
+    }
+    return sum;
+  }
   let sum = 0;
   for (const t of data.transactions) {
     if (t.amount < 0 && monthKeyOfIso(t.date) === month) {
@@ -78,10 +104,10 @@ export function spendingForMonth(data: AppData, month: string): number {
 }
 
 /** Cash across on-budget accounts. */
-export function budgetCash(data: AppData): number {
+export function budgetCash(data: AppData, index?: TxIndex): number {
   let sum = 0;
   for (const a of data.accounts) {
-    if (a.onBudget && !a.archived) sum += accountBalance(data, a.id);
+    if (a.onBudget && !a.archived) sum += accountBalance(data, a.id, index);
   }
   return sum;
 }
@@ -90,14 +116,14 @@ export function budgetCash(data: AppData): number {
  * YNAB-style Ready to Assign: on-budget cash not yet earmarked by
  * envelope balances or goal savings.
  */
-export function readyToAssign(data: AppData, month: string): number {
+export function readyToAssign(data: AppData, month: string, index?: TxIndex): number {
   let earmarked = 0;
   for (const c of data.categories) {
     if (c.archived || c.id === INCOME_CATEGORY_ID) continue;
-    earmarked += Math.max(0, envelopeAvailable(data, c, month));
+    earmarked += Math.max(0, envelopeAvailable(data, c, month, index));
   }
   const goalReserve = data.goals.reduce((a, g) => a + g.saved, 0);
-  return budgetCash(data) - earmarked - goalReserve;
+  return budgetCash(data, index) - earmarked - goalReserve;
 }
 
 /** Bills due this month and not yet marked paid. */
@@ -109,11 +135,11 @@ export function unpaidBills(data: AppData, month: string = monthKey()) {
  * PocketGuard-style "In My Pocket": unassigned cash minus bills still due
  * this month that aren't already covered by an envelope.
  */
-export function inMyPocket(data: AppData, month: string = monthKey()): number {
+export function inMyPocket(data: AppData, month: string = monthKey(), index?: TxIndex): number {
   const uncoveredBills = unpaidBills(data, month)
     .filter((b) => !b.categoryId)
     .reduce((a, b) => a + b.amount, 0);
-  return readyToAssign(data, month) - uncoveredBills;
+  return readyToAssign(data, month, index) - uncoveredBills;
 }
 
 export interface AutoAssignPlan {
@@ -128,8 +154,8 @@ export interface AutoAssignPlan {
  * assigned-this-month, NOT the rollover-inclusive available balance —
  * a rollover envelope with money carried over still gets its monthly refill.
  */
-export function planAutoAssign(data: AppData, month: string): AutoAssignPlan[] {
-  let pool = readyToAssign(data, month);
+export function planAutoAssign(data: AppData, month: string, index?: TxIndex): AutoAssignPlan[] {
+  let pool = readyToAssign(data, month, index);
   if (pool <= 0) return [];
   const groupOrder = new Map(data.groups.map((g) => [g.id, g.sortOrder]));
   const candidates = data.categories
@@ -168,11 +194,11 @@ export interface CategorySpend {
 }
 
 /** Spending by category for a month, sorted descending, for the donut. */
-export function spendingByCategory(data: AppData, month: string): CategorySpend[] {
+export function spendingByCategory(data: AppData, month: string, index?: TxIndex): CategorySpend[] {
   const out: CategorySpend[] = [];
   for (const c of data.categories) {
     if (c.archived || c.id === INCOME_CATEGORY_ID) continue;
-    const spent = -Math.min(0, categoryActivity(data, c.id, month));
+    const spent = -Math.min(0, categoryActivity(data, c.id, month, index));
     if (spent > 0) out.push({ category: c, spent });
   }
   return out.sort((a, b) => b.spent - a.spent);
