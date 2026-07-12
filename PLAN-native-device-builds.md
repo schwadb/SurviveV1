@@ -1,5 +1,7 @@
 # PLAN: Native device builds & release readiness
 
+> **Status: ✅ COMPLETED** — implemented and verified (prebuild generates both platforms; CI gates it).
+
 **Rank: 1 of 5 (do this first).** The product goal is an Android/iOS app, yet
 every native code path shipped so far — app lock (expo-local-authentication),
 bill reminders (expo-notifications), file pickers, share-sheet exports — has

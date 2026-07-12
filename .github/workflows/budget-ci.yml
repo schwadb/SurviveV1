@@ -19,3 +19,5 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx vitest run
       - run: npx expo export --platform web
+      - run: npx expo prebuild --no-install --clean --platform android
+      - run: npx expo prebuild --no-install --clean --platform ios

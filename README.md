@@ -62,10 +62,26 @@ feature-mapping table.
 
 ```bash
 npm install
-npm run web       # web preview
-npm run ios       # iOS simulator (or Expo Go on device)
-npm run android   # Android emulator (or Expo Go on device)
+npm run web       # web preview (Metro)
 ```
+
+For a native app with all device features (biometric app lock, bill
+notifications, file pickers, share-sheet and encrypted-backup exports), build a
+**dev client** — Expo Go cannot exercise these (notifications are limited since
+SDK 53, and Face ID permission strings only exist in a real build):
+
+```bash
+npm run android   # expo run:android — needs Android Studio + SDK
+npm run ios       # expo run:ios     — needs Xcode (macOS)
+# or in the cloud:
+eas build --profile development --platform android
+eas build --profile development --platform ios
+```
+
+Native config lives entirely in `app.json` + config plugins (Continuous Native
+Generation) — `/android` and `/ios` are generated and gitignored. Validate that
+the native projects generate with `npm run prebuild:check`. The device
+verification checklist is in [`docs/DEVICE-TESTING.md`](docs/DEVICE-TESTING.md).
 
 The app ships with demo data (generated relative to today) so every screen is
 populated on first launch. Use **More → Danger zone** to clear it or re-seed.
