@@ -116,7 +116,7 @@ and identical across Android, iOS, and web.
 ```bash
 npm run typecheck   # strict TypeScript
 npm test            # vitest unit suite (budget math, parsers, backup)
-npm run e2e         # builds the web bundle and runs 3 Playwright drives
+npm run e2e         # builds the web bundle and runs 5 Playwright drives
 ```
 
 The e2e drives cover: every tab and core flow (add/search/persist transaction,
@@ -124,5 +124,7 @@ envelope assign, move money, mark bill paid, goal contribution, dark mode,
 reload persistence); statement import (QFX + CSV files, duplicate-skip on
 re-import, rule auto-categorization); and the improvement flows (uncategorized
 filter, date quick-chips, over-move blocked, copy-last-month, backup export →
-clear-all → restore round-trip, invalid backup rejected). CI (`budget-ci`)
-runs typecheck + unit tests + web export on every push.
+clear-all → restore round-trip, invalid backup rejected, splits, reconciliation);
+a household merge round-trip (plain + encrypted); and a 10k-transaction scale
+drive. CI (`budget-ci`) runs typecheck + unit tests + web export + native prebuild
+for both platforms on every push.
