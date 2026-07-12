@@ -6,9 +6,9 @@ import { useStore } from '../store';
 import { spacing, type } from '../theme';
 import { Amount, Button, Card, Label, Pill, ProgressBar, Row, SectionHeader, useTheme } from '../components/ui';
 import * as Crypto from 'expo-crypto';
-import { AccountForm, BillForm, ContributeForm, GoalForm, PassphraseSheet, RuleForm, StatementImportForm } from '../components/forms';
+import { AccountForm, BillForm, ContributeForm, GoalForm, PassphraseSheet, ReconcileForm, RuleForm, StatementImportForm } from '../components/forms';
 import { lockAvailable } from '../components/AppLock';
-import { accountBalance, isCredit, netWorth, upcomingBills } from '../logic/budget';
+import { accountBalance, clearedBalance, isCredit, netWorth, upcomingBills } from '../logic/budget';
 import { getIndex } from '../logic/derived';
 import { DebtInput, PayoffStrategy, simulatePayoff } from '../logic/debt';
 import { TrendLine } from '../components/charts';
@@ -156,6 +156,7 @@ export function MoreScreen() {
   const [showImport, setShowImport] = useState(false);
   const [confirmReset, setConfirmReset] = useState<'demo' | 'clear' | null>(null);
   const [canLock, setCanLock] = useState(false);
+  const [reconcileId, setReconcileId] = useState<string | null>(null);
   const [pendingRestore, setPendingRestore] = useState<{ name: string; text: string } | null>(null);
   const [showEncryptSheet, setShowEncryptSheet] = useState(false);
   const [pendingDecrypt, setPendingDecrypt] = useState<{ name: string; text: string } | null>(null);
@@ -236,20 +237,31 @@ export function MoreScreen() {
         </Row>
         {store.accounts.filter((a) => !a.archived).map((a, i) => {
           const bal = accountBalance(store, a.id, index);
+          const cleared = clearedBalance(store, a.id, index);
+          const hasPending = cleared !== bal;
           return (
             <Pressable
               key={a.id}
               onPress={() => setAccountForm({ open: true, id: a.id })}
+              onLongPress={() => setReconcileId(a.id)}
               style={{ paddingVertical: 10, borderTopWidth: 1, borderTopColor: t.gridline }}
             >
               <Row style={{ justifyContent: 'space-between' }}>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={[type.body, { color: t.inkPrimary }]}>{a.name}</Text>
                   <Label>
-                    {TYPE_LABEL[a.type]}{a.onBudget ? ' · on budget' : ' · tracking'}
+                    {TYPE_LABEL[a.type]}{a.onBudget ? ' · on budget' : ' · tracking'} · tap to edit
                   </Label>
                 </View>
-                <Amount cents={bal} colorize={bal < 0} />
+                <Row style={{ gap: spacing.sm }}>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Amount cents={bal} colorize={bal < 0} />
+                    {hasPending ? (
+                      <Label style={{ fontSize: 11 }}>cleared {fmt(cleared)}</Label>
+                    ) : null}
+                  </View>
+                  <Pill label="Reconcile" onPress={() => setReconcileId(a.id)} />
+                </Row>
               </Row>
             </Pressable>
           );
@@ -519,6 +531,7 @@ export function MoreScreen() {
       </Card>
 
       <AccountForm visible={accountForm.open} onClose={() => setAccountForm({ open: false, id: null })} editingId={accountForm.id} />
+      <ReconcileForm visible={!!reconcileId} onClose={() => setReconcileId(null)} accountId={reconcileId} />
       <GoalForm visible={goalForm.open} onClose={() => setGoalForm({ open: false, id: null })} editingId={goalForm.id} />
       <ContributeForm visible={!!contributeId} onClose={() => setContributeId(null)} goalId={contributeId} />
       <BillForm visible={billForm.open} onClose={() => setBillForm({ open: false, id: null })} editingId={billForm.id} />

@@ -57,6 +57,12 @@ interface Actions {
   restoreBackup: (data: AppData) => void;
   /** Import statement rows, skipping (date, amount, payee) duplicates. */
   importTransactions: (rows: Omit<Transaction, 'id' | 'cleared'>[]) => { imported: number; skipped: number };
+  /**
+   * Reconcile an account to `actualBalance`: mark all its pending transactions
+   * cleared, then (if needed) add one cleared adjustment to close the gap.
+   * Returns the adjustment amount (0 when balances already matched).
+   */
+  reconcileAccount: (accountId: string, actualBalance: number) => number;
 }
 
 export type Store = AppData & Actions;
@@ -217,6 +223,33 @@ export const useStore = create<Store>()(
         }
         if (fresh.length > 0) set({ transactions: [...s.transactions, ...fresh] });
         return { imported: fresh.length, skipped };
+      },
+      reconcileAccount: (accountId, actualBalance) => {
+        const s = get();
+        const acct = s.accounts.find((a) => a.id === accountId);
+        if (!acct) return 0;
+        // 1) Clear all pending transactions for this account.
+        const cleared = s.transactions.map((t) =>
+          t.accountId === accountId && !t.cleared ? { ...t, cleared: true } : t,
+        );
+        // 2) Working balance AFTER clearing (opening + every recorded tx). The
+        //    adjustment must be computed against THIS, not the pre-clearing
+        //    cleared balance, or every pending tx is double-counted.
+        let working = acct.openingBalance;
+        for (const t of cleared) if (t.accountId === accountId) working += t.amount;
+        // 3) Close any remaining gap with one cleared, uncategorized adjustment.
+        const adjustment = actualBalance - working;
+        const next = adjustment !== 0
+          ? [
+              ...cleared,
+              {
+                id: newId('tx'), accountId, categoryId: null, payee: 'Balance adjustment',
+                amount: adjustment, date: todayIso(), cleared: true,
+              } as Transaction,
+            ]
+          : cleared;
+        set({ transactions: next });
+        return adjustment;
       },
     }),
     {

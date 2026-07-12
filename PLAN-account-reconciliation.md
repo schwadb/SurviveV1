@@ -1,5 +1,7 @@
 # PLAN: Account reconciliation & cleared-balance workflow
 
+> **Status: ✅ COMPLETED** — implemented, unit-tested, and verified end-to-end.
+
 **Rank: 4 of 5.** The data model already tracks `cleared` on every transaction
 and the UI shows "● pending" badges — but nothing ever *uses* cleared state:
 there is no cleared balance anywhere, no way to toggle cleared in the UI, and

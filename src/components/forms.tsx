@@ -5,7 +5,8 @@ import { File as FsFile } from 'expo-file-system';
 import { useStore } from '../store';
 import { INCOME_CATEGORY_ID, Transaction } from '../types';
 import { fmt, parseAmount } from '../utils/money';
-import { SplitLeg, envelopeAvailable, validateSplits } from '../logic/budget';
+import { SplitLeg, accountBalance, clearedBalance, envelopeAvailable, validateSplits } from '../logic/budget';
+import { getIndex } from '../logic/derived';
 import { todayIso, yesterdayIso } from '../utils/dates';
 import { parseTransactionsCsv } from '../utils/csv';
 import { looksLikeOfx, parseOfx } from '../utils/ofx';
@@ -43,6 +44,7 @@ export function TransactionForm({
   const [accountId, setAccountId] = useState(editing?.accountId ?? store.accounts[0]?.id ?? '');
   const [categoryId, setCategoryId] = useState<string | null>(editing?.categoryId ?? null);
   const [note, setNote] = useState(editing?.note ?? '');
+  const [cleared, setCleared] = useState(editing?.cleared ?? false);
   const legsFrom = (tx?: Transaction | null): SplitLegDraft[] =>
     (tx?.splits ?? []).map((s) => ({ categoryId: s.categoryId, amountText: (Math.abs(s.amount) / 100).toFixed(2) }));
   const [splitEnabled, setSplitEnabled] = useState(!!editing?.splits?.length);
@@ -60,6 +62,7 @@ export function TransactionForm({
     setAccountId(editing?.accountId ?? store.accounts[0]?.id ?? '');
     setCategoryId(editing?.categoryId ?? null);
     setNote(editing?.note ?? '');
+    setCleared(editing?.cleared ?? false);
     setSplitEnabled(!!editing?.splits?.length);
     setSplitLegs(legsFrom(editing));
   }
@@ -106,12 +109,12 @@ export function TransactionForm({
 
     const patch = {
       payee: payee.trim(), amount, date, accountId, categoryId: catId,
-      note: note.trim() || undefined, splits,
+      note: note.trim() || undefined, splits, cleared,
     };
     if (isEdit && editing) {
       store.updateTransaction(editing.id, patch);
     } else {
-      store.addTransaction({ ...patch, cleared: false });
+      store.addTransaction(patch);
     }
     onClose();
   };
@@ -208,6 +211,13 @@ export function TransactionForm({
         </>
       )}
       <Field label="Note (optional)" value={note} onChangeText={setNote} placeholder="" />
+      <Row style={{ justifyContent: 'space-between', marginBottom: spacing.md }}>
+        <View style={{ flex: 1, paddingRight: spacing.md }}>
+          <Text style={[type.body, { color: t.inkPrimary }]}>Cleared</Text>
+          <Label>Off = pending (not yet posted at the bank)</Label>
+        </View>
+        <Switch value={cleared} onValueChange={setCleared} trackColor={{ true: t.good }} />
+      </Row>
       <Button title={isEdit ? 'Save Changes' : 'Add Transaction'} onPress={save} />
       {isEdit && (
         <View style={{ marginTop: spacing.sm }}>
@@ -453,6 +463,69 @@ export function AccountForm({
         <Switch value={onBudget} onValueChange={setOnBudget} trackColor={{ true: t.good }} />
       </Row>
       <Button title={editing ? 'Save' : 'Add Account'} onPress={save} />
+    </Sheet>
+  );
+}
+
+/**
+ * Reconcile an account against the real bank balance: shows cleared vs working
+ * balances, takes the actual balance, and (on mismatch) creates a single
+ * cleared, uncategorized "Balance adjustment" after marking pending cleared.
+ */
+export function ReconcileForm({
+  visible, onClose, accountId,
+}: { visible: boolean; onClose: () => void; accountId: string | null }) {
+  const store = useStore();
+  const t = useTheme();
+  const index = getIndex(store);
+  const account = store.accounts.find((a) => a.id === accountId);
+  const cleared = account ? clearedBalance(store, account.id, index) : 0;
+  const working = account ? accountBalance(store, account.id, index) : 0;
+  const [text, setText] = useState('');
+
+  const [seedKey, setSeedKey] = useState(accountId ?? 'none');
+  if (seedKey !== (accountId ?? 'none')) {
+    setSeedKey(accountId ?? 'none');
+    setText(account ? (working / 100).toFixed(2) : '');
+  }
+
+  const submit = () => {
+    if (!account) return;
+    const actual = parseAmount(text);
+    if (actual === null) return notify('Bad balance', 'Enter the balance your bank shows (negative for debt).');
+    const adj = store.reconcileAccount(account.id, actual);
+    onClose();
+    notify(
+      'Reconciled',
+      adj === 0
+        ? 'Everything matched — all pending transactions marked cleared.'
+        : `Marked pending cleared and filed a ${fmt(adj)} balance adjustment as Uncategorized so you can find it.`,
+    );
+  };
+
+  return (
+    <Sheet visible={visible} onClose={onClose} title={`Reconcile ${account?.name ?? ''}`}>
+      <Row style={{ justifyContent: 'space-between', marginBottom: spacing.sm }}>
+        <Label>Cleared balance</Label>
+        <Text style={[type.body, { color: t.inkPrimary, fontVariant: ['tabular-nums'] }]}>{fmt(cleared)}</Text>
+      </Row>
+      <Row style={{ justifyContent: 'space-between', marginBottom: spacing.md }}>
+        <Label>Working balance (incl. pending)</Label>
+        <Text style={[type.body, { color: t.inkPrimary, fontVariant: ['tabular-nums'] }]}>{fmt(working)}</Text>
+      </Row>
+      <Field
+        label="Actual bank balance (negative for debt)"
+        value={text}
+        onChangeText={setText}
+        keyboardType="decimal-pad"
+        placeholder="0.00"
+        autoFocus
+      />
+      <Label style={{ marginBottom: spacing.md }}>
+        This marks every pending transaction on this account cleared. Any remaining
+        difference is filed as an Uncategorized “Balance adjustment”.
+      </Label>
+      <Button title="Reconcile" onPress={submit} />
     </Sheet>
   );
 }

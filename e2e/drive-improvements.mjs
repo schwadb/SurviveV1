@@ -264,6 +264,39 @@ if ((await page.getByText('Everyday Checking').count()) === 0) {
 }
 await page.screenshot({ path: `${OUT}/22-encrypted-restore.png` });
 
+// --- Reconcile: long-press an account, enter working+$10, expect a +$10 adjustment ---
+await page.getByText('More', { exact: true }).last().click();
+await page.waitForTimeout(500);
+{
+  // Each account row has a Reconcile pill; the first one is Everyday Checking.
+  await page.getByText('Reconcile', { exact: true }).first().click();
+  await page.waitForTimeout(500);
+  const sheet = page.getByRole('dialog');
+  if ((await sheet.getByText('Reconcile Everyday Checking').count()) === 0) {
+    errors.push('FLOW: long-press did not open the Reconcile sheet');
+  } else {
+    const input = sheet.locator('input:not([type="checkbox"])').first();
+    const working = parseFloat((await input.inputValue()) || '0');
+    await input.fill((working + 10).toFixed(2));
+    await sheet.getByText('Reconcile', { exact: true }).click();
+    await page.waitForTimeout(600);
+    if (!dialogs.some((d) => d.includes('balance adjustment') && d.includes('Uncategorized'))) {
+      errors.push(`FLOW: reconcile did not report an adjustment, dialogs=${JSON.stringify(dialogs.slice(-2))}`);
+    }
+    // The +$10 adjustment shows under the uncategorized filter in Activity.
+    await page.getByText('Activity', { exact: true }).click();
+    await page.waitForTimeout(500);
+    await page.getByText(/❓ Uncategorized · \d+/).first().click();
+    await page.waitForTimeout(400);
+    if ((await page.getByText('Balance adjustment').count()) === 0) {
+      errors.push('FLOW: balance adjustment not visible under uncategorized filter');
+    }
+    await page.screenshot({ path: `${OUT}/25-reconcile.png` });
+    await page.getByText(/❓ Uncategorized · \d+/).first().click();
+    await page.waitForTimeout(300);
+  }
+}
+
 // --- Smoke every tab for console errors ---
 for (const tab of ['Home', 'Budget', 'Activity', 'Reports', 'More']) {
   await page.getByText(tab, { exact: true }).last().click();

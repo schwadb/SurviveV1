@@ -15,6 +15,8 @@ import { monthKeyOfIso } from '../utils/dates';
 export interface TxIndex {
   /** accountId -> sum of transaction amounts (add opening balance for a balance). */
   txSumByAccount: Map<string, number>;
+  /** accountId -> sum of CLEARED transaction amounts (for reconciliation). */
+  clearedTxSumByAccount: Map<string, number>;
   /** `${categoryId}|${month}` -> signed activity sum for that category in that month. */
   activityByCatMonth: Map<string, number>;
   /** categoryId -> ascending months with running cumulative activity (for rollover). */
@@ -43,6 +45,7 @@ export function forEachCategoryLeg(
 
 export function buildIndex(data: AppData): TxIndex {
   const txSumByAccount = new Map<string, number>();
+  const clearedTxSumByAccount = new Map<string, number>();
   const activityByCatMonth = new Map<string, number>();
   const incomeByMonth = new Map<string, number>();
   const spendByAccountMonth = new Map<string, number>();
@@ -50,6 +53,7 @@ export function buildIndex(data: AppData): TxIndex {
   for (const t of data.transactions) {
     const m = monthKeyOfIso(t.date);
     add(txSumByAccount, t.accountId, t.amount);
+    if (t.cleared) add(clearedTxSumByAccount, t.accountId, t.amount);
     forEachCategoryLeg(t, (categoryId, amount) => {
       if (categoryId !== null) add(activityByCatMonth, `${categoryId}|${m}`, amount);
     });
@@ -83,7 +87,10 @@ export function buildIndex(data: AppData): TxIndex {
     cumulativeByCat.set(catId, { months, cums });
   }
 
-  return { txSumByAccount, activityByCatMonth, cumulativeByCat, incomeByMonth, spendByAccountMonth };
+  return {
+    txSumByAccount, clearedTxSumByAccount, activityByCatMonth, cumulativeByCat,
+    incomeByMonth, spendByAccountMonth,
+  };
 }
 
 /** Cumulative activity for a category through `month` (inclusive). */

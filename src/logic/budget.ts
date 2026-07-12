@@ -16,6 +16,29 @@ export function accountBalance(data: AppData, accountId: string, index?: TxIndex
   return bal;
 }
 
+/** Balance counting only cleared transactions (the reconciliation target). */
+export function clearedBalance(data: AppData, accountId: string, index?: TxIndex): number {
+  const acct = data.accounts.find((a) => a.id === accountId);
+  if (!acct) return 0;
+  if (index) return acct.openingBalance + (index.clearedTxSumByAccount.get(accountId) ?? 0);
+  let bal = acct.openingBalance;
+  for (const t of data.transactions) if (t.accountId === accountId && t.cleared) bal += t.amount;
+  return bal;
+}
+
+/**
+ * The balance adjustment reconciliation would create. Reconciling first clears
+ * all pending transactions, so the working balance becomes `accountBalance`
+ * (which already counts every transaction); the adjustment closes the gap to
+ * the real bank balance. Computing against the pre-clearing cleared balance
+ * would double-count pending transactions — the classic reconciliation bug.
+ */
+export function reconciliationAdjustment(
+  data: AppData, accountId: string, actualBalance: number, index?: TxIndex,
+): number {
+  return actualBalance - accountBalance(data, accountId, index);
+}
+
 export function netWorth(data: AppData, index?: TxIndex): { assets: number; liabilities: number; total: number } {
   let assets = 0;
   let liabilities = 0;
