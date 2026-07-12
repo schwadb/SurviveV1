@@ -1,5 +1,7 @@
 # PLAN: Household sharing via merge-backup
 
+> **Status: ✅ COMPLETED** — implemented, unit-tested, and verified end-to-end.
+
 **Rank: 5 of 5.** Household/partner sharing is the ONE consensus must-have
 (#6 in `docs/RESEARCH.md`) still completely absent — Monarch ships unlimited
 collaborators, YNAB six seats, Goodbudget built its brand on it. Real-time

@@ -47,6 +47,9 @@ feature-mapping table.
 - **Bill reminders**: opt-in local notifications at 9:00 on due dates plus a
   3-days-ahead heads-up for bills without autopay (expo-notifications; Android &
   iOS — full fidelity needs a dev build, not Expo Go)
+- **Household sharing (merge backups)**: fold a partner's backup (plain or encrypted)
+  in non-destructively — union by id, transaction dedupe by natural key, local wins on
+  conflicts, idempotent so weekly file swaps never duplicate or lose data
 - **Dark mode** (system/light/dark), colorblind-safe validated chart palette
 - **Privacy-first**: 100% on-device via AsyncStorage — no bank logins, no cloud, no ads
 

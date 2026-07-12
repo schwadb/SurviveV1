@@ -18,6 +18,8 @@ import { addMonths, dateLabel, monthKey, monthLabel, todayIso } from '../utils/d
 import { transactionsToCsv } from '../utils/csv';
 import { parseBackup, serializeBackup } from '../utils/backup';
 import { decryptBackup, encryptBackup, isEncryptedBackup } from '../utils/cryptoBackup';
+import { MergePlan, mergeSummary, planMerge } from '../logic/merge';
+import { AppData } from '../types';
 import { exportTextFile } from '../utils/share';
 
 const TYPE_LABEL: Record<string, string> = {
@@ -157,7 +159,9 @@ export function MoreScreen() {
   const [confirmReset, setConfirmReset] = useState<'demo' | 'clear' | null>(null);
   const [canLock, setCanLock] = useState(false);
   const [reconcileId, setReconcileId] = useState<string | null>(null);
-  const [pendingRestore, setPendingRestore] = useState<{ name: string; text: string } | null>(null);
+  const [pickPurpose, setPickPurpose] = useState<'restore' | 'merge'>('restore');
+  const [pendingRestore, setPendingRestore] = useState<{ name: string; data: AppData } | null>(null);
+  const [pendingMerge, setPendingMerge] = useState<{ name: string; data: AppData; plan: MergePlan } | null>(null);
   const [showEncryptSheet, setShowEncryptSheet] = useState(false);
   const [pendingDecrypt, setPendingDecrypt] = useState<{ name: string; text: string } | null>(null);
   const [decryptError, setDecryptError] = useState<string | null>(null);
@@ -166,7 +170,19 @@ export function MoreScreen() {
     void lockAvailable().then(setCanLock);
   }, []);
 
-  const pickBackupFile = async () => {
+  // Route a validated dataset to the restore-confirm or merge-preview flow.
+  // Decryption/validation proves the file; the confirm/preview step still gates
+  // any write, so a merge never happens without an explicit second tap.
+  // `purpose` is passed explicitly (not read from state) because the plaintext
+  // path calls this synchronously in the same tick that sets pickPurpose.
+  const stageValidated = (name: string, data: AppData, purpose: 'restore' | 'merge') => {
+    if (purpose === 'merge') setPendingMerge({ name, data, plan: planMerge(store, data) });
+    else setPendingRestore({ name, data });
+  };
+
+  // Shared reader for both restore and merge: pick → decrypt if needed → validate.
+  const readBackupFile = async (purpose: 'restore' | 'merge') => {
+    setPickPurpose(purpose); // remembered for the async encrypted-unlock path
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/json', 'text/*', '*/*'],
@@ -182,9 +198,9 @@ export function MoreScreen() {
         setPendingDecrypt({ name: asset.name, text });
         return;
       }
-      const { error } = parseBackup(text);
-      if (error) return notify('Cannot restore', error);
-      setPendingRestore({ name: asset.name, text });
+      const { data, error } = parseBackup(text);
+      if (error || !data) return notify('Cannot read backup', error ?? 'Invalid backup.');
+      stageValidated(asset.name, data, purpose);
     } catch (e) {
       notify('Could not read file', e instanceof Error ? e.message : 'Unknown error.');
     }
@@ -208,13 +224,14 @@ export function MoreScreen() {
       return;
     }
     const parsed = parseBackup(json);
-    if (parsed.error) {
-      setDecryptError(parsed.error);
+    if (parsed.error || !parsed.data) {
+      setDecryptError(parsed.error ?? 'Invalid backup.');
       return;
     }
-    // Decryption proves authenticity; the pendingRestore confirm step below
-    // is still required before anything is overwritten.
-    setPendingRestore({ name: pendingDecrypt.name, text: json });
+    // Decryption proves authenticity; the confirm/preview step still gates writes.
+    // pickPurpose is safe to read here: this runs in a later tick (user submits
+    // the passphrase), after the setPickPurpose from readBackupFile committed.
+    stageValidated(pendingDecrypt.name, parsed.data, pickPurpose);
     setPendingDecrypt(null);
     setDecryptError(null);
   };
@@ -407,24 +424,44 @@ export function MoreScreen() {
                 title="Yes, restore backup"
                 variant="danger"
                 onPress={() => {
-                  const { data } = parseBackup(pendingRestore.text);
-                  if (data) {
-                    store.restoreBackup(data);
-                    notify('Restore complete', 'All data replaced from the backup.');
-                  }
+                  store.restoreBackup(pendingRestore.data);
+                  notify('Restore complete', 'All data replaced from the backup.');
                   setPendingRestore(null);
                 }}
               />
               <Button title="Cancel" variant="ghost" onPress={() => setPendingRestore(null)} />
             </View>
           ) : (
-            <Button title="Restore backup (JSON)" variant="ghost" onPress={pickBackupFile} />
+            <Button title="Restore backup (JSON)" variant="ghost" onPress={() => readBackupFile('restore')} />
+          )}
+          {pendingMerge ? (
+            <View style={{ gap: spacing.sm }}>
+              <Label>Merge “{pendingMerge.name}” into your data (non-destructive)?</Label>
+              <Label>{mergeSummary(pendingMerge.plan)}</Label>
+              <Button
+                title="Merge"
+                onPress={() => {
+                  const applied = store.mergeBackup(pendingMerge.data);
+                  notify(
+                    'Merge complete',
+                    `Added ${applied.transactions.length} transaction${applied.transactions.length === 1 ? '' : 's'}` +
+                      (applied.skipped.duplicates ? `, skipped ${applied.skipped.duplicates} duplicate${applied.skipped.duplicates === 1 ? '' : 's'}` : '') + '.',
+                  );
+                  setPendingMerge(null);
+                }}
+              />
+              <Button title="Cancel" variant="ghost" onPress={() => setPendingMerge(null)} />
+            </View>
+          ) : (
+            <Button title="Merge backup (household)" variant="ghost" onPress={() => readBackupFile('merge')} />
           )}
           <Button title="Export encrypted backup (AES-256)" variant="ghost" onPress={() => setShowEncryptSheet(true)} />
         </View>
         <Label style={{ marginTop: spacing.md }}>
           🔒 Privacy-first: all data lives on this device. No bank logins, no cloud, no ads.
-          Backup files are unencrypted — store them somewhere safe.
+          Plain backups are unencrypted — store them somewhere safe. Household merge folds a
+          partner’s backup in without overwriting (local wins on conflicts; duplicates skipped);
+          bill paid-status and goals stay local.
         </Label>
       </Card>
 

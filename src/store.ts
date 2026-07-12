@@ -6,6 +6,7 @@ import {
 } from './types';
 import { makeLargeSeedData, makeSeedData, SCHEMA_VERSION } from './data/seed';
 import { applyRules, planAutoAssign, targetShortfall } from './logic/budget';
+import { MergePlan, applyMerge, planMerge } from './logic/merge';
 import { addMonths, monthKey, todayIso } from './utils/dates';
 
 let idCounter = Date.now() % 1000000;
@@ -55,6 +56,8 @@ interface Actions {
   loadLargeDemo: () => void;
   /** Replace all data from a validated backup file. */
   restoreBackup: (data: AppData) => void;
+  /** Non-destructively merge a partner's backup; returns what was added/skipped. */
+  mergeBackup: (incoming: AppData) => MergePlan;
   /** Import statement rows, skipping (date, amount, payee) duplicates. */
   importTransactions: (rows: Omit<Transaction, 'id' | 'cleared'>[]) => { imported: number; skipped: number };
   /**
@@ -204,6 +207,12 @@ export const useStore = create<Store>()(
       clearAllData: () => set({ ...emptyData() }),
       loadLargeDemo: () => set({ ...makeLargeSeedData() }),
       restoreBackup: (data) => set({ ...data }),
+      mergeBackup: (incoming) => {
+        const local = get();
+        const plan = planMerge(local, incoming);
+        set(applyMerge(local, plan));
+        return plan;
+      },
       importTransactions: (rows) => {
         const s = get();
         // Banks re-export overlapping date ranges; dedupe on the natural key.
