@@ -79,6 +79,7 @@ Google Play listings, and user communities (r/ynab, r/MonarchMoney, r/PocketGuar
 | Auto-categorization rules | Monarch/PocketGuard | ✅ rules engine + retroactive apply |
 | Category targets + Auto-Assign | YNAB Targets | ✅ monthly targets, one-tap auto-assign from RTA |
 | Transaction search & filters | (Goodbudget's gap) | ✅ full-text search + account/category filters |
+| Split transactions across categories | YNAB/Monarch | ✅ 2–8 legs, must-balance, split-aware everywhere |
 | Savings goals with progress | all four | ✅ goals with contribute/withdraw |
 | Debt payoff planner (avalanche/snowball) | PocketGuard Plus / YNAB loan calculator | ✅ simulator with strategy comparison + payoff curve |
 | Statement/file import (CSV, OFX/QFX) & export | Monarch/YNAB/Goodbudget bank-file import | ✅ file picker + paste, duplicate-skip, rules auto-categorize |

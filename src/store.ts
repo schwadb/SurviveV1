@@ -76,7 +76,10 @@ export const useStore = create<Store>()(
       setHydrated: (v) => set({ hydrated: v }),
 
       addTransaction: (t) => {
-        const categoryId = t.categoryId ?? applyRules(get(), t.payee);
+        // A split parent keeps categoryId null by design — never let a rule
+        // stamp a category onto it (it would be double-counted).
+        const hasSplits = !!t.splits && t.splits.length > 0;
+        const categoryId = hasSplits ? null : t.categoryId ?? applyRules(get(), t.payee);
         set((s) => ({ transactions: [...s.transactions, { ...t, categoryId, id: newId('tx') }] }));
       },
       updateTransaction: (id, patch) =>
@@ -178,6 +181,7 @@ export const useStore = create<Store>()(
         let count = 0;
         const updated = s.transactions.map((t) => {
           if (t.categoryId) return t;
+          if (t.splits && t.splits.length > 0) return t; // never re-categorize a split parent
           const cat = applyRules(s, t.payee);
           if (cat) {
             count++;

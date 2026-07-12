@@ -1,16 +1,21 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Platform, Switch, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, Switch, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File as FsFile } from 'expo-file-system';
 import { useStore } from '../store';
 import { INCOME_CATEGORY_ID, Transaction } from '../types';
 import { fmt, parseAmount } from '../utils/money';
-import { envelopeAvailable } from '../logic/budget';
+import { SplitLeg, envelopeAvailable, validateSplits } from '../logic/budget';
 import { todayIso, yesterdayIso } from '../utils/dates';
 import { parseTransactionsCsv } from '../utils/csv';
 import { looksLikeOfx, parseOfx } from '../utils/ofx';
 import { Button, ChipPicker, Field, Label, Pill, Row, Sheet, useTheme } from './ui';
 import { spacing, type } from '../theme';
+
+interface SplitLegDraft {
+  categoryId: string | null;
+  amountText: string;
+}
 
 function notify(title: string, message: string) {
   if (Platform.OS === 'web') {
@@ -38,6 +43,10 @@ export function TransactionForm({
   const [accountId, setAccountId] = useState(editing?.accountId ?? store.accounts[0]?.id ?? '');
   const [categoryId, setCategoryId] = useState<string | null>(editing?.categoryId ?? null);
   const [note, setNote] = useState(editing?.note ?? '');
+  const legsFrom = (tx?: Transaction | null): SplitLegDraft[] =>
+    (tx?.splits ?? []).map((s) => ({ categoryId: s.categoryId, amountText: (Math.abs(s.amount) / 100).toFixed(2) }));
+  const [splitEnabled, setSplitEnabled] = useState(!!editing?.splits?.length);
+  const [splitLegs, setSplitLegs] = useState<SplitLegDraft[]>(legsFrom(editing));
 
   // Re-seed local state when a different transaction is opened.
   const [seedKey, setSeedKey] = useState(editing?.id ?? 'new');
@@ -51,7 +60,28 @@ export function TransactionForm({
     setAccountId(editing?.accountId ?? store.accounts[0]?.id ?? '');
     setCategoryId(editing?.categoryId ?? null);
     setNote(editing?.note ?? '');
+    setSplitEnabled(!!editing?.splits?.length);
+    setSplitLegs(legsFrom(editing));
   }
+
+  const parsedTotalAbs = parseAmount(amountText) ?? 0;
+  const legSumAbs = splitLegs.reduce((a, l) => a + (parseAmount(l.amountText) ?? 0), 0);
+  const remainingAbs = parsedTotalAbs - legSumAbs;
+
+  const toggleSplit = (on: boolean) => {
+    setSplitEnabled(on);
+    if (on && splitLegs.length < 2) {
+      // Seed two legs: the current category with the full amount, plus an empty one.
+      setSplitLegs([
+        { categoryId, amountText: parsedTotalAbs ? (parsedTotalAbs / 100).toFixed(2) : '' },
+        { categoryId: null, amountText: '' },
+      ]);
+    }
+  };
+  const setLeg = (i: number, patch: Partial<SplitLegDraft>) =>
+    setSplitLegs((legs) => legs.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const addLeg = () => setSplitLegs((legs) => (legs.length < 8 ? [...legs, { categoryId: null, amountText: '' }] : legs));
+  const removeLeg = (i: number) => setSplitLegs((legs) => legs.filter((_, idx) => idx !== i));
 
   const categories = store.categories.filter((c) => !c.archived);
   const accounts = store.accounts.filter((a) => !a.archived);
@@ -63,11 +93,25 @@ export function TransactionForm({
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return notify('Bad date', 'Use yyyy-mm-dd format.');
     if (!accountId) return notify('No account', 'Add an account first (More → Accounts).');
     const amount = isIncome ? Math.abs(cents) : -Math.abs(cents);
-    const catId = isIncome ? INCOME_CATEGORY_ID : categoryId;
+
+    const useSplit = splitEnabled && !isIncome;
+    let splits: SplitLeg[] | undefined;
+    let catId = isIncome ? INCOME_CATEGORY_ID : categoryId;
+    if (useSplit) {
+      splits = splitLegs.map((l) => ({ categoryId: l.categoryId, amount: -Math.abs(parseAmount(l.amountText) ?? 0) }));
+      const err = validateSplits(splits, amount);
+      if (err) return notify('Check the split', err);
+      catId = null; // a split parent is uncategorized by design
+    }
+
+    const patch = {
+      payee: payee.trim(), amount, date, accountId, categoryId: catId,
+      note: note.trim() || undefined, splits,
+    };
     if (isEdit && editing) {
-      store.updateTransaction(editing.id, { payee: payee.trim(), amount, date, accountId, categoryId: catId, note: note.trim() || undefined });
+      store.updateTransaction(editing.id, patch);
     } else {
-      store.addTransaction({ payee: payee.trim(), amount, date, accountId, categoryId: catId, note: note.trim() || undefined, cleared: false });
+      store.addTransaction({ ...patch, cleared: false });
     }
     onClose();
   };
@@ -94,15 +138,73 @@ export function TransactionForm({
       <ChipPicker items={accounts} selectedId={accountId} onSelect={setAccountId} labelFor={(a) => a.name} />
       {!isIncome && (
         <>
-          <Label style={{ marginBottom: 4 }}>
-            Category {categoryId === null ? '(leave blank to auto-categorize by rules)' : ''}
-          </Label>
-          <ChipPicker
-            items={categories.filter((c) => c.id !== INCOME_CATEGORY_ID)}
-            selectedId={categoryId}
-            onSelect={(id) => setCategoryId(id === categoryId ? null : id)}
-            labelFor={(c) => `${c.emoji} ${c.name}`}
-          />
+          <Row style={{ justifyContent: 'space-between', marginBottom: spacing.sm }}>
+            <View style={{ flex: 1, paddingRight: spacing.md }}>
+              <Text style={[type.body, { color: t.inkPrimary }]}>Split across categories</Text>
+              <Label>Divide one charge between multiple envelopes</Label>
+            </View>
+            <Switch value={splitEnabled} onValueChange={toggleSplit} trackColor={{ true: t.good }} />
+          </Row>
+          {!splitEnabled ? (
+            <>
+              <Label style={{ marginBottom: 4 }}>
+                Category {categoryId === null ? '(leave blank to auto-categorize by rules)' : ''}
+              </Label>
+              <ChipPicker
+                items={categories.filter((c) => c.id !== INCOME_CATEGORY_ID)}
+                selectedId={categoryId}
+                onSelect={(id) => setCategoryId(id === categoryId ? null : id)}
+                labelFor={(c) => `${c.emoji} ${c.name}`}
+              />
+            </>
+          ) : (
+            <View style={{ marginBottom: spacing.md }}>
+              {splitLegs.map((leg, i) => (
+                <View key={i} style={{ marginBottom: spacing.sm }}>
+                  <Row style={{ justifyContent: 'space-between' }}>
+                    <Label>Split {i + 1}</Label>
+                    {splitLegs.length > 2 ? (
+                      <Pressable onPress={() => removeLeg(i)} hitSlop={8}>
+                        <Text style={[type.tiny, { color: t.critical }]}>Remove</Text>
+                      </Pressable>
+                    ) : null}
+                  </Row>
+                  <ChipPicker
+                    items={categories.filter((c) => c.id !== INCOME_CATEGORY_ID)}
+                    selectedId={leg.categoryId}
+                    onSelect={(id) => setLeg(i, { categoryId: id === leg.categoryId ? null : id })}
+                    labelFor={(c) => `${c.emoji} ${c.name}`}
+                  />
+                  <Field
+                    label="Amount"
+                    value={leg.amountText}
+                    onChangeText={(v) => setLeg(i, { amountText: v })}
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
+                  />
+                </View>
+              ))}
+              <Row style={{ justifyContent: 'space-between', marginBottom: spacing.sm }}>
+                {splitLegs.length < 8 ? (
+                  <Pressable onPress={addLeg} hitSlop={8}>
+                    <Text style={[type.caption, { color: t.accent }]}>+ Add split</Text>
+                  </Pressable>
+                ) : <View />}
+                <Text
+                  style={[
+                    type.caption,
+                    { color: remainingAbs === 0 ? t.goodText : t.warning },
+                  ]}
+                >
+                  {remainingAbs === 0
+                    ? '✓ balanced'
+                    : remainingAbs > 0
+                      ? `${fmt(remainingAbs)} left to split`
+                      : `over by ${fmt(-remainingAbs)}`}
+                </Text>
+              </Row>
+            </View>
+          )}
         </>
       )}
       <Field label="Note (optional)" value={note} onChangeText={setNote} placeholder="" />

@@ -308,3 +308,35 @@ export function isCredit(a: Account): boolean {
 export function sortTransactions(ts: Transaction[]): Transaction[] {
   return [...ts].sort((a, b) => (a.date === b.date ? b.id.localeCompare(a.id) : b.date.localeCompare(a.date)));
 }
+
+export interface SplitLeg {
+  categoryId: string | null;
+  amount: number;
+}
+
+/**
+ * Validate split legs against a parent transaction total. Legs are stored with
+ * the same (negative) sign as the total and must sum to it exactly; 2–8 legs;
+ * expenses only. Returns an error string or null when valid.
+ */
+export function validateSplits(legs: SplitLeg[], total: number): string | null {
+  if (total >= 0) return 'Only expenses can be split.';
+  if (legs.length < 2) return 'A split needs at least 2 categories.';
+  if (legs.length > 8) return 'A split can have at most 8 categories.';
+  if (legs.some((l) => l.amount >= 0)) return 'Each split amount must be greater than zero.';
+  const sum = legs.reduce((a, l) => a + l.amount, 0);
+  // Work in the negative domain: remaining = total − sum. remaining < 0 means
+  // legs don't yet cover the whole expense (more to split); > 0 means over.
+  const remaining = total - sum;
+  if (remaining !== 0) {
+    return remaining < 0
+      ? `${fmtSigned(remaining)} left to split.`
+      : `Split is over by ${fmtSigned(remaining)}.`;
+  }
+  return null;
+}
+
+function fmtSigned(cents: number): string {
+  const abs = Math.abs(cents);
+  return `$${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+}

@@ -15,6 +15,8 @@ feature-mapping table.
   overspend flags
 - **Transactions**: add/edit/delete, income & expense, pending/cleared, full-text
   search, account & category filters, date grouping
+- **Split transactions**: divide one charge across up to 8 envelopes with a
+  must-balance editor; splits flow through envelope math, reports, filters, and CSV
 - **Auto-categorization rules** ("payee contains X → category Y") with retroactive apply
 - **Recurring bills**: due dates, overdue flags, autopay labels, one-tap "mark paid"
   (creates the transaction)

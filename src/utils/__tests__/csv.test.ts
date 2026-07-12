@@ -32,6 +32,27 @@ describe('transactionsToCsv', () => {
   });
 });
 
+describe('transactionsToCsv with splits', () => {
+  it('emits one row per leg whose amounts sum to the parent; non-splits unchanged', () => {
+    const withSplit = {
+      ...data,
+      transactions: [
+        { id: 's1', accountId: 'a1', categoryId: null, payee: 'Costco', amount: -10000, date: '2026-07-05', cleared: true,
+          splits: [{ categoryId: 'c1', amount: -6000 }, { categoryId: null, amount: -4000 }] },
+      ],
+    } as unknown as AppData;
+    const lines = transactionsToCsv(withSplit).split('\n');
+    expect(lines).toHaveLength(3); // header + 2 legs
+    expect(lines[1]).toContain('-60.00');
+    expect(lines[1]).toContain('Groceries');
+    expect(lines[1]).toContain('split 1/2');
+    expect(lines[2]).toContain('-40.00');
+    // Legs sum to the parent total.
+    const legTotal = [lines[1], lines[2]].reduce((sum, l) => sum + Number(l.split(',')[4]), 0);
+    expect(legTotal).toBeCloseTo(-100);
+  });
+});
+
 describe('parseTransactionsCsv', () => {
   it('parses a simple statement with a Description header', () => {
     const { rows, errors } = parseTransactionsCsv(

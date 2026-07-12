@@ -1,5 +1,7 @@
 # PLAN: Split transactions
 
+> **Status: ✅ COMPLETED** — implemented, unit-tested, and verified end-to-end.
+
 **Rank: 3 of 5.** A YNAB/Monarch core feature the app lacks entirely (listed
 under "features worth stealing" in `docs/RESEARCH.md`). Real statements demand
 it: one Costco charge is groceries + household + fun. Without splits, users

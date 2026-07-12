@@ -12,6 +12,18 @@ export function transactionsToCsv(data: AppData): string {
   const lines = ['date,payee,category,account,amount,note'];
   const sorted = [...data.transactions].sort((a, b) => a.date.localeCompare(b.date));
   for (const t of sorted) {
+    if (t.splits && t.splits.length > 0) {
+      // One row per leg so category totals reconcile; leg amounts sum to the parent.
+      t.splits.forEach((leg, i) => {
+        lines.push(
+          [
+            t.date, esc(t.payee), esc(catName(leg.categoryId)), esc(acctName(t.accountId)),
+            (leg.amount / 100).toFixed(2), esc(`split ${i + 1}/${t.splits!.length}${t.note ? ` · ${t.note}` : ''}`),
+          ].join(','),
+        );
+      });
+      continue;
+    }
     lines.push(
       [
         t.date, esc(t.payee), esc(catName(t.categoryId)), esc(acctName(t.accountId)),

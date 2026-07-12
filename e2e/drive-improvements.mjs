@@ -54,6 +54,44 @@ if (dateVal === 0) errors.push('FLOW: Yesterday chip did not set date input');
 await page.locator('text=✕').first().click();
 await page.waitForTimeout(300);
 
+// --- Split transaction: add a $100 charge split 60/40 across two envelopes ---
+await page.getByText('+ Add', { exact: true }).first().click();
+await page.waitForTimeout(400);
+await page.getByPlaceholder('Fresh Market').fill('Costco Run');
+await page.getByPlaceholder('12.34').fill('100.00');
+// Toggle the split Switch (income switch is first, split switch second).
+await page.getByRole('dialog').getByRole('switch').nth(1).click();
+await page.waitForTimeout(300);
+{
+  const sheet = page.getByRole('dialog');
+  // Leg 1 → Dining Out, $60; leg 2 → Fun Money, $40. Each category appears in
+  // both legs' pickers, so leg 2's Fun Money is the second occurrence.
+  await sheet.getByText('🍜 Dining Out').first().click();
+  const legAmounts = sheet.getByPlaceholder('0.00');
+  await legAmounts.nth(0).fill('60.00');
+  await sheet.getByText('🎉 Fun Money').nth(1).click();
+  await legAmounts.nth(1).fill('40.00');
+  await page.waitForTimeout(200);
+  if ((await sheet.getByText('✓ balanced').count()) === 0) {
+    errors.push('FLOW: split did not report balanced at 60+40=100');
+  }
+  await sheet.getByText('Add Transaction', { exact: true }).last().click();
+  await page.waitForTimeout(500);
+}
+// The split parent shows the split label and appears under a leg-category filter.
+await page.getByPlaceholder('Search payee, note, category…').fill('Costco Run');
+await page.waitForTimeout(500);
+if ((await page.getByText(/🔀 Split · 2 categories/).count()) === 0) {
+  errors.push('FLOW: split transaction not shown with split label');
+}
+// A fully-categorized split must not inflate the uncategorized count (still 5).
+if ((await page.getByText('❓ Uncategorized · 5').count()) === 0) {
+  errors.push('FLOW: a fully-categorized split was miscounted as uncategorized');
+}
+await page.screenshot({ path: `${OUT}/24-split.png` });
+await page.getByPlaceholder('Search payee, note, category…').fill('');
+await page.waitForTimeout(300);
+
 // --- Move money validation: try moving $10,000 out of Dining Out ---
 await page.getByText('Budget', { exact: true }).last().click();
 await page.waitForTimeout(600);

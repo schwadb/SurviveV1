@@ -34,8 +34,10 @@ export function HomeScreen({ onGoToTab }: { onGoToTab: (tab: string) => void }) 
   const spendFrac = budgeted > 0 ? spent / budgeted : 0;
   const paceOk = spendFrac <= monthFrac + 0.02;
 
-  const catName = (id: string | null) => {
-    const c = store.categories.find((x) => x.id === id);
+  const catLabel = (tx: { categoryId: string | null; splits?: { categoryId: string | null }[] }) => {
+    if (tx.splits && tx.splits.length > 0) return `🔀 Split · ${tx.splits.length} categories`;
+    if (tx.categoryId === INCOME_CATEGORY_ID) return '💰 Income';
+    const c = store.categories.find((x) => x.id === tx.categoryId);
     return c ? `${c.emoji} ${c.name}` : 'Uncategorized';
   };
 
@@ -151,7 +153,7 @@ export function HomeScreen({ onGoToTab }: { onGoToTab: (tab: string) => void }) 
             <View style={{ flex: 1, paddingRight: spacing.md }}>
               <Text style={[type.body, { color: t.inkPrimary }]} numberOfLines={1}>{tx.payee}</Text>
               <Label>
-                {dateLabel(tx.date)} · {tx.categoryId === INCOME_CATEGORY_ID ? '💰 Income' : catName(tx.categoryId)}
+                {dateLabel(tx.date)} · {catLabel(tx)}
               </Label>
             </View>
             <Amount cents={tx.amount} colorize={tx.amount > 0} sign={tx.amount > 0} />
