@@ -109,6 +109,13 @@ run_tests() {
     check_json "GET /api/status"  "/api/status"
     check_json "GET /api/recent"  "/api/recent"
     check_json "GET /api/connectivity" "/api/connectivity"
+    check_json "GET /api/downloads" "/api/downloads"
+    # Fresh test storage: every download category should read as pending.
+    if curl -sf "http://localhost:$PORT/api/downloads" | grep -q '"pending"'; then
+        pass "GET /api/downloads → categories pending on empty storage"
+    else
+        fail "GET /api/downloads → expected a pending category"
+    fi
 
     echo ""
     echo -e "${BLUE}── Security tests ───────────────────────────────────${NC}"
@@ -144,6 +151,19 @@ run_tests() {
         pass "POST /api/ai/chat (form-encoded) → HTTP 415 (blocked)"
     else
         fail "POST /api/ai/chat (form-encoded) → expected 415, got $STATUS"
+    fi
+    # Pre-stream error contract: a valid request with Ollama down (no service in
+    # the test env) must still return a real 502 with a JSON body, not a stream.
+    RESP=$(curl -s -w "\n%{http_code}\n%{content_type}" \
+        -X POST "http://localhost:$PORT/api/ai/chat" \
+        -H "Content-Type: application/json" \
+        -d '{"message":"test"}')
+    STATUS=$(echo "$RESP" | tail -2 | head -1)
+    CTYPE=$(echo "$RESP" | tail -1)
+    if [[ "$STATUS" == "502" ]] && [[ "$CTYPE" == application/json* ]]; then
+        pass "POST /api/ai/chat (Ollama down) → HTTP 502 JSON (error contract intact)"
+    else
+        fail "POST /api/ai/chat (Ollama down) → expected 502 JSON, got $STATUS / $CTYPE"
     fi
 }
 

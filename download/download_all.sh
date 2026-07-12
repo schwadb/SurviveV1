@@ -144,6 +144,10 @@ main() {
     run_category gaps          "Y"                          gaps_content.sh
     run_category mental_health "Y"                          mental_health.sh
 
+    # Invalidate the dashboard's filename search index so it rebuilds with the
+    # newly downloaded files on the next /search.
+    rm -f "$STORAGE_PATH/.search_index.db"
+
     section "Download Complete"
     df -h "$STORAGE_PATH"
     success "All selected content downloaded to $STORAGE_PATH"

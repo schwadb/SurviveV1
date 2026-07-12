@@ -68,35 +68,88 @@ curl http://localhost:8080/api/recent
 
 ## POST /api/ai/chat
 
-Sends a message to the local Ollama AI assistant.
+Sends a message to the local Ollama AI assistant. The question first full-text
+searches the local Kiwix library; the top article excerpts are injected into
+the model's system prompt (retrieval-augmented generation) and returned as a
+`sources` list. The completion is **streamed** as newline-delimited JSON
+(`Content-Type: application/x-ndjson`).
 
 ```bash
-curl -X POST http://localhost:8080/api/ai/chat \
+curl -N -X POST http://localhost:8080/api/ai/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "How do I purify water?", "model": "tinyllama"}'
+  -d '{"message": "How do I purify water?", "model": "survive"}'
 ```
 
 **Request body:**
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `message` | string | yes | User's question |
-| `model` | string | no | Ollama model name (default: `tinyllama`) |
+| `message` | string | yes | User's question (truncated to 4096 chars) |
+| `model` | string | no | Ollama model name (default: `survive`) |
 
-**Response (success):**
+**Response (success) — one JSON object per line, in order:**
+```
+{"sources": [{"title": "Water purification", "url": "http://survive.local:8081/viewer#..."}]}
+{"delta": "To purify "}
+{"delta": "water, boil it..."}
+{"done": true, "model": "survive"}
+```
+- `sources` is always the first line (may be an empty array if nothing matched).
+- `delta` lines carry incremental token text; concatenate them for the answer.
+- A mid-stream failure is emitted as a `{"error": "..."}` line.
+
+**Pre-stream errors** keep real HTTP status codes with a JSON body (the stream
+has not started yet):
+| Status | Cause |
+|--------|-------|
+| 400 | Missing `message` |
+| 415 | `Content-Type` is not `application/json` |
+| 429 | Rate limit (5/min) exceeded |
+| 502 | Ollama unreachable |
+
 ```json
-{
-  "response": "To purify water in a survival situation...",
-  "model": "tinyllama"
-}
+{"error": "AI service unavailable"}
 ```
 
-**Response (error):**
+> Note: with streaming, `SURVIVE_AI_CHAT_TIMEOUT` is an *idle* timeout between
+> chunks, not a cap on total answer length — long answers are no longer truncated.
+
+---
+
+## GET /api/downloads
+
+Per-category content-download progress, assembled from `.download_progress`,
+content sizes, and the newest `.logs/*.log` tail.
+
+```bash
+curl http://localhost:8080/api/downloads
+```
+
+**Response:**
 ```json
 {
-  "error": "Connection refused"
+  "categories": [
+    {"id": "kiwix", "name": "Wikipedia & ZIM", "budget_gb": 190,
+     "size_gb": 182.4, "status": "complete"}
+  ],
+  "active_log": {"file": "kiwix.log", "line": "[DL] downloading wikipedia_en... 42%"},
+  "complete": 1,
+  "total": 7
 }
 ```
-HTTP status 500 on AI error.
+`status` is one of `complete` (recorded in `.download_progress`),
+`in_progress` (its content dir has grown), or `pending`.
+
+---
+
+## GET /api/connectivity
+
+Server-side internet reachability check (the Pi's own connectivity, cached 30 s).
+
+```bash
+curl http://localhost:8080/api/connectivity
+```
+
+**Response:** `{"online": true}`
 
 ---
 

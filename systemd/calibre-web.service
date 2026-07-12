@@ -7,9 +7,12 @@ RequiresMountsFor=/mnt/survive
 [Service]
 Type=simple
 User=pi
-Environment="CALIBRE_DBPATH=/mnt/survive/books"
-# --dry-run off; bind to localhost and expose via nginx at /books/.
-ExecStartPre=/bin/mkdir -p /mnt/survive/books
+# CALIBRE_DBPATH is where cps keeps its app settings DB (app.db); the book
+# library itself is /mnt/survive/books/calibre-library (built by
+# scripts/build_ebook_library.sh and selected in the first-run wizard).
+Environment="CALIBRE_DBPATH=/mnt/survive/books/calibre-library"
+# Bind to localhost; exposed via nginx at /books/.
+ExecStartPre=/bin/mkdir -p /mnt/survive/books/calibre-library
 ExecStart=/opt/survive/venv/bin/cps \
     -p 8083 \
     -i 127.0.0.1

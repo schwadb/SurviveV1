@@ -31,6 +31,22 @@ SERVICES = {
 # ── Content budget ─────────────────────────────────────────────────────────────
 CONTENT_BUDGET_GB = 800  # target total content size in GB
 
+# ── Download categories (dashboard progress view) ───────────────────────────────
+# IMPORTANT: each `id` MUST equal the first argument of the matching
+# run_category call in download/download_all.sh — that literal string is what
+# gets written to $STORAGE_PATH/.download_progress. A mismatch makes the
+# category read as "pending" forever. `dir` is the storage subdir whose size is
+# reported (must be a key produced by _compute_content_stats in server.py).
+DOWNLOAD_CATEGORIES = [
+    {"id": "kiwix",         "name": "Wikipedia & ZIM",     "budget_gb": 190, "dir": "zim"},
+    {"id": "videos",        "name": "Survival Videos",     "budget_gb": 150, "dir": "videos"},
+    {"id": "books",         "name": "Books & Gutenberg",   "budget_gb": 60,  "dir": "books"},
+    {"id": "maps",          "name": "Offline Maps",        "budget_gb": 70,  "dir": "maps"},
+    {"id": "kolibri",       "name": "Khan Academy",        "budget_gb": 200, "dir": "kolibri"},
+    {"id": "gaps",          "name": "Expert Gap Content",  "budget_gb": 15,  "dir": "pdfs"},
+    {"id": "mental_health", "name": "Mental Health",       "budget_gb": 5,   "dir": "pdfs"},
+]
+
 # ── Knowledge categories ───────────────────────────────────────────────────────
 # Static declarative data; used by server routes and templates to enumerate
 # content areas. Each entry maps to a storage subdirectory (pdfs/, books/,

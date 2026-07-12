@@ -66,6 +66,9 @@ main() {
         success "Kiwix library updated"
     fi
 
+    # Rebuild the dashboard search index against the refreshed content.
+    rm -f "$STORAGE_PATH/.search_index.db"
+
     success "Content update complete"
 }
 

@@ -100,6 +100,42 @@
     </div>
   </div>
 
+  <!-- Download progress per category -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-title">Downloads
+      (<span id="dlComplete">{{ downloads.complete }}</span>/{{ downloads.total }} complete)</div>
+    {% for cat in downloads.categories %}
+    {% set pct = [(cat.size_gb / cat.budget_gb * 100)|round, 100]|min if cat.budget_gb else 0 %}
+    <div class="content-row" data-dl-cat="{{ cat.id }}">
+      <div class="content-info">
+        <div class="content-name">{{ cat.name }}</div>
+        <div class="content-meta">{{ cat.size_gb }} / {{ cat.budget_gb }} GB</div>
+        <div class="progress" style="height:5px; margin-top:5px;">
+          <div class="progress-bar" style="width:{{ pct }}%; height:5px;"></div>
+        </div>
+      </div>
+      <span class="badge {{ 'badge-green' if cat.status == 'complete'
+                            else 'badge-yellow' if cat.status == 'in_progress'
+                            else 'badge-red' }}" data-dl-badge="{{ cat.id }}">
+        {{ 'COMPLETE' if cat.status == 'complete'
+           else 'DOWNLOADING' if cat.status == 'in_progress' else 'PENDING' }}
+      </span>
+    </div>
+    {% endfor %}
+    {% if downloads.active_log %}
+    <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border);
+                font-family:var(--mono); font-size:11px; color:var(--text-dim);
+                overflow-x:auto; white-space:nowrap;">
+      <span style="color:var(--accent);">{{ downloads.active_log.file }}:</span>
+      <span id="dlLogLine">{{ downloads.active_log.line }}</span>
+    </div>
+    {% endif %}
+    <div style="margin-top:12px; font-size:12px; color:var(--text-dim);">
+      Start: <code style="background:var(--surface2); padding:2px 6px; border-radius:4px;">bash download/download_all.sh</code>
+      &nbsp;·&nbsp; Resume: <code style="background:var(--surface2); padding:2px 6px; border-radius:4px;">bash download/download_all.sh --resume</code>
+    </div>
+  </div>
+
   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
 
     <!-- Services -->
@@ -235,14 +271,46 @@ function applyStatus(data) {
   });
 }
 
+const DL_BADGE = {
+  complete:    ['badge badge-green',  'COMPLETE'],
+  in_progress: ['badge badge-yellow', 'DOWNLOADING'],
+  pending:     ['badge badge-red',    'PENDING'],
+};
+
+// Update the Downloads card in place from /api/downloads.
+function applyDownloads(data) {
+  const done = document.getElementById('dlComplete');
+  if (done) done.textContent = data.complete;
+  (data.categories || []).forEach(cat => {
+    const badge = document.querySelector(`[data-dl-badge="${cat.id}"]`);
+    if (badge) {
+      const [cls, label] = DL_BADGE[cat.status] || DL_BADGE.pending;
+      badge.className = cls;
+      badge.textContent = label;
+    }
+    const row = document.querySelector(`[data-dl-cat="${cat.id}"]`);
+    if (row) {
+      const bar = row.querySelector('.progress-bar');
+      if (bar && cat.budget_gb) {
+        bar.style.width = Math.min(Math.round(cat.size_gb / cat.budget_gb * 100), 100) + '%';
+      }
+    }
+  });
+  const logLine = document.getElementById('dlLogLine');
+  if (logLine && data.active_log) logLine.textContent = data.active_log.line;  // textContent — safe
+}
+
 function refreshStatus(manual) {
   const btn = document.getElementById('refreshBtn');
   const note = document.getElementById('refreshNote');
   if (manual) { btn.disabled = true; note.textContent = 'Refreshing…'; }
-  fetch('/api/status', { cache: 'no-store' })
-    .then(r => r.json())
-    .then(data => {
-      applyStatus(data);
+  Promise.all([
+    fetch('/api/status', { cache: 'no-store' }).then(r => r.json()),
+    fetch('/api/downloads', { cache: 'no-store' }).then(r => r.json()),
+  ])
+    .then(([status, downloads]) => {
+      applyStatus(status);
+      applyDownloads(downloads);
       note.textContent = 'Updated ' + new Date().toLocaleTimeString();
     })
     .catch(() => { note.textContent = 'Refresh failed — dashboard unreachable'; })

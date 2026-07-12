@@ -37,8 +37,8 @@ pip install -r requirements.txt
 # Dev server (single-threaded Flask)
 PORT=8080 SURVIVE_STORAGE_PATH=/tmp/survive_test python3 web/server.py
 
-# Production (gunicorn, 2 workers — same as systemd unit)
-cd web && gunicorn --bind 0.0.0.0:8080 --workers 2 --timeout 120 server:app
+# Production (gunicorn, 2 workers × 4 threads — same as systemd unit)
+cd web && gunicorn --bind 0.0.0.0:8080 --workers 2 --threads 4 --timeout 120 server:app
 ```
 
 ### One-click install (Pi 5 target)
@@ -95,6 +95,9 @@ Key patterns:
 - **Concurrent service checks:** `check_all_services()` uses `ThreadPoolExecutor` to probe all six backend ports in parallel. Page load cost = one `TIMEOUT_SERVICE_CHECK` period (~1 s), not N × 1 s.
 - **Rate limiting:** Flask-Limiter at 120/min default, 30/min on `/search`, 5/min on `/api/ai/chat`.
 - **CSRF:** Flask-WTF `CSRFProtect` on HTML form POSTs; `/api/ai/chat` is `@csrf.exempt` but enforces `Content-Type: application/json` (browsers cannot send that cross-origin without a CORS preflight).
+- **AI RAG + streaming:** `ai_chat()` first calls `_retrieve_context()` (Kiwix full-text search → article excerpts) and injects them into the system prompt via `_build_rag_prompt()`. The Ollama completion is streamed to the client as newline-delimited JSON (`{"sources":...}`, then `{"delta":...}`, then `{"done":...}`). Pre-stream errors keep real HTTP status codes; mid-stream failures become an `{"error":...}` line. Requires gunicorn `--threads` (a stream holds a worker) and nginx `proxy_buffering off` on `/api/ai/chat`.
+- **Search index:** `/search` queries a SQLite **FTS5** filename index (`$STORAGE/.search_index.db`) built by a background thread (`_index_refresher`, 6 h cadence, on-demand rebuild via `_trigger_index_build`). Falls back to `_search_walk()` until the index exists. Download scripts `rm` the DB on completion to force a rebuild. A second `/search` section shows in-article Kiwix hits via `_kiwix_search()`.
+- **Download progress:** `/api/downloads` (`_compute_download_status`) reads `.download_progress` (written by `download_all.sh`'s `run_category`), content sizes, and the `.logs` tail. Category ids in `constants.DOWNLOAD_CATEGORIES` **must** match the `run_category` names.
 
 Environment variables the server reads at startup (all have defaults):
 

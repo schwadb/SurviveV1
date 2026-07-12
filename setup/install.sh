@@ -150,6 +150,10 @@ install_calibre() {
 
     info "Installing Calibre-Web..."
     /opt/survive/venv/bin/pip install -q calibreweb
+
+    # Build the Calibre library from any ebooks already downloaded. Safe no-op
+    # if none exist yet — books_pdfs.sh rebuilds it after each download.
+    bash "$(dirname "${BASH_SOURCE[0]}")/../scripts/build_ebook_library.sh" || true
     success "Calibre + Calibre-Web installed"
 }
 

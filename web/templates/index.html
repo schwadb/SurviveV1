@@ -240,6 +240,10 @@
         <div style="font-size: 12px; color: var(--text-dim); margin-top: 6px;">
           {{ storage.free_gb }} GB free ({{ 100 - storage.percent }}%)
         </div>
+        <div style="font-size: 12px; color: var(--text-dim); margin-top: 6px;
+                    padding-top: 6px; border-top: 1px solid var(--border);">
+          Downloads: <a href="/status" style="color:var(--text-dim);"><span id="dlSummary">…</span></a>
+        </div>
       </div>
 
       <!-- Services -->
@@ -338,5 +342,14 @@
   }
   checkConnectivity();
   setInterval(checkConnectivity, 60000);
+
+  // Download progress summary
+  fetch('/api/downloads', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(d => {
+      const el = document.getElementById('dlSummary');
+      if (el) el.textContent = `${d.complete}/${d.total} categories complete`;
+    })
+    .catch(() => {});
 </script>
 {% endblock %}

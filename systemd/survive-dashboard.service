@@ -11,10 +11,13 @@ WorkingDirectory=/opt/survive/web
 Environment="PORT=8080"
 Environment="HOST=0.0.0.0"
 # gunicorn replaces Flask's single-threaded dev server. 2 workers leaves
-# headroom for Kiwix + Ollama on the Pi 5 quad-core.
+# headroom for Kiwix + Ollama on the Pi 5 quad-core. --threads 4 (gthread
+# worker) is required so a long streaming /api/ai/chat request does not tie up
+# a whole worker and freeze the dashboard for everyone else.
 ExecStart=/opt/survive/venv/bin/gunicorn \
     --bind 0.0.0.0:8080 \
     --workers 2 \
+    --threads 4 \
     --timeout 120 \
     --access-logfile - \
     --error-logfile - \

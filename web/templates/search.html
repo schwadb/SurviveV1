@@ -83,6 +83,7 @@
   </div>
 
   {% if query %}
+    <!-- ── Files section ──────────────────────────────────────── -->
     <div style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">
       {% if results %}
         Found <strong style="color:var(--text);">{{ results|length }}</strong> files matching
@@ -113,7 +114,28 @@
     </a>
     {% endfor %}
 
-    {% if not results %}
+    <!-- ── Inside articles (Kiwix full-text) ──────────────────── -->
+    {% if article_results %}
+    {% set host = request.host.split(':')[0] %}
+    <div style="color: var(--text-dim); font-size: 13px; margin: 24px 0 12px;">
+      Inside articles — <strong style="color:var(--text);">{{ article_results|length }}</strong>
+      matches in the Wikipedia/Kiwix library
+    </div>
+    {% for art in article_results %}
+    <a href="http://{{ host }}:{{ PORT_KIWIX }}{{ art.path }}" class="result-card" target="_blank">
+      <div class="result-icon">📖</div>
+      <div style="flex:1; min-width:0;">
+        <div class="result-name">{{ art.title }}</div>
+        <div class="result-path" style="white-space:normal; font-family:var(--font);">{{ art.snippet }}</div>
+      </div>
+      <div class="result-meta">
+        <span class="badge badge-green result-ext">ARTICLE</span>
+      </div>
+    </a>
+    {% endfor %}
+    {% endif %}
+
+    {% if not results and not article_results %}
     <div style="text-align: center; padding: 40px 20px;">
       <div style="font-size: 48px; margin-bottom: 12px;">🔍</div>
       <div style="font-size: 15px; color: var(--text-dim);">
@@ -124,6 +146,13 @@
         Run: <code style="background:var(--surface2); padding:2px 8px; border-radius:4px;">
         bash download/download_all.sh</code>
       </div>
+    </div>
+    {% endif %}
+
+    {% if index_count %}
+    <div style="margin-top: 24px; font-size: 11px; color: var(--text-dim); text-align: center;">
+      Filename index: {{ index_count }} files{% if index_built_at %},
+      built {{ index_built_at[:19]|replace('T', ' ') }}{% endif %}
     </div>
     {% endif %}
   {% endif %}

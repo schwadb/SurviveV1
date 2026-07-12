@@ -155,6 +155,23 @@
     font-size: 12px;
     color: var(--text-dim);
   }
+
+  .sources {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .sources-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+  }
+  .source-link { font-size: 12px; color: var(--accent2); }
 </style>
 {% endblock %}
 
@@ -348,6 +365,29 @@ function removeTyping() {
 
 let _currentController = null;
 
+// Append a "Sources" block (clickable Kiwix links) to an AI message bubble.
+function renderSources(msgDiv, sources) {
+  if (!msgDiv || !sources || !sources.length) return;
+  const bubble = msgDiv.querySelector('.message-bubble');
+  const wrap = document.createElement('div');
+  wrap.className = 'sources';
+  const label = document.createElement('div');
+  label.className = 'sources-label';
+  label.textContent = 'Sources from your library:';
+  wrap.appendChild(label);
+  sources.forEach((s, i) => {
+    const a = document.createElement('a');
+    a.href = s.url;                 // server-built http://host:8081/... link
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.className = 'source-link';
+    a.textContent = `[${i + 1}] ${s.title}`;  // textContent — no XSS
+    wrap.appendChild(a);
+  });
+  bubble.appendChild(wrap);
+  scrollToBottom();
+}
+
 async function sendMessage() {
   const msg = chatInput.value.trim();
   if (!msg) return;
@@ -362,19 +402,6 @@ async function sendMessage() {
   const model = document.getElementById('modelSelect').value;
   _currentController = new AbortController();
 
-  // Client-side warning shortly before the server-side timeout expires.
-  // SERVER_TIMEOUT_MS comes from SURVIVE_AI_CHAT_TIMEOUT in survive.conf.
-  const SERVER_TIMEOUT_MS = {{ (TIMEOUT_AI_CHAT * 1000)|int }};
-  const warnTimer = setTimeout(() => {
-    if (document.getElementById('typingIndicator')) {
-      const note = document.createElement('div');
-      note.style.cssText = 'font-size:11px; color:var(--warning); margin-top:6px;';
-      note.textContent = `Still thinking… large models can take up to ${Math.round(SERVER_TIMEOUT_MS/1000)} seconds on Pi hardware.`;
-      const tip = document.getElementById('typingIndicator');
-      if (tip) tip.querySelector('.message-bubble').appendChild(note);
-    }
-  }, Math.max(SERVER_TIMEOUT_MS - 5000, 1000));
-
   try {
     const res = await fetch('/api/ai/chat', {
       method: 'POST',
@@ -382,16 +409,55 @@ async function sendMessage() {
       body: JSON.stringify({ message: msg, model }),
       signal: _currentController.signal,
     });
-    clearTimeout(warnTimer);
-    const data = await res.json();
-    removeTyping();
-    if (data.error) {
-      addMessage('ai', `Error: ${data.error}\n\nMake sure Ollama is running: bash scripts/start_services.sh`);
+
+    // Pre-stream errors (415/400/502) arrive as a single JSON object.
+    const ctype = res.headers.get('content-type') || '';
+    if (ctype.includes('application/json')) {
+      const data = await res.json();
+      removeTyping();
+      addMessage('ai', `Error: ${data.error || 'AI service unavailable'}\n\n` +
+        'Make sure Ollama is running: bash scripts/start_services.sh');
+    } else if (!res.ok) {
+      // e.g. 429 rate-limit (non-JSON body from Flask-Limiter)
+      removeTyping();
+      addMessage('ai', res.status === 429
+        ? 'Too many requests — please wait a moment before asking again.'
+        : `Request failed (HTTP ${res.status}).`);
     } else {
-      addMessage('ai', data.response);
+      // Streaming NDJSON: {"sources":[...]}, then {"delta":"..."}*, then {"done":true}
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '', aiDiv = null, text = '', pendingSources = null;
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });  // stream:true — no split-UTF8 mojibake
+        let nl;
+        while ((nl = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+          if (!line.trim()) continue;
+          const m = JSON.parse(line);
+          if (m.sources) pendingSources = m.sources;
+          if (m.delta) {
+            if (!aiDiv) { removeTyping(); aiDiv = addMessage('ai', ''); }
+            text += m.delta;
+            aiDiv.querySelector('.message-bubble').textContent = text;
+            scrollToBottom();
+          }
+          if (m.error) {
+            if (!aiDiv) { removeTyping(); aiDiv = addMessage('ai', ''); }
+            text += `\n[${m.error}]`;
+            aiDiv.querySelector('.message-bubble').textContent = text;
+          }
+          if (m.done) {
+            if (!aiDiv) { removeTyping(); aiDiv = addMessage('ai', '(no response)'); }
+            renderSources(aiDiv, pendingSources);
+          }
+        }
+      }
+      removeTyping();  // safety: clear indicator if stream ended without deltas
     }
   } catch (e) {
-    clearTimeout(warnTimer);
     removeTyping();
     if (e.name === 'AbortError') {
       addMessage('ai', 'Request cancelled.');

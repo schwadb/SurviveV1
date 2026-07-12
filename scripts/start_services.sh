@@ -129,9 +129,14 @@ start_manual() {
             [[ -f /opt/survive/venv/bin/cps ]] && CPS_BIN=/opt/survive/venv/bin/cps
             command -v cps &>/dev/null && CPS_BIN=cps
             if [[ -n "$CPS_BIN" ]]; then
+                CALIBRE_LIB="$STORAGE_PATH/books/calibre-library"
+                if [[ ! -f "$CALIBRE_LIB/metadata.db" ]]; then
+                    warn "E-book library not built yet — run: bash scripts/build_ebook_library.sh"
+                    warn "Calibre-Web will show its setup wizard until the library exists."
+                fi
                 info "Starting Calibre-Web on :8083..."
-                mkdir -p "$STORAGE_PATH/books"
-                CALIBRE_DBPATH="$STORAGE_PATH/books" \
+                mkdir -p "$CALIBRE_LIB"
+                CALIBRE_DBPATH="$CALIBRE_LIB" \
                 nohup "$CPS_BIN" -p 8083 -i 127.0.0.1 \
                     > /tmp/calibre.log 2>&1 &
                 echo $! > /tmp/calibre.pid

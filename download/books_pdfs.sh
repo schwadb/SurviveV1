@@ -275,6 +275,11 @@ main() {
     info "PDFs: $PDF_DIR"
     info "Books: $BOOKS_DIR"
     du -sh "$PDF_DIR" "$BOOKS_DIR" 2>/dev/null || true
+
+    # Refresh the Calibre-Web library so new ebooks appear without manual steps.
+    if command -v calibredb &>/dev/null; then
+        bash "$REPO_DIR/scripts/build_ebook_library.sh" || true
+    fi
 }
 
 main "$@"
