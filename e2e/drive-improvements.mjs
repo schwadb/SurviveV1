@@ -1,0 +1,308 @@
+// Verify the improvement pass: uncategorized filter, date chips,
+// copy-last-month, move-money validation, backup export/restore,
+// security section on web, plus a smoke pass over all tabs.
+import { chromium } from 'playwright';
+import { existsSync, mkdirSync } from 'node:fs';
+
+const HERE = new URL('.', import.meta.url).pathname;
+const OUT = HERE + 'screenshots';
+mkdirSync(OUT, { recursive: true });
+const BASE = process.env.E2E_URL ?? 'http://localhost:4173/';
+const CHROMIUM = process.env.CHROMIUM ?? '/opt/pw-browsers/chromium';
+const launchOpts = existsSync(CHROMIUM) ? { executablePath: CHROMIUM } : {};
+
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const SC = OUT;
+const errors = [];
+const dialogs = [];
+
+const browser = await chromium.launch(launchOpts);
+const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+page.on('console', (m) => { if (m.type() === 'error') errors.push(`console.error: ${m.text()}`); });
+page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+page.on('dialog', async (d) => { dialogs.push(d.message()); await d.accept(); });
+
+await page.goto(BASE, { waitUntil: 'networkidle' });
+await page.waitForTimeout(1500);
+
+// --- Uncategorized quick filter (seed has uncategorized "Market Change" rows) ---
+await page.getByText('Activity', { exact: true }).click();
+await page.waitForTimeout(600);
+const uncatChip = page.getByText(/❓ Uncategorized · \d+/);
+if (await uncatChip.count() === 0) {
+  errors.push('FLOW: uncategorized filter chip not shown');
+} else {
+  await uncatChip.first().click();
+  await page.waitForTimeout(500);
+  const marketRows = await page.getByText('Market Change').count();
+  if (marketRows === 0) errors.push('FLOW: uncategorized filter did not surface uncategorized rows');
+  await page.screenshot({ path: `${OUT}/17-uncategorized-filter.png` });
+  await uncatChip.first().click();
+  await page.waitForTimeout(300);
+}
+
+// --- Date chips in transaction form ---
+await page.getByText('+ Add', { exact: true }).first().click();
+await page.waitForTimeout(400);
+await page.getByRole('dialog').getByText('Yesterday', { exact: true }).click();
+await page.waitForTimeout(200);
+const yest = new Date(); yest.setDate(yest.getDate() - 1);
+const yIso = `${yest.getFullYear()}-${String(yest.getMonth() + 1).padStart(2, '0')}-${String(yest.getDate()).padStart(2, '0')}`;
+const dateVal = await page.locator(`input[value="${yIso}"]`).count();
+if (dateVal === 0) errors.push('FLOW: Yesterday chip did not set date input');
+await page.locator('text=✕').first().click();
+await page.waitForTimeout(300);
+
+// --- Split transaction: add a $100 charge split 60/40 across two envelopes ---
+await page.getByText('+ Add', { exact: true }).first().click();
+await page.waitForTimeout(400);
+await page.getByPlaceholder('Fresh Market').fill('Costco Run');
+await page.getByPlaceholder('12.34').fill('100.00');
+// Toggle the split Switch (income switch is first, split switch second).
+await page.getByRole('dialog').getByRole('switch').nth(1).click();
+await page.waitForTimeout(300);
+{
+  const sheet = page.getByRole('dialog');
+  // Leg 1 → Dining Out, $60; leg 2 → Fun Money, $40. Each category appears in
+  // both legs' pickers, so leg 2's Fun Money is the second occurrence.
+  await sheet.getByText('🍜 Dining Out').first().click();
+  const legAmounts = sheet.getByPlaceholder('0.00');
+  await legAmounts.nth(0).fill('60.00');
+  await sheet.getByText('🎉 Fun Money').nth(1).click();
+  await legAmounts.nth(1).fill('40.00');
+  await page.waitForTimeout(200);
+  if ((await sheet.getByText('✓ balanced').count()) === 0) {
+    errors.push('FLOW: split did not report balanced at 60+40=100');
+  }
+  await sheet.getByText('Add Transaction', { exact: true }).last().click();
+  await page.waitForTimeout(500);
+}
+// The split parent shows the split label and appears under a leg-category filter.
+await page.getByPlaceholder('Search payee, note, category…').fill('Costco Run');
+await page.waitForTimeout(500);
+if ((await page.getByText(/🔀 Split · 2 categories/).count()) === 0) {
+  errors.push('FLOW: split transaction not shown with split label');
+}
+// A fully-categorized split must not inflate the uncategorized count (still 5).
+if ((await page.getByText('❓ Uncategorized · 5').count()) === 0) {
+  errors.push('FLOW: a fully-categorized split was miscounted as uncategorized');
+}
+await page.screenshot({ path: `${OUT}/24-split.png` });
+await page.getByPlaceholder('Search payee, note, category…').fill('');
+await page.waitForTimeout(300);
+
+// --- Move money validation: try moving $10,000 out of Dining Out ---
+await page.getByText('Budget', { exact: true }).last().click();
+await page.waitForTimeout(600);
+await page.getByText('Move money').click();
+await page.waitForTimeout(400);
+const sheet = page.getByRole('dialog');
+await sheet.getByText('🍜 Dining Out').first().click();   // "From" picker
+await sheet.getByText('💪 Health & Fitness').last().click(); // "To" picker
+await page.getByPlaceholder('50.00').fill('10000');
+await page.getByText('Move', { exact: true }).last().click();
+await page.waitForTimeout(400);
+if (!dialogs.some((d) => d.includes('Not enough in envelope'))) {
+  errors.push(`FLOW: move-money over-move not blocked, dialogs=${JSON.stringify(dialogs)}`);
+}
+// Valid small move should close the sheet
+await page.getByPlaceholder('50.00').fill('5.00');
+await page.getByText('Move', { exact: true }).last().click();
+await page.waitForTimeout(400);
+
+// --- Copy last month (August has no assignments yet) ---
+await page.getByText('›').click();
+await page.waitForTimeout(500);
+await page.getByText('Copy last month').click();
+await page.waitForTimeout(400);
+const copiedNote = await page.getByText(/copied 8 envelopes from last month/).count();
+if (copiedNote === 0) errors.push('FLOW: copy-last-month did not report copying 8 envelopes');
+await page.screenshot({ path: `${OUT}/18-copy-last-month.png` });
+
+// --- Auto-assign: August copied July, where $5 was moved out of Dining ---
+// so exactly one envelope is $5 under target; a second run is a no-op.
+await page.getByText('Auto-assign', { exact: true }).click();
+await page.waitForTimeout(400);
+if ((await page.getByText(/auto-assigned \$5\.00 across 1 envelope/).count()) === 0) {
+  errors.push('FLOW: auto-assign should top up the $5 moved out of Dining');
+}
+await page.getByText('Auto-assign', { exact: true }).click();
+await page.waitForTimeout(400);
+if ((await page.getByText(/all targets already funded/).count()) === 0) {
+  errors.push('FLOW: second auto-assign run should be a no-op');
+}
+await page.getByText('›').click();
+await page.waitForTimeout(500);
+await page.getByText('Auto-assign', { exact: true }).click();
+await page.waitForTimeout(400);
+if ((await page.getByText(/auto-assigned \$3,145\.00 across 8 envelopes/).count()) === 0) {
+  errors.push('FLOW: auto-assign did not fund 8 envelopes in the empty month');
+}
+if ((await page.getByText(/▲ .* to target/).count()) !== 0) {
+  errors.push('FLOW: target chips still show underfunded after auto-assign');
+}
+await page.screenshot({ path: `${OUT}/20-auto-assign.png` });
+await page.getByText('‹').click();
+await page.waitForTimeout(300);
+await page.getByText('‹').click();
+await page.waitForTimeout(400);
+
+// --- Backup export (web download) ---
+await page.getByText('More', { exact: true }).last().click();
+await page.waitForTimeout(600);
+
+// --- Debt payoff card (seeded Rewards Card has APR + min payment) ---
+await page.getByText('Debt payoff', { exact: true }).scrollIntoViewIfNeeded();
+await page.waitForTimeout(300);
+if ((await page.getByText('Debt-free', { exact: true }).count()) === 0) {
+  errors.push('FLOW: debt payoff card missing Debt-free date');
+}
+if ((await page.getByText('Total interest').count()) === 0) {
+  errors.push('FLOW: debt payoff card missing total interest');
+}
+await page.getByText(/Snowball · smallest first/).click();
+await page.waitForTimeout(300);
+if ((await page.getByText('Debt-free', { exact: true }).count()) === 0) {
+  errors.push('FLOW: debt payoff card broke after strategy switch');
+}
+await page.screenshot({ path: `${OUT}/21-debt-payoff.png` });
+const downloadPromise = page.waitForEvent('download');
+await page.getByText('Export full backup (JSON)').click();
+const download = await downloadPromise;
+const backupPath = `${SC}/test-backup.json`;
+await download.saveAs(backupPath);
+const backup = JSON.parse(readFileSync(backupPath, 'utf8'));
+if (backup.app !== 'survive-budget' || !Array.isArray(backup.data.transactions)) {
+  errors.push('FLOW: backup file malformed');
+}
+
+// --- Security section: web should say native-only ---
+if ((await page.getByText('available in the Android and iOS apps').count()) === 0) {
+  errors.push('FLOW: web security section message missing');
+}
+await page.getByText('Security', { exact: true }).scrollIntoViewIfNeeded();
+await page.waitForTimeout(300);
+await page.screenshot({ path: `${OUT}/19-data-security.png` });
+
+// --- Restore: clear all data, then restore the backup ---
+await page.getByText('Clear all data').click();
+await page.waitForTimeout(300);
+await page.getByText('Yes, delete everything').click();
+await page.waitForTimeout(600);
+// After clear there should be no accounts
+await page.getByText('Home', { exact: true }).last().click();
+await page.waitForTimeout(400);
+await page.getByText('More', { exact: true }).last().click();
+await page.waitForTimeout(400);
+const chooserPromise = page.waitForEvent('filechooser');
+await page.getByText('Restore backup (JSON)').click();
+await (await chooserPromise).setFiles(backupPath);
+await page.waitForTimeout(600);
+await page.getByText('Yes, restore backup').click();
+await page.waitForTimeout(700);
+if (!dialogs.some((d) => d.includes('Restore complete'))) {
+  errors.push(`FLOW: restore did not complete, dialogs=${JSON.stringify(dialogs)}`);
+}
+if ((await page.getByText('Everyday Checking').count()) === 0) {
+  errors.push('FLOW: restored data missing accounts');
+}
+
+// --- Bad backup file is rejected ---
+const badPath = `${SC}/bad-backup.json`;
+writeFileSync(badPath, JSON.stringify({ hello: 'world' }));
+const chooser2Promise = page.waitForEvent('filechooser');
+await page.getByText('Restore backup (JSON)').click();
+await (await chooser2Promise).setFiles(badPath);
+await page.waitForTimeout(600);
+if (!dialogs.some((d) => d.includes('not a Survive Budget backup'))) {
+  errors.push(`FLOW: invalid backup not rejected, dialogs=${JSON.stringify(dialogs)}`);
+}
+
+// --- Encrypted backup: export → clear → wrong passphrase → right passphrase ---
+const encDownloadPromise = page.waitForEvent('download');
+await page.getByText('Export encrypted backup (AES-256)').click();
+await page.waitForTimeout(400);
+await page.getByRole('dialog').getByText('Passphrase', { exact: true }).waitFor();
+const passInputs = page.getByRole('dialog').locator('input:not([type="checkbox"])');
+await passInputs.nth(0).fill('hunter2hunter2');
+await passInputs.nth(1).fill('hunter2hunter2');
+await page.getByText('Encrypt & Export').click();
+const encDownload = await encDownloadPromise;
+const encPath = `${OUT}/test-backup.enc.json`;
+await encDownload.saveAs(encPath);
+const encEnvelope = JSON.parse(readFileSync(encPath, 'utf8'));
+if (encEnvelope.app !== 'survive-budget-encrypted' || !encEnvelope.ct) {
+  errors.push('FLOW: encrypted backup envelope malformed');
+}
+await page.waitForTimeout(400);
+
+// Clear everything, then restore the encrypted file.
+await page.getByText('Clear all data').click();
+await page.waitForTimeout(300);
+await page.getByText('Yes, delete everything').click();
+await page.waitForTimeout(600);
+const encChooser = page.waitForEvent('filechooser');
+await page.getByText('Restore backup (JSON)').click();
+await (await encChooser).setFiles(encPath);
+await page.waitForTimeout(600);
+// Wrong passphrase first: inline error, data untouched.
+await page.getByRole('dialog').locator('input:not([type="checkbox"])').first().fill('wrong-passphrase');
+await page.getByText('Unlock', { exact: true }).click();
+await page.waitForTimeout(1200);
+if ((await page.getByText('Wrong passphrase or corrupted file.').count()) === 0) {
+  errors.push('FLOW: wrong passphrase did not surface the safe error');
+}
+// Right passphrase → confirm step → restored.
+await page.getByRole('dialog').locator('input:not([type="checkbox"])').first().fill('hunter2hunter2');
+await page.getByText('Unlock', { exact: true }).click();
+await page.waitForTimeout(1200);
+await page.getByText('Yes, restore backup').click();
+await page.waitForTimeout(700);
+if ((await page.getByText('Everyday Checking').count()) === 0) {
+  errors.push('FLOW: encrypted restore did not bring data back');
+}
+await page.screenshot({ path: `${OUT}/22-encrypted-restore.png` });
+
+// --- Reconcile: long-press an account, enter working+$10, expect a +$10 adjustment ---
+await page.getByText('More', { exact: true }).last().click();
+await page.waitForTimeout(500);
+{
+  // Each account row has a Reconcile pill; the first one is Everyday Checking.
+  await page.getByText('Reconcile', { exact: true }).first().click();
+  await page.waitForTimeout(500);
+  const sheet = page.getByRole('dialog');
+  if ((await sheet.getByText('Reconcile Everyday Checking').count()) === 0) {
+    errors.push('FLOW: long-press did not open the Reconcile sheet');
+  } else {
+    const input = sheet.locator('input:not([type="checkbox"])').first();
+    const working = parseFloat((await input.inputValue()) || '0');
+    await input.fill((working + 10).toFixed(2));
+    await sheet.getByText('Reconcile', { exact: true }).click();
+    await page.waitForTimeout(600);
+    if (!dialogs.some((d) => d.includes('balance adjustment') && d.includes('Uncategorized'))) {
+      errors.push(`FLOW: reconcile did not report an adjustment, dialogs=${JSON.stringify(dialogs.slice(-2))}`);
+    }
+    // The +$10 adjustment shows under the uncategorized filter in Activity.
+    await page.getByText('Activity', { exact: true }).click();
+    await page.waitForTimeout(500);
+    await page.getByText(/❓ Uncategorized · \d+/).first().click();
+    await page.waitForTimeout(400);
+    if ((await page.getByText('Balance adjustment').count()) === 0) {
+      errors.push('FLOW: balance adjustment not visible under uncategorized filter');
+    }
+    await page.screenshot({ path: `${OUT}/25-reconcile.png` });
+    await page.getByText(/❓ Uncategorized · \d+/).first().click();
+    await page.waitForTimeout(300);
+  }
+}
+
+// --- Smoke every tab for console errors ---
+for (const tab of ['Home', 'Budget', 'Activity', 'Reports', 'More']) {
+  await page.getByText(tab, { exact: true }).last().click();
+  await page.waitForTimeout(500);
+}
+
+console.log(JSON.stringify({ errors, dialogCount: dialogs.length }, null, 2));
+await browser.close();
+process.exit(errors.length ? 1 : 0);

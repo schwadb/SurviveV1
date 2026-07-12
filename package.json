@@ -1,0 +1,45 @@
+{
+  "name": "survivev1",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@noble/ciphers": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~57.0.2",
+    "expo-crypto": "~57.0.0",
+    "expo-document-picker": "~57.0.0",
+    "expo-file-system": "~57.0.0",
+    "expo-local-authentication": "~57.0.0",
+    "expo-notifications": "~57.0.3",
+    "expo-sharing": "~57.0.2",
+    "expo-status-bar": "~57.0.0",
+    "expo-system-ui": "~57.0.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.0",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-svg": "15.15.4",
+    "react-native-web": "^0.21.2",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "playwright": "^1.61.1",
+    "serve": "^14.2.6",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "e2e": "node e2e/run.mjs",
+    "prebuild:check": "expo prebuild --no-install --clean --platform android"
+  },
+  "private": true
+}

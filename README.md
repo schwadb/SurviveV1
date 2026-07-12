@@ -1,0 +1,130 @@
+# Survive Budget 💸
+
+A cross-platform (Android + iOS + web) personal budgeting app built with
+**Expo / React Native + TypeScript**, designed from competitive research on the four
+leading budgeting apps — Monarch Money, YNAB, PocketGuard, and Goodbudget.
+See [docs/RESEARCH.md](docs/RESEARCH.md) for the full research report and the
+feature-mapping table.
+
+## Feature highlights
+
+- **In My Pocket** (PocketGuard-style) safe-to-spend hero number with a
+  **spending Pace** meter that warns when you're spending faster than the month passes
+- **Zero-based envelope budgeting** (YNAB-style "Ready to Assign", Goodbudget-style
+  rollover envelopes), grouped categories, move-money between envelopes,
+  overspend flags
+- **Transactions**: add/edit/delete, income & expense, pending/cleared, full-text
+  search, account & category filters, date grouping
+- **Split transactions**: divide one charge across up to 8 envelopes with a
+  must-balance editor; splits flow through envelope math, reports, filters, and CSV
+- **Auto-categorization rules** ("payee contains X → category Y") with retroactive apply
+- **Recurring bills**: due dates, overdue flags, autopay labels, one-tap "mark paid"
+  (creates the transaction)
+- **Accounts & net worth**: checking/savings/cash/credit/investment/loan, on-budget vs
+  tracking, computed balances, cleared vs working balances, and **reconciliation**
+  (enter the real bank balance → pending cleared + a one-tap balance adjustment)
+- **Savings goals** with progress bars and contribute/withdraw
+- **Debt payoff planner**: avalanche vs snowball simulation over credit/loan accounts
+  (APR + minimum payment per account), debt-free date, total interest, strategy
+  comparison, payoff curve, and a "never pays off" warning when interest outruns payments
+- **Reports**: spending-by-category donut, 6-month income-vs-spending bars, savings
+  rate, net-worth trend line, recurring/subscription detection
+- **Statement import**: pick a bank/credit-card export file — CSV or OFX/QFX (Quicken) —
+  or paste CSV; automatic duplicate detection makes re-importing overlapping months safe,
+  and rules auto-categorize imported rows. CSV export via share sheet (mobile) or download (web)
+- **Quick budgeting**: per-envelope monthly targets with funded/underfunded chips,
+  one-tap **Auto-assign** (fills under-target envelopes from Ready to Assign, never
+  over-assigning), "Copy last month" budget fill; move-money validated against the
+  source envelope's available balance
+- **Uncategorized inbox**: one-tap filter chip in Activity showing the count of
+  transactions still needing a category
+- **Backup & restore**: full-data JSON backup exported as a real file (share sheet on
+  mobile, download on web) and restored via file picker with structural validation —
+  plus **encrypted backups** (AES-256-GCM, scrypt-derived key from a passphrase)
+  auto-detected on restore
+- **App lock**: Face ID / fingerprint / device passcode required on launch and on
+  return from background (expo-local-authentication; Android & iOS)
+- **Bill reminders**: opt-in local notifications at 9:00 on due dates plus a
+  3-days-ahead heads-up for bills without autopay (expo-notifications; Android &
+  iOS — full fidelity needs a dev build, not Expo Go)
+- **Household sharing (merge backups)**: fold a partner's backup (plain or encrypted)
+  in non-destructively — union by id, transaction dedupe by natural key, local wins on
+  conflicts, idempotent so weekly file swaps never duplicate or lose data
+- **Dark mode** (system/light/dark), colorblind-safe validated chart palette
+- **Privacy-first**: 100% on-device via AsyncStorage — no bank logins, no cloud, no ads
+
+## Security model
+
+- All data stays on-device (AsyncStorage); the app makes zero network requests.
+- Optional biometric/passcode app lock gates the UI on cold start and resume.
+- Statement and backup files are read locally via the OS file picker; nothing is uploaded.
+- Backups come in two flavors: plain JSON (portable, with an in-UI warning) and
+  AES-256-GCM encrypted with an scrypt-derived key from a user passphrase (pure-JS
+  @noble/ciphers + @noble/hashes — no WebCrypto dependency, so it runs identically
+  on Hermes and web). Restore auto-detects the format; wrong passphrases and
+  tampered files fail safely, and hostile KDF parameters are rejected.
+
+## Running it
+
+```bash
+npm install
+npm run web       # web preview (Metro)
+```
+
+For a native app with all device features (biometric app lock, bill
+notifications, file pickers, share-sheet and encrypted-backup exports), build a
+**dev client** — Expo Go cannot exercise these (notifications are limited since
+SDK 53, and Face ID permission strings only exist in a real build):
+
+```bash
+npm run android   # expo run:android — needs Android Studio + SDK
+npm run ios       # expo run:ios     — needs Xcode (macOS)
+# or in the cloud:
+eas build --profile development --platform android
+eas build --profile development --platform ios
+```
+
+Native config lives entirely in `app.json` + config plugins (Continuous Native
+Generation) — `/android` and `/ios` are generated and gitignored. Validate that
+the native projects generate with `npm run prebuild:check`. The device
+verification checklist is in [`docs/DEVICE-TESTING.md`](docs/DEVICE-TESTING.md).
+
+The app ships with demo data (generated relative to today) so every screen is
+populated on first launch. Use **More → Danger zone** to clear it or re-seed.
+
+## Architecture
+
+```
+App.tsx                    theme + custom bottom-tab navigation
+src/
+  theme.ts                 design tokens, light/dark, validated chart palette
+  types.ts                 domain model (cents-integer money)
+  store.ts                 zustand + AsyncStorage persistence
+  data/seed.ts             demo dataset generator
+  logic/budget.ts          pure budget math (envelopes, RTA, IMP, net worth, reports)
+  utils/                   money/date/CSV helpers
+  components/              ui kit, SVG charts, form sheets
+  screens/                 Home, Budget, Transactions, Reports, More
+```
+
+No navigation or chart libraries — the tab bar is a lightweight custom component and
+charts are hand-rolled with `react-native-svg`, keeping the dependency surface small
+and identical across Android, iOS, and web.
+
+## Verification
+
+```bash
+npm run typecheck   # strict TypeScript
+npm test            # vitest unit suite (budget math, parsers, backup)
+npm run e2e         # builds the web bundle and runs 5 Playwright drives
+```
+
+The e2e drives cover: every tab and core flow (add/search/persist transaction,
+envelope assign, move money, mark bill paid, goal contribution, dark mode,
+reload persistence); statement import (QFX + CSV files, duplicate-skip on
+re-import, rule auto-categorization); and the improvement flows (uncategorized
+filter, date quick-chips, over-move blocked, copy-last-month, backup export →
+clear-all → restore round-trip, invalid backup rejected, splits, reconciliation);
+a household merge round-trip (plain + encrypted); and a 10k-transaction scale
+drive. CI (`budget-ci`) runs typecheck + unit tests + web export + native prebuild
+for both platforms on every push.
