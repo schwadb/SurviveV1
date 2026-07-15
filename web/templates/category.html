@@ -57,16 +57,10 @@
     {{ files|length }} files in this category
   </div>
   <div class="grid grid-auto">
-    {% set ext_icons = {
-      'pdf': '📄', 'epub': '📖', 'mobi': '📖',
-      'mp4': '🎬', 'mkv': '🎬',
-      'zim': '📚', 'mp3': '🎵',
-      'jpg': '🖼️', 'png': '🖼️', 'webp': '🖼️',
-    } %}
     {% for f in files %}
     <a href="/serve/{{ f.path }}" class="cat-card" target="_blank"
        style="border-left: 3px solid {{ cat.color }};">
-      <div class="cat-icon">{{ ext_icons.get(f.ext, '📄') }}</div>
+      <div class="cat-icon">{{ EXT_ICONS.get(f.ext, '📄') }}</div>
       <div class="cat-info">
         <div class="cat-name" style="white-space: normal; font-size: 13px;">{{ f.name }}</div>
         <div class="cat-desc">{{ f.ext.upper() if f.ext else 'FILE' }} • {{ f.size_mb }} MB</div>

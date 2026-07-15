@@ -15,6 +15,11 @@ import sqlite3
 import threading
 import time
 import urllib.request
+
+try:
+    import fcntl  # POSIX-only; serialises index rebuilds across gunicorn workers
+except ImportError:  # pragma: no cover - non-POSIX dev environments
+    fcntl = None
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -71,6 +76,21 @@ limiter = Limiter(
 )
 
 
+# Single source of truth for file-type icons across every template. Keys are
+# lowercase extensions (all templates receive ext via `.suffix.lower()`).
+EXT_ICONS = {
+    "pdf": "📄",
+    "epub": "📖", "mobi": "📖", "azw3": "📖",
+    "mp4": "🎬", "mkv": "🎬", "avi": "🎬", "webm": "🎬",
+    "mp3": "🎵", "m4a": "🎵",
+    "zim": "📚",
+    "jpg": "🖼️", "jpeg": "🖼️", "png": "🖼️", "webp": "🖼️",
+    "sh": "⚙️", "py": "🐍",
+    "txt": "📝", "md": "📝",
+    "mbtiles": "🗺️", "pbf": "🗺️",
+}
+
+
 # Single source of truth for service ports in all templates.
 @app.context_processor
 def _inject_globals():
@@ -85,6 +105,7 @@ def _inject_globals():
         "storage_mounted": STORAGE_MOUNTED,
         "now": datetime.now(),
         "TIMEOUT_AI_CHAT": TIMEOUT_AI_CHAT,
+        "EXT_ICONS": EXT_ICONS,
     }
 
 
@@ -400,6 +421,7 @@ def _sources_for(articles: list, req_host: str) -> list:
 # milliseconds instead of re-walking the 800 GB tree on each request. The DB is
 # a hidden file next to the Kiwix library (dotfiles are skipped by _safe_walk).
 INDEX_DB = STORAGE_PATH / ".search_index.db"
+INDEX_LOCK = STORAGE_PATH / ".search_index.lock"  # cross-process rebuild lock
 _index_lock = threading.Lock()          # serialises rebuilds within one process
 _index_building = threading.Event()      # dedupes on-demand builds
 
@@ -410,49 +432,74 @@ def _index_connect():
 
 def _rebuild_search_index() -> int:
     """(Re)build the FTS5 filename index via an atomic temp-table swap so
-    readers never observe a half-built index. Returns the file count."""
+    readers never observe a half-built index. Returns the file count.
+
+    Under gunicorn each worker process runs its own refresher thread, so the
+    in-process ``_index_lock`` is not enough. A non-blocking POSIX file lock
+    (``fcntl.flock``) ensures only one process rebuilds at a time; a worker that
+    loses the race skips the redundant rebuild instead of colliding on the same
+    SQLite file, and reports the currently indexed count."""
     with _index_lock:
-        conn = _index_connect()
-        conn.isolation_level = None  # explicit transaction control below
+        lock_fh = None
+        if fcntl is not None:
+            try:
+                # Handle is intentionally held open past this block — releasing
+                # it early would drop the lock mid-rebuild (freed in the finally).
+                lock_fh = open(INDEX_LOCK, "w", encoding="utf-8")  # pylint: disable=consider-using-with
+                fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                # Another worker holds the lock (or the lock file is unwritable);
+                # skip this rebuild rather than risk concurrent DROP/CREATE.
+                if lock_fh is not None:
+                    lock_fh.close()
+                logging.info("search index rebuild skipped: another process is building")
+                return _index_meta()["count"]
         try:
-            conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
-            conn.execute("DROP TABLE IF EXISTS files_new")
-            conn.execute(
-                "CREATE VIRTUAL TABLE files_new USING fts5("
-                "name, path UNINDEXED, ext UNINDEXED, size_mb UNINDEXED, "
-                "tokenize = \"unicode61 tokenchars '-'\")"
-            )
-            count, batch = 0, []
-            conn.execute("BEGIN")
-            for f in _safe_walk(STORAGE_PATH):
-                try:
-                    size_mb = round(f.stat().st_size / (1024**2), 1)
-                except OSError:
-                    size_mb = 0
-                # Store a space-normalised name so "doctor" matches
-                # "Where_There_Is_No_Doctor"; keep the real path for display.
-                searchable = re.sub(r"[_.]", " ", f.stem)
-                batch.append((searchable, str(f.relative_to(STORAGE_PATH)),
-                              f.suffix.lower().lstrip("."), size_mb))
-                if len(batch) >= 500:
+            conn = _index_connect()
+            conn.isolation_level = None  # explicit transaction control below
+            try:
+                conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
+                conn.execute("DROP TABLE IF EXISTS files_new")
+                conn.execute(
+                    "CREATE VIRTUAL TABLE files_new USING fts5("
+                    "name, path UNINDEXED, ext UNINDEXED, size_mb UNINDEXED, "
+                    "tokenize = \"unicode61 tokenchars '-'\")"
+                )
+                count, batch = 0, []
+                conn.execute("BEGIN")
+                for f in _safe_walk(STORAGE_PATH):
+                    try:
+                        size_mb = round(f.stat().st_size / (1024**2), 1)
+                    except OSError:
+                        size_mb = 0
+                    # Store a space-normalised name so "doctor" matches
+                    # "Where_There_Is_No_Doctor"; keep the real path for display.
+                    searchable = re.sub(r"[_.]", " ", f.stem)
+                    batch.append((searchable, str(f.relative_to(STORAGE_PATH)),
+                                  f.suffix.lower().lstrip("."), size_mb))
+                    if len(batch) >= 500:
+                        conn.executemany("INSERT INTO files_new VALUES (?,?,?,?)", batch)
+                        count += len(batch)
+                        batch = []
+                if batch:
                     conn.executemany("INSERT INTO files_new VALUES (?,?,?,?)", batch)
                     count += len(batch)
-                    batch = []
-            if batch:
-                conn.executemany("INSERT INTO files_new VALUES (?,?,?,?)", batch)
-                count += len(batch)
-            conn.execute("COMMIT")
-            # Brief exclusive swap — readers block only for this step.
-            conn.execute("BEGIN IMMEDIATE")
-            conn.execute("DROP TABLE IF EXISTS files")
-            conn.execute("ALTER TABLE files_new RENAME TO files")
-            conn.execute("INSERT OR REPLACE INTO meta VALUES ('built_at', ?)",
-                         (datetime.now().isoformat(),))
-            conn.execute("INSERT OR REPLACE INTO meta VALUES ('count', ?)", (str(count),))
-            conn.execute("COMMIT")
-            return count
+                conn.execute("COMMIT")
+                # Brief exclusive swap — readers block only for this step.
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute("DROP TABLE IF EXISTS files")
+                conn.execute("ALTER TABLE files_new RENAME TO files")
+                conn.execute("INSERT OR REPLACE INTO meta VALUES ('built_at', ?)",
+                             (datetime.now().isoformat(),))
+                conn.execute("INSERT OR REPLACE INTO meta VALUES ('count', ?)", (str(count),))
+                conn.execute("COMMIT")
+                return count
+            finally:
+                conn.close()
         finally:
-            conn.close()
+            if lock_fh is not None:
+                fcntl.flock(lock_fh.fileno(), fcntl.LOCK_UN)
+                lock_fh.close()
 
 
 def _query_search_index(query: str, limit: int = 50):
@@ -521,7 +568,9 @@ def _trigger_index_build() -> None:
 
 def _index_refresher() -> None:
     """Daemon loop: build shortly after boot, then refresh every 6 hours.
-    The per-PID stagger keeps the two gunicorn workers from colliding at boot."""
+    Collisions between gunicorn workers are prevented by the cross-process file
+    lock in _rebuild_search_index; the per-PID stagger just spreads the boot
+    load so workers don't all wake at once."""
     time.sleep(60 + (os.getpid() % 30))
     while True:
         try:

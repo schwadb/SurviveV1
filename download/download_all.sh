@@ -136,13 +136,16 @@ main() {
     RESUME_FLAG=()
     [[ "$RESUME" == "true" ]] && RESUME_FLAG=(--resume)
 
-    run_category kiwix         "Y"                          kiwix_content.sh "${RESUME_FLAG[@]}"
-    run_category videos        "${CONTENT_VIDEOS:-Y}"       videos.sh
-    run_category books         "${CONTENT_GUTENBERG:-Y}"    books_pdfs.sh
-    run_category maps          "${CONTENT_MAPS:-Y}"         maps.sh
-    run_category kolibri       "${CONTENT_KOLIBRI:-Y}"      kolibri_content.sh
-    run_category gaps          "Y"                          gaps_content.sh
-    run_category mental_health "Y"                          mental_health.sh
+    # kiwix stays "Y" here by design: kiwix_content.sh gates each ZIM internally
+    # via its own CONTENT_* flags (CONTENT_WIKIPEDIA, CONTENT_STACKEXCHANGE, ...),
+    # so per-ZIM config is honoured one level down.
+    run_category kiwix         "Y"                            kiwix_content.sh "${RESUME_FLAG[@]}"
+    run_category videos        "${CONTENT_VIDEOS:-Y}"         videos.sh
+    run_category books         "${CONTENT_GUTENBERG:-Y}"      books_pdfs.sh
+    run_category maps          "${CONTENT_MAPS:-Y}"           maps.sh
+    run_category kolibri       "${CONTENT_KOLIBRI:-Y}"        kolibri_content.sh
+    run_category gaps          "${CONTENT_GAPS:-Y}"           gaps_content.sh
+    run_category mental_health "${CONTENT_MENTAL_HEALTH:-Y}"  mental_health.sh
 
     # Invalidate the dashboard's filename search index so it rebuilds with the
     # newly downloaded files on the next /search.

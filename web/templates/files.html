@@ -115,18 +115,6 @@
   {% if items %}
   <div class="file-grid" id="fileGrid">
     {% for item in items %}
-    {% set icons = {
-      'dir': '📁',
-      'pdf': '📄', 'PDF': '📄',
-      'epub': '📖', 'mobi': '📖', 'azw3': '📖',
-      'mp4': '🎬', 'mkv': '🎬', 'avi': '🎬', 'webm': '🎬',
-      'mp3': '🎵', 'm4a': '🎵',
-      'zim': '📚',
-      'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️',
-      'sh': '⚙️', 'py': '🐍',
-      'txt': '📝', 'md': '📝',
-      'mbtiles': '🗺️', 'pbf': '🗺️',
-    } %}
     {% if item.is_dir %}
     <a href="/files?path={{ item.path }}"
        class="file-card" data-type="dir">
@@ -139,7 +127,7 @@
     {% else %}
     <a href="/serve/{{ item.path }}"
        class="file-card" data-type="{{ item.ext }}" target="_blank">
-      <div class="file-type-icon">{{ icons.get(item.ext, '📄') }}</div>
+      <div class="file-type-icon">{{ EXT_ICONS.get(item.ext, '📄') }}</div>
       <div class="file-info">
         <div class="file-name">{{ item.name }}</div>
         <div class="file-meta">{{ item.ext.upper() if item.ext else 'FILE' }} • {{ item.size_mb }} MB • {{ item.modified }}</div>

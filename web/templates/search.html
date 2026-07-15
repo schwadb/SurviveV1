@@ -93,16 +93,9 @@
       {% endif %}
     </div>
 
-    {% set ext_icons = {
-      'pdf': '📄', 'epub': '📖', 'mobi': '📖',
-      'mp4': '🎬', 'mkv': '🎬', 'webm': '🎬',
-      'zim': '📚', 'mp3': '🎵',
-      'jpg': '🖼️', 'png': '🖼️',
-    } %}
-
     {% for result in results %}
     <a href="/serve/{{ result.path }}" class="result-card" target="_blank">
-      <div class="result-icon">{{ ext_icons.get(result.ext, '📄') }}</div>
+      <div class="result-icon">{{ EXT_ICONS.get(result.ext, '📄') }}</div>
       <div style="flex:1; min-width:0;">
         <div class="result-name">{{ result.name }}</div>
         <div class="result-path">{{ result.path }}</div>
