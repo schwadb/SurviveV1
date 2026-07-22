@@ -186,4 +186,12 @@ echo -e "  Passed: ${GREEN}$PASSED${NC}  Failed: ${RED}$FAILED${NC}"
 echo -e "${BLUE}════════════════════════════════════════${NC}"
 echo ""
 
+# On failure, surface the server log so CI shows the actual traceback behind any
+# 500 instead of just the HTTP status the client observed.
+if [[ "$FAILED" -ne 0 && -f /tmp/survive_test.log ]]; then
+    echo -e "${BLUE}── server log (/tmp/survive_test.log) ──${NC}"
+    cat /tmp/survive_test.log
+    echo -e "${BLUE}────────────────────────────────────────${NC}"
+fi
+
 [[ "$FAILED" -eq 0 ]] && exit 0 || exit 1
