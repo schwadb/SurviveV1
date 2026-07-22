@@ -173,15 +173,21 @@ class _TTLCache:
 
     def __init__(self, ttl: float) -> None:
         self._ttl = ttl
-        self._ts = 0.0
+        self._ts = None  # None = never computed; forces a compute on first get()
         self._data = None
         self._lock = threading.Lock()
 
     def get(self, compute):
-        """Return cached value, calling compute() to refresh if TTL has expired."""
+        """Return cached value, calling compute() to refresh if TTL has expired.
+
+        The first access always computes. Using a sentinel (rather than ts=0)
+        avoids a subtle bug on freshly-booted hosts: time.monotonic() can be
+        smaller than the TTL right after boot, which would make ``now - 0 > ttl``
+        false and return the uninitialised None instead of computing."""
         with self._lock:
-            if time.monotonic() - self._ts > self._ttl:
-                self._ts = time.monotonic()
+            now = time.monotonic()
+            if self._ts is None or now - self._ts > self._ttl:
+                self._ts = now
                 self._data = compute()
             return self._data
 
