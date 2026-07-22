@@ -83,38 +83,28 @@ EOF
 
 # ── Pull recommended models ───────────────────────────────────────────────────
 pull_ai_models() {
-    info "Pulling AI models optimized for Raspberry Pi..."
-    STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
-    export OLLAMA_MODELS="$STORAGE_PATH/ai_models/ollama"
-    mkdir -p "$OLLAMA_MODELS"
-
-    # Start Ollama if not running
-    ollama serve &>/dev/null &
-    sleep 3
-
-    # Pull models (smallest first, most useful for survival queries)
-    declare -A MODELS=(
-        ["tinyllama"]="637MB — Ultra-fast responses, basic Q&A"
-        ["phi3:mini"]="2.3GB — Microsoft Phi-3, excellent reasoning"
-        ["llama3.2:3b"]="2.0GB — Meta Llama 3.2 3B, good balance"
-        ["mistral:7b-q4"]="4.1GB — Best quality for 7B class"
-    )
-
-    for model in "${!MODELS[@]}"; do
-        size_desc="${MODELS[$model]}"
-        info "Pulling $model ($size_desc)..."
-        ollama pull "$model" && success "$model ready" || warn "$model failed, skipping"
-    done
+    # Defer to the canonical Ollama setup so there is a single source of truth
+    # for which models we ship. ai/setup_ollama.sh RAM-gates the base model and
+    # builds the custom `survive` model from Modelfile.survival; pulling a
+    # divergent set here (tinyllama/phi3/llama3.2/mistral) only wasted disk and
+    # left the dashboard's default `survive` model missing.
+    info "Setting up Ollama models via ai/setup_ollama.sh..."
+    if bash "${REPO_DIR}/ai/setup_ollama.sh"; then
+        success "Ollama models ready"
+    else
+        warn "Ollama model setup reported errors — check the log above"
+    fi
 }
 
 # ── Test AI setup ─────────────────────────────────────────────────────────────
 test_ai() {
     info "Testing AI setup..."
-    TEST_RESPONSE=$(ollama run tinyllama "Respond with just 'OK'" 2>/dev/null || echo "FAIL")
-    if [[ "$TEST_RESPONSE" == *"OK"* ]] || [[ "$TEST_RESPONSE" != "FAIL" ]]; then
-        success "AI is working!"
+    local model="${SURVIVE_AI_MODEL:-survive}"
+    TEST_RESPONSE=$(ollama run "$model" "Respond with just 'OK'" 2>/dev/null || echo "FAIL")
+    if [[ "$TEST_RESPONSE" != "FAIL" ]]; then
+        success "AI is working! (model: $model)"
     else
-        warn "AI test failed — check ollama status"
+        warn "AI test failed — check ollama status and that the '$model' model exists"
     fi
 }
 
@@ -139,7 +129,7 @@ main() {
     test_ai
 
     success "AI Hat setup complete"
-    info "Use: ollama run phi3:mini 'Your question here'"
+    info "Use: ollama run ${SURVIVE_AI_MODEL:-survive} 'Your question here'"
     info "Or visit: http://localhost:8080/ai"
 }
 

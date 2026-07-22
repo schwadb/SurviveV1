@@ -2,7 +2,7 @@
 # =============================================================================
 # SurviveV1 — AI query CLI
 # Usage: bash ai/query.sh "How do I purify water?"
-#        bash ai/query.sh --model phi3:mini "How do I set a broken bone?"
+#        bash ai/query.sh --model gemma4:e2b "How do I set a broken bone?"
 # =============================================================================
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

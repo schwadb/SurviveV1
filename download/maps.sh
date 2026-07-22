@@ -53,7 +53,11 @@ install_map_tools() {
         osmium-tool \
         osm2pgsql \
         mbutil 2>/dev/null || true
-    pip3 install -q mbtiles-tile-render 2>/dev/null || true
+    # Modern Debian/Pi OS mark the system Python as externally managed (PEP 668),
+    # so a bare `pip3 install` aborts. --break-system-packages keeps the
+    # historical behaviour for this optional helper without needing a venv.
+    pip3 install -q --break-system-packages mbtiles-tile-render 2>/dev/null \
+        || pip3 install -q mbtiles-tile-render 2>/dev/null || true
     success "Map tools installed"
 }
 

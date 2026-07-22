@@ -22,9 +22,10 @@ done
 export KOLIBRI_HOME
 mkdir -p "$KOLIBRI_HOME"
 
-BLUE='\033[0;34m'; GREEN='\033[0;32m'; NC='\033[0m'
+BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[KOLIBRI]${NC} $*"; }
 success() { echo -e "${GREEN}[KOLIBRI]${NC} $*"; }
+warn()    { echo -e "${YELLOW}[KOLIBRI]${NC} $*"; }
 
 # ── Kolibri channel IDs ──────────────────────────────────────────────────────
 # Find channel IDs at: https://kolibri-demo.learningequality.org

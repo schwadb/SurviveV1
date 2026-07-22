@@ -103,10 +103,16 @@ if [[ "$STORAGE_DEV" != "SKIP" ]] && [[ -b "$STORAGE_DEV" ]]; then
     FSTYPE=$(blkid -s TYPE -o value "$STORAGE_DEV" 2>/dev/null || echo "ext4")
     mount -t "$FSTYPE" "$STORAGE_DEV" "$STORAGE_PATH"
 
-    # Add to fstab for auto-mount
+    # Add to fstab for auto-mount — but only if an entry for this device or
+    # mount point does not already exist. Blindly appending on every re-run
+    # creates duplicate lines, which can make the system fail to boot.
     PARTUUID=$(blkid -s PARTUUID -o value "$STORAGE_DEV" 2>/dev/null || echo "")
     if [[ -n "$PARTUUID" ]]; then
-        echo "PARTUUID=$PARTUUID  $STORAGE_PATH  $FSTYPE  defaults,noatime  0  2" >> /etc/fstab
-        echo "Added to /etc/fstab for auto-mount"
+        if grep -qE "^[^#]*(PARTUUID=${PARTUUID}|[[:space:]]${STORAGE_PATH}[[:space:]])" /etc/fstab 2>/dev/null; then
+            echo "fstab already has an entry for $PARTUUID or $STORAGE_PATH — skipping"
+        else
+            echo "PARTUUID=$PARTUUID  $STORAGE_PATH  $FSTYPE  defaults,noatime  0  2" >> /etc/fstab
+            echo "Added to /etc/fstab for auto-mount"
+        fi
     fi
 fi

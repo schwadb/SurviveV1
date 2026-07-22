@@ -297,7 +297,11 @@ function applyDownloads(data) {
     }
   });
   const logLine = document.getElementById('dlLogLine');
-  if (logLine && data.active_log) logLine.textContent = data.active_log.line;  // textContent — safe
+  if (logLine) {
+    // Clear the line when no download is active, otherwise a finished
+    // download leaves a stale last-log-line displayed indefinitely.
+    logLine.textContent = data.active_log ? data.active_log.line : '';  // textContent — safe
+  }
 }
 
 function refreshStatus(manual) {

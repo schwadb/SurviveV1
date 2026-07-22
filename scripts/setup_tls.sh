@@ -11,6 +11,7 @@ _CONF="$REPO_DIR/config/survive.conf"
 if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF -- using defaults" >&2; else source "$_CONF"; fi
 
 HOSTNAME="${SURVIVE_HOSTNAME:-survive}"
+STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 CERT_DIR="/etc/nginx/certs"
 CERT="$CERT_DIR/survive.crt"
 KEY="$CERT_DIR/survive.key"
@@ -55,7 +56,6 @@ server {
 
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Strict-Transport-Security "max-age=31536000" always;
 
@@ -91,7 +91,7 @@ server {
     }
 
     location /files/ {
-        alias /mnt/survive/;
+        alias ${STORAGE_PATH}/;
         autoindex off;
         sendfile on;
         tcp_nopush on;

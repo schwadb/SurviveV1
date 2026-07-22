@@ -56,14 +56,18 @@ jobs:
       - name: Validate nginx config syntax
         run: |
           sudo apt-get install -y nginx
-          sudo nginx -t -c /dev/stdin << 'EOF'
+          # Wrap the server{} block in a minimal http{} context. Use an
+          # UNQUOTED heredoc so $(pwd) expands to the real repo path — the
+          # previous quoted heredoc left it literal, so nginx never actually
+          # parsed our config (masked by continue-on-error).
+          cat > /tmp/nginx-test.conf <<EOF
           events {}
           http {
             include /etc/nginx/mime.types;
             include $(pwd)/config/nginx.conf;
           }
           EOF
-        continue-on-error: true
+          sudo nginx -t -c /tmp/nginx-test.conf
       - name: Validate YAML files
         run: |
           pip install -q pyyaml
