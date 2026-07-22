@@ -50,6 +50,8 @@ dl_channel() {
     local BW_ARGS=()
     [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--limit-rate "${SURVIVE_BANDWIDTH_LIMIT}")
     yt-dlp \
+        --restrict-filenames --no-exec --no-config --no-overwrites \
+        --socket-timeout 30 \
         --format "bestvideo[height<=720][ext=mp4]+bestaudio/best[height<=720]/best" \
         --merge-output-format mp4 \
         --embed-metadata \

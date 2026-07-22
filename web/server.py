@@ -5,6 +5,7 @@ Flask app serving the offline survival knowledge portal
 """
 
 import os
+import fcntl
 import json
 import logging
 import re
@@ -82,7 +83,7 @@ def _inject_globals():
         "PORT_JELLYFIN": PORT_JELLYFIN,
         "PORT_MAPS": PORT_MAPS,
         "PORT_OLLAMA": PORT_OLLAMA,
-        "storage_mounted": STORAGE_MOUNTED,
+        "storage_mounted": _storage_mounted_live(),
         "now": datetime.now(),
         "TIMEOUT_AI_CHAT": TIMEOUT_AI_CHAT,
     }
@@ -132,9 +133,29 @@ _configure_secret_key(app)
 REPO_DIR = Path(__file__).parent.parent
 DATA_DIR = Path(os.environ.get("SURVIVE_DATA_DIR", REPO_DIR / "data"))
 _configured_storage = Path(os.environ.get("SURVIVE_STORAGE_PATH", "/mnt/survive"))
-# Snapshot at startup — does not track live mount/unmount after the server starts.
+# Snapshot at startup — decides which root we actually serve from. If the drive
+# was absent at boot we fall back to repo/data, which requires a restart to
+# switch once the drive appears.
 STORAGE_MOUNTED = _configured_storage.exists()
 STORAGE_PATH = _configured_storage if STORAGE_MOUNTED else DATA_DIR
+
+# The warning banner, however, reflects the *live* presence of the configured
+# mount (cheap existence check, cached briefly) so unplugging the drive while
+# the server runs surfaces immediately instead of after the next restart.
+_mount_check_cache = {"ts": 0.0, "value": STORAGE_MOUNTED}
+_MOUNT_CHECK_TTL = 30.0
+
+
+def _storage_mounted_live() -> bool:
+    """Live-but-throttled check of whether the configured storage path exists."""
+    now = time.monotonic()
+    if now - _mount_check_cache["ts"] > _MOUNT_CHECK_TTL:
+        _mount_check_cache["ts"] = now
+        try:
+            _mount_check_cache["value"] = _configured_storage.exists()
+        except OSError:
+            _mount_check_cache["value"] = False
+    return _mount_check_cache["value"]
 
 # Tunable timeouts (seconds) — override via environment or survive.conf
 TIMEOUT_SERVICE_CHECK = float(os.environ.get("SURVIVE_SERVICE_CHECK_TIMEOUT", "1"))
@@ -368,6 +389,31 @@ _BASE_SYSTEM_PROMPT = (
 )
 
 
+_MAX_HISTORY_TURNS = 8   # keep the most recent turns only
+_MAX_HISTORY_CHARS = 2000  # per turn — leaves room for RAG excerpts in num_ctx
+
+
+def _sanitize_history(raw) -> list:
+    """Validate and bound a client-supplied conversation history.
+
+    Returns a list of {role, content} dicts with role in {user, assistant},
+    non-empty string content trimmed to _MAX_HISTORY_CHARS, capped to the last
+    _MAX_HISTORY_TURNS turns. Any malformed input yields an empty list so a
+    crafted request can never inject arbitrary roles or exhaust the context.
+    """
+    if not isinstance(raw, list):
+        return []
+    history = []
+    for turn in raw[-_MAX_HISTORY_TURNS:]:
+        if not isinstance(turn, dict):
+            continue
+        role = turn.get("role")
+        content = turn.get("content")
+        if role in ("user", "assistant") and isinstance(content, str) and content.strip():
+            history.append({"role": role, "content": content[:_MAX_HISTORY_CHARS]})
+    return history
+
+
 def _build_rag_prompt(articles: list) -> str:
     """Compose the system prompt, injecting retrieved reference excerpts."""
     if not articles:
@@ -400,6 +446,7 @@ def _sources_for(articles: list, req_host: str) -> list:
 # milliseconds instead of re-walking the 800 GB tree on each request. The DB is
 # a hidden file next to the Kiwix library (dotfiles are skipped by _safe_walk).
 INDEX_DB = STORAGE_PATH / ".search_index.db"
+INDEX_LOCK_FILE = STORAGE_PATH / ".search_index.lock"
 _index_lock = threading.Lock()          # serialises rebuilds within one process
 _index_building = threading.Event()      # dedupes on-demand builds
 
@@ -410,49 +457,71 @@ def _index_connect():
 
 def _rebuild_search_index() -> int:
     """(Re)build the FTS5 filename index via an atomic temp-table swap so
-    readers never observe a half-built index. Returns the file count."""
+    readers never observe a half-built index. Returns the file count.
+
+    A thread lock serialises rebuilds within one process; an advisory file lock
+    (flock) serialises across processes. Under gunicorn every worker imports
+    this module and starts its own refresher thread, so without the file lock
+    two workers could run concurrent DROP/CREATE against the same SQLite file
+    and each waste a full 800 GB walk. A worker that cannot take the lock skips
+    this round and reports the already-indexed count."""
     with _index_lock:
-        conn = _index_connect()
-        conn.isolation_level = None  # explicit transaction control below
+        lock_fh = open(INDEX_LOCK_FILE, "w", encoding="utf-8")  # pylint: disable=consider-using-with
         try:
-            conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
-            conn.execute("DROP TABLE IF EXISTS files_new")
-            conn.execute(
-                "CREATE VIRTUAL TABLE files_new USING fts5("
-                "name, path UNINDEXED, ext UNINDEXED, size_mb UNINDEXED, "
-                "tokenize = \"unicode61 tokenchars '-'\")"
-            )
-            count, batch = 0, []
-            conn.execute("BEGIN")
-            for f in _safe_walk(STORAGE_PATH):
-                try:
-                    size_mb = round(f.stat().st_size / (1024**2), 1)
-                except OSError:
-                    size_mb = 0
-                # Store a space-normalised name so "doctor" matches
-                # "Where_There_Is_No_Doctor"; keep the real path for display.
-                searchable = re.sub(r"[_.]", " ", f.stem)
-                batch.append((searchable, str(f.relative_to(STORAGE_PATH)),
-                              f.suffix.lower().lstrip("."), size_mb))
-                if len(batch) >= 500:
-                    conn.executemany("INSERT INTO files_new VALUES (?,?,?,?)", batch)
-                    count += len(batch)
-                    batch = []
-            if batch:
+            try:
+                fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                logging.info("search index rebuild already running in another worker; skipping")
+                return _index_meta().get("count", 0)
+            return _rebuild_search_index_locked()
+        finally:
+            fcntl.flock(lock_fh, fcntl.LOCK_UN)
+            lock_fh.close()
+
+
+def _rebuild_search_index_locked() -> int:
+    """Body of the rebuild; callers must already hold both locks."""
+    conn = _index_connect()
+    conn.isolation_level = None  # explicit transaction control below
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute("DROP TABLE IF EXISTS files_new")
+        conn.execute(
+            "CREATE VIRTUAL TABLE files_new USING fts5("
+            "name, path UNINDEXED, ext UNINDEXED, size_mb UNINDEXED, "
+            "tokenize = \"unicode61 tokenchars '-'\")"
+        )
+        count, batch = 0, []
+        conn.execute("BEGIN")
+        for f in _safe_walk(STORAGE_PATH):
+            try:
+                size_mb = round(f.stat().st_size / (1024**2), 1)
+            except OSError:
+                size_mb = 0
+            # Store a space-normalised name so "doctor" matches
+            # "Where_There_Is_No_Doctor"; keep the real path for display.
+            searchable = re.sub(r"[_.]", " ", f.stem)
+            batch.append((searchable, str(f.relative_to(STORAGE_PATH)),
+                          f.suffix.lower().lstrip("."), size_mb))
+            if len(batch) >= 500:
                 conn.executemany("INSERT INTO files_new VALUES (?,?,?,?)", batch)
                 count += len(batch)
-            conn.execute("COMMIT")
-            # Brief exclusive swap — readers block only for this step.
-            conn.execute("BEGIN IMMEDIATE")
-            conn.execute("DROP TABLE IF EXISTS files")
-            conn.execute("ALTER TABLE files_new RENAME TO files")
-            conn.execute("INSERT OR REPLACE INTO meta VALUES ('built_at', ?)",
-                         (datetime.now().isoformat(),))
-            conn.execute("INSERT OR REPLACE INTO meta VALUES ('count', ?)", (str(count),))
-            conn.execute("COMMIT")
-            return count
-        finally:
-            conn.close()
+                batch = []
+        if batch:
+            conn.executemany("INSERT INTO files_new VALUES (?,?,?,?)", batch)
+            count += len(batch)
+        conn.execute("COMMIT")
+        # Brief exclusive swap — readers block only for this step.
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DROP TABLE IF EXISTS files")
+        conn.execute("ALTER TABLE files_new RENAME TO files")
+        conn.execute("INSERT OR REPLACE INTO meta VALUES ('built_at', ?)",
+                     (datetime.now().isoformat(),))
+        conn.execute("INSERT OR REPLACE INTO meta VALUES ('count', ?)", (str(count),))
+        conn.execute("COMMIT")
+        return count
+    finally:
+        conn.close()
 
 
 def _query_search_index(query: str, limit: int = 50):
@@ -746,6 +815,13 @@ def ai_chat():
 
     message = str(data["message"])[:4096]  # bound message length to one context window
 
+    # Optional multi-turn context. The client sends prior turns as a list of
+    # {"role": "user"|"assistant", "content": "..."} objects so follow-up
+    # questions ("what about for a child?") keep their referent. Bound both the
+    # turn count and per-turn length: the base model's num_ctx is 4096 tokens,
+    # and unbounded history would blow the context window (and the Pi's memory).
+    history = _sanitize_history(data.get("history"))
+
     # RAG retrieval (best-effort — never blocks the answer if Kiwix is down).
     articles = _retrieve_context(message)
     sources = _sources_for(articles, request.host.split(":")[0])
@@ -755,6 +831,7 @@ def ai_chat():
         "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},
+            *history,
             {"role": "user", "content": message},
         ],
         "stream": True,

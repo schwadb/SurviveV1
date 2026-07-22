@@ -105,7 +105,16 @@ choose_storage() {
         warn "No external drives detected."
         warn "Connect your USB SSD and press ENTER to rescan, or Ctrl+C to abort."
         read -r _
-        choose_storage   # recurse once
+        # Bounded retry — avoid unbounded recursion if the user keeps hitting
+        # ENTER with no drive connected (each rescan deepens the call stack).
+        _STORAGE_RESCANS=$(( ${_STORAGE_RESCANS:-0} + 1 ))
+        if [[ "$_STORAGE_RESCANS" -ge 3 ]]; then
+            warn "Still no drives after $_STORAGE_RESCANS rescans — using existing path /mnt/survive."
+            CHOSEN_DEV="SKIP"
+            CHOSEN_MOUNT="/mnt/survive"
+            return
+        fi
+        choose_storage   # bounded rescan
         return
     fi
 
@@ -350,7 +359,7 @@ CONTENT_STACKEXCHANGE="Y"
 CONTENT_GUTENBERG="Y"
 CONTENT_KOLIBRI="Y"
 CONTENT_VIDEOS="Y"
-CONTENT_MAPS="${CHOSEN_MAP_REGION_FLAG:-Y}"
+CONTENT_MAPS="$([[ "${CHOSEN_MAP_REGION}" == "none" ]] && echo "N" || echo "Y")"
 CONTENT_PDFS="Y"
 CONTENT_AI_MODELS="Y"
 CONTENT_IFIX="Y"

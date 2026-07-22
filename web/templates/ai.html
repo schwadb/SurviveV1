@@ -364,6 +364,10 @@ function removeTyping() {
 }
 
 let _currentController = null;
+// Multi-turn context sent to the server so follow-up questions keep their
+// referent. Capped server-side; we keep the last few turns here too.
+const _history = [];
+const _HISTORY_MAX = 8;
 
 // Append a "Sources" block (clickable Kiwix links) to an AI message bubble.
 function renderSources(msgDiv, sources) {
@@ -406,7 +410,7 @@ async function sendMessage() {
     const res = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg, model }),
+      body: JSON.stringify({ message: msg, model, history: _history.slice(-_HISTORY_MAX) }),
       signal: _currentController.signal,
     });
 
@@ -456,6 +460,14 @@ async function sendMessage() {
         }
       }
       removeTyping();  // safety: clear indicator if stream ended without deltas
+      // Record the completed exchange so the next question has context.
+      if (text.trim()) {
+        _history.push({ role: 'user', content: msg });
+        _history.push({ role: 'assistant', content: text });
+        if (_history.length > _HISTORY_MAX * 2) {
+          _history.splice(0, _history.length - _HISTORY_MAX * 2);
+        }
+      }
     }
   } catch (e) {
     removeTyping();
@@ -485,6 +497,7 @@ function sendPrompt(prompt) {
 
 function clearChat() {
   chatMessages.innerHTML = '';
+  _history.length = 0;  // forget conversation context too
   addMessage('ai', 'Chat cleared. How can I help with your survival needs?');
 }
 

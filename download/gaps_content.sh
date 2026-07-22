@@ -57,6 +57,8 @@ dl_channel() {
     local category="$1"; local name="$2"; local url="$3"; local max="${4:-100}"
     info "[VIDEO] $name ($category, max $max videos)"
     yt-dlp \
+        --restrict-filenames --no-exec --no-config --no-overwrites \
+        --socket-timeout 30 \
         --format "bestvideo[height<=720][ext=mp4]+bestaudio/best[height<=720]/best" \
         --merge-output-format mp4 \
         --embed-metadata \

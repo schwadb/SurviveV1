@@ -85,6 +85,7 @@ curl -N -X POST http://localhost:8080/api/ai/chat \
 |-------|------|----------|-------------|
 | `message` | string | yes | User's question (truncated to 4096 chars) |
 | `model` | string | no | Ollama model name (default: `survive`) |
+| `history` | array | no | Prior turns for multi-turn context: `[{"role": "user"\|"assistant", "content": "..."}]`. Server keeps the last 8 turns, each trimmed to 2000 chars |
 
 **Response (success) — one JSON object per line, in order:**
 ```
@@ -230,5 +231,5 @@ Timeouts and other API behaviour can be tuned via environment variables (or `con
 |----------|---------|-------------|
 | `SURVIVE_SERVICE_CHECK_TIMEOUT` | `1` | Seconds to wait when testing service ports |
 | `SURVIVE_OLLAMA_LIST_TIMEOUT` | `2` | Seconds to wait for Ollama model list |
-| `SURVIVE_AI_CHAT_TIMEOUT` | `60` | Seconds to wait for AI chat completion |
+| `SURVIVE_AI_CHAT_TIMEOUT` | `60` | Idle timeout (seconds) between streamed AI chunks — not a cap on total answer length |
 | `SURVIVE_STORAGE_PATH` | `/mnt/survive` | Root of content storage |

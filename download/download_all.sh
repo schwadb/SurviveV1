@@ -136,13 +136,16 @@ main() {
     RESUME_FLAG=()
     [[ "$RESUME" == "true" ]] && RESUME_FLAG=(--resume)
 
-    run_category kiwix         "Y"                          kiwix_content.sh "${RESUME_FLAG[@]}"
-    run_category videos        "${CONTENT_VIDEOS:-Y}"       videos.sh
-    run_category books         "${CONTENT_GUTENBERG:-Y}"    books_pdfs.sh
-    run_category maps          "${CONTENT_MAPS:-Y}"         maps.sh
-    run_category kolibri       "${CONTENT_KOLIBRI:-Y}"      kolibri_content.sh
-    run_category gaps          "Y"                          gaps_content.sh
-    run_category mental_health "Y"                          mental_health.sh
+    # kiwix is core content and always downloaded. Every other category honours
+    # its survive.conf flag (default Y) so users can opt out — including the
+    # expert-gap and mental-health bundles, which previously ran unconditionally.
+    run_category kiwix         "Y"                              kiwix_content.sh "${RESUME_FLAG[@]}"
+    run_category videos        "${CONTENT_VIDEOS:-Y}"           videos.sh
+    run_category books         "${CONTENT_GUTENBERG:-Y}"        books_pdfs.sh
+    run_category maps          "${CONTENT_MAPS:-Y}"             maps.sh
+    run_category kolibri       "${CONTENT_KOLIBRI:-Y}"          kolibri_content.sh
+    run_category gaps          "${CONTENT_GAPS:-Y}"             gaps_content.sh
+    run_category mental_health "${CONTENT_MENTAL_HEALTH:-Y}"    mental_health.sh
 
     # Invalidate the dashboard's filename search index so it rebuilds with the
     # newly downloaded files on the next /search.

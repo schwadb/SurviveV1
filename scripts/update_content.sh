@@ -29,10 +29,13 @@ main() {
     info "SurviveV1 Content Updater"
     check_internet
 
-    # Update git repo itself
+    # Update git repo itself. Pull the branch this clone is actually on rather
+    # than a hardcoded development branch (which fails for users tracking main).
     info "Updating SurviveV1 scripts..."
-    git -C "$REPO_DIR" pull --rebase origin claude/offline-survival-repository-vqWs2 \
-        && success "Scripts updated" || warn "Git pull failed"
+    CURRENT_BRANCH=$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+    [[ "$CURRENT_BRANCH" == "HEAD" ]] && CURRENT_BRANCH="main"  # detached checkout
+    git -C "$REPO_DIR" pull --rebase origin "$CURRENT_BRANCH" \
+        && success "Scripts updated ($CURRENT_BRANCH)" || warn "Git pull failed"
 
     # Update yt-dlp
     info "Updating yt-dlp..."

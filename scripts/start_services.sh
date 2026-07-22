@@ -176,13 +176,21 @@ main() {
     info "Starting SurviveV1 services..."
     preflight_check
 
-    start_manual dashboard
-    start_manual kiwix
-    start_manual ollama
-    start_manual maps
-    start_manual kolibri
-    start_manual jellyfin
-    start_manual calibre
+    if [[ "$USE_SYSTEMD" == "true" ]]; then
+        info "systemd detected — starting via systemctl (auto-restart on crash)"
+    else
+        info "systemd unavailable — starting services manually (no auto-restart)"
+    fi
+
+    # start_service() delegates to systemctl when the unit is installed and
+    # falls back to start_manual otherwise. Unit names match systemd/*.service.
+    start_service dashboard survive-dashboard "Dashboard"
+    start_service kiwix     kiwix              "Kiwix"
+    start_service ollama    ollama             "Ollama"
+    start_service maps      martin-tiles       "Maps"
+    start_service kolibri   kolibri            "Kolibri"
+    start_service jellyfin  jellyfin           "Jellyfin"
+    start_service calibre   calibre-web        "Calibre-Web"
 
     # Wait up to 15 s for the dashboard to respond before printing URLs
     local retries=30

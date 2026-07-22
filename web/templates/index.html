@@ -257,7 +257,7 @@
             <div class="service-port">:{{ svc.port }}</div>
           </div>
           {% if svc.running %}
-            <a href="http://localhost:{{ svc.port }}" target="_blank"
+            <a href="http://{{ request.host.split(':')[0] }}:{{ svc.port }}" target="_blank"
                class="badge badge-green">RUNNING</a>
           {% else %}
             <span class="badge badge-red">STOPPED</span>
