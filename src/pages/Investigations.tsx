@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Plus, Trash2, Download, Upload, FileText, Network, Crosshair, Loader2,
-  ChevronDown, Shield,
+  ChevronDown, Shield, Zap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useInvestigations } from '../hooks/useInvestigations';
@@ -10,6 +10,7 @@ import {
   ENTITY_META, availablePivots, runPivot, applyPivot, upsertEntity,
   generateReport, detectAndCreate, type Entity, type EntityType, type Investigation,
 } from '../services/investigation';
+import { evaluateSignals, type Signal } from '../services/correlate';
 import { toJSON, importJSON } from '../services/api';
 
 const ENTITY_TYPES: EntityType[] = ['domain', 'ip', 'email', 'username', 'person', 'org', 'phone', 'location', 'url', 'note'];
@@ -31,6 +32,14 @@ const Investigations: React.FC = () => {
   const [caseMenuOpen, setCaseMenuOpen] = useState(false);
 
   const selected = active?.entities.find((e) => e.id === selectedId) ?? null;
+  const signals = useMemo<Signal[]>(() => (active ? evaluateSignals(active) : []), [active]);
+
+  const SEV_STYLE: Record<Signal['severity'], string> = {
+    critical: 'bg-red-500 live-indicator',
+    danger: 'bg-red-500',
+    warning: 'bg-yellow-500',
+    info: 'bg-blue-500',
+  };
 
   const handleAddEntity = () => {
     if (!active) { toast.error('Create a case first'); return; }
@@ -257,6 +266,34 @@ const Investigations: React.FC = () => {
                 Select a node to inspect it and run pivots.
               </div>
             )}
+
+            {/* Correlation signals */}
+            <div className="card">
+              <div className="card-header">
+                <Zap size={16} className="text-yellow-400" />
+                <h3 className="section-title">Signals</h3>
+                <span className="badge badge-yellow ml-auto">{signals.length}</span>
+              </div>
+              {signals.length === 0 ? (
+                <p className="text-xs text-gray-500">Run pivots to surface correlation signals (exposed ports, CVEs, shared infrastructure).</p>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {signals.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => s.entityIds[0] && setSelectedId(s.entityIds[0])}
+                      className="w-full text-left flex items-start gap-2 p-2 rounded-lg hover:bg-gray-800/60 transition-colors"
+                    >
+                      <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${SEV_STYLE[s.severity]}`} />
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-200">{s.title}</p>
+                        <p className="text-xs text-gray-500 truncate">{s.detail}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Evidence log */}
             <div className="card">

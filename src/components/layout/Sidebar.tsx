@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Satellite, Plane, Ship, Camera, Radio, Search, Settings, Database,
   Shield, Menu, X, Eye, Phone, MapPin, User, AlertTriangle, ChevronRight,
-  Zap, Star, Mail, Sun, Moon, Anchor, Bot, FileSearch, Network, Lock,
+  Zap, Star, Mail, Sun, Moon, Anchor, Bot, FileSearch, Network, Lock, Radar,
 } from 'lucide-react';
 import { useTheme } from '../../hooks/useLocalStorage';
 
@@ -40,6 +40,7 @@ const navGroups = [
     items: [
       { id: 'ai-search', label: 'Perplexity AI', icon: Search, color: 'text-violet-400' },
       { id: 'agents', label: 'Agent Recorder', icon: Bot, color: 'text-emerald-400' },
+      { id: 'monitors', label: 'Monitors', icon: Radar, color: 'text-emerald-400' },
       { id: 'watchlist', label: 'Watchlist', icon: Star, color: 'text-yellow-400' },
       { id: 'security', label: 'Security & OPSEC', icon: Lock, color: 'text-green-400' },
       { id: 'resources', label: 'Resources', icon: Database, color: 'text-gray-400' },

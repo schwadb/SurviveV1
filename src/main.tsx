@@ -2,13 +2,22 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import 'leaflet/dist/leaflet.css'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import './index.css'
 import App from './App.tsx'
+import { MonitorsProvider } from './hooks/useMonitors'
+import { KeyVaultProvider } from './hooks/useKeyVault'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <App />
+      <KeyVaultProvider>
+        <MonitorsProvider>
+          <App />
+        </MonitorsProvider>
+      </KeyVaultProvider>
       <Toaster
         position="bottom-right"
         toastOptions={{

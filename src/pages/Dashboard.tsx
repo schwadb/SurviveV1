@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Satellite, Plane, Ship, Camera, Radio, Shield,
   TrendingUp, Globe, Eye, Activity, ExternalLink, Network
 } from 'lucide-react';
 import type { MapFilter } from '../types';
 import { mockSatellites, mockAircraft, mockShips, mockCameras, mockFlockCameras, defaultResources } from '../data/mockData';
-import MapView from '../components/common/MapView';
+import MapView, { type GeoJsonLayerSpec } from '../components/common/MapView';
+import { useSettings } from '../hooks/useLocalStorage';
+import { fetchEarthquakes, fetchWeatherAlerts } from '../services/geoFeeds';
 
 const defaultFilter: MapFilter = {
   satellites: true,
@@ -20,11 +22,34 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
+  const [settings] = useSettings();
   const [mapFilter, setMapFilter] = useState<MapFilter>(defaultFilter);
+  const anyLive = settings.enableLiveAircraft || settings.enableLiveSatellites || settings.enableLiveShips;
+
+  const [showQuakes, setShowQuakes] = useState(false);
+  const [showWeather, setShowWeather] = useState(false);
+  const [showHeat, setShowHeat] = useState(false);
+  const [geoLayers, setGeoLayers] = useState<GeoJsonLayerSpec[]>([]);
 
   const toggleFilter = (key: keyof MapFilter) => {
     setMapFilter((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  // Fetch keyless GeoJSON feeds when their toggle is on.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const layers: GeoJsonLayerSpec[] = [];
+      if (showQuakes) {
+        try { layers.push({ id: 'quakes', color: '#f97316', data: await fetchEarthquakes() }); } catch { /* skip */ }
+      }
+      if (showWeather) {
+        try { layers.push({ id: 'weather', color: '#eab308', data: await fetchWeatherAlerts() }); } catch { /* skip */ }
+      }
+      if (!cancelled) setGeoLayers(layers);
+    })();
+    return () => { cancelled = true; };
+  }, [showQuakes, showWeather]);
 
   const stats = [
     { label: 'Satellites', value: mockSatellites.filter((s) => s.status === 'active').length, icon: Satellite, color: 'text-indigo-400', bg: 'bg-indigo-900/20', id: 'satellites' },
@@ -62,10 +87,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </p>
           </div>
           <div className="ml-auto hidden lg:flex items-center gap-2">
-            <span className="flex items-center gap-1.5 text-xs text-green-400 bg-green-900/20 px-3 py-1.5 rounded-full border border-green-800/50">
-              <span className="w-2 h-2 bg-green-500 rounded-full live-indicator" />
-              Live feeds active
-            </span>
+            {anyLive ? (
+              <span className="flex items-center gap-1.5 text-xs text-green-400 bg-green-900/20 px-3 py-1.5 rounded-full border border-green-800/50">
+                <span className="w-2 h-2 bg-green-500 rounded-full live-indicator" />
+                Live feeds active
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-900/20 px-3 py-1.5 rounded-full border border-yellow-800/50">
+                <span className="w-2 h-2 bg-yellow-500 rounded-full" />
+                Sample data — enable live feeds in Settings
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -113,6 +145,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               {label}
             </button>
           ))}
+          {/* Keyless real-time GeoJSON feeds + density */}
+          {[
+            { on: showQuakes, set: setShowQuakes, label: '🌎 Earthquakes', color: 'border-orange-500 bg-orange-900/20 text-orange-400' },
+            { on: showWeather, set: setShowWeather, label: '⛈️ Weather Alerts', color: 'border-yellow-500 bg-yellow-900/20 text-yellow-400' },
+            { on: showHeat, set: setShowHeat, label: '🔥 Heatmap', color: 'border-red-500 bg-red-900/20 text-red-400' },
+          ].map(({ on, set, label, color }) => (
+            <button
+              key={label}
+              onClick={() => set((v) => !v)}
+              className={`text-xs px-3 py-1.5 rounded-full border transition-all font-medium ${
+                on ? color : 'border-gray-700 text-gray-600 bg-transparent hover:border-gray-500'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <MapView
@@ -122,6 +170,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           cameras={mapFilter.cameras ? mockCameras : []}
           flockCameras={mapFilter.flockCameras ? mockFlockCameras : []}
           filter={mapFilter}
+          geoJsonLayers={geoLayers}
+          showHeatmapReal={showHeat}
           height="450px"
         />
       </div>

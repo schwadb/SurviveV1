@@ -1,11 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, Server, Globe, ShieldAlert, MapPin, Clock, Network } from 'lucide-react';
 import {
-  dnsLookup, probeSubdomains, hostIntel, geolocateIp, waybackSnapshot,
-  type DnsResult, type SubdomainResult, type HostIntel, type IpGeo, type WaybackResult,
+  dnsLookup, probeSubdomains, hostIntel, geolocateIp, waybackSnapshot, enrichCves,
+  type DnsResult, type SubdomainResult, type HostIntel, type IpGeo, type WaybackResult, type CveInfo,
 } from '../../services/osint';
 
+const CVE_BADGE: Record<string, string> = {
+  CRITICAL: 'badge-red', HIGH: 'badge-red', MEDIUM: 'badge-yellow', LOW: 'badge-blue',
+};
+
 interface LiveReconProps { value: string; kind: 'email' | 'domain' | 'ip' }
+
+const Section: React.FC<{ icon: React.ReactNode; title: string; children: React.ReactNode; badge?: string }> = ({ icon, title, children, badge }) => (
+  <div className="card">
+    <div className="card-header">
+      {icon}
+      <h3 className="section-title">{title}</h3>
+      {badge && <span className="badge badge-blue ml-auto">{badge}</span>}
+    </div>
+    {children}
+  </div>
+);
 
 // Runs real, in-app OSINT lookups against the entered selector and renders the
 // results — turning the Email & Domain page from a link directory into a live
@@ -18,6 +33,17 @@ const LiveRecon: React.FC<LiveReconProps> = ({ value, kind }) => {
   const [host, setHost] = useState<HostIntel | null>(null);
   const [geo, setGeo] = useState<IpGeo | null>(null);
   const [wayback, setWayback] = useState<WaybackResult | null>(null);
+  const [cves, setCves] = useState<Record<string, CveInfo>>({});
+
+  // Enrich CVEs with CVSS from NVD once host intel loads (throttled, best-effort).
+  useEffect(() => {
+    if (kind !== 'ip' || !host || !host.vulns.length) return;
+    let cancelled = false;
+    enrichCves(host.vulns).then((list) => {
+      if (!cancelled) setCves(Object.fromEntries(list.map((c) => [c.id, c])));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [host, kind]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,17 +70,6 @@ const LiveRecon: React.FC<LiveReconProps> = ({ value, kind }) => {
     run();
     return () => { cancelled = true; };
   }, [value, kind]);
-
-  const Section: React.FC<{ icon: React.ReactNode; title: string; children: React.ReactNode; badge?: string }> = ({ icon, title, children, badge }) => (
-    <div className="card">
-      <div className="card-header">
-        {icon}
-        <h3 className="section-title">{title}</h3>
-        {badge && <span className="badge badge-blue ml-auto">{badge}</span>}
-      </div>
-      {children}
-    </div>
-  );
 
   return (
     <div className="space-y-4">
@@ -83,9 +98,17 @@ const LiveRecon: React.FC<LiveReconProps> = ({ value, kind }) => {
                 </div>
                 {host.vulns.length > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {host.vulns.map((v) => (
-                      <a key={v} href={`https://nvd.nist.gov/vuln/detail/${v}`} target="_blank" rel="noopener noreferrer" className="badge badge-red text-xs hover:underline">{v}</a>
-                    ))}
+                    {host.vulns.map((v) => {
+                      const info = cves[v];
+                      const badge = info?.severity ? (CVE_BADGE[info.severity] ?? 'badge-red') : 'badge-red';
+                      return (
+                        <a key={v} href={`https://nvd.nist.gov/vuln/detail/${v}`} target="_blank" rel="noopener noreferrer"
+                          title={info?.summary ?? ''}
+                          className={`badge ${badge} text-xs hover:underline`}>
+                          {v}{info?.cvss != null ? ` · ${info.cvss}` : ''}
+                        </a>
+                      );
+                    })}
                   </div>
                 )}
               </div>

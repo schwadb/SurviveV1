@@ -6,7 +6,8 @@ import {
   Plus, AlertTriangle, Sparkles, Link, Clock,
 } from 'lucide-react';
 import { useSearchHistory } from '../hooks/useSearchHistory';
-import { useLocalStorage, useSettings } from '../hooks/useLocalStorage';
+import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useKeyVault } from '../hooks/useKeyVault';
 import SearchHistory from '../components/common/SearchHistory';
 import { ExportBar } from '../components/common/ExportImport';
 import { perplexitySearch } from '../services/api';
@@ -398,7 +399,8 @@ const DorkBuilder: React.FC = () => {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [presets, setPresets] = useLocalStorage<SavedDork[]>('watcher-dork-presets', []);
-  const [settings] = useSettings();
+  const { getKey } = useKeyVault();
+  const perplexityApiKey = getKey('perplexityApiKey');
   const { addEntry } = useSearchHistory();
 
   // URL sync — on mount parse ?q=
@@ -475,11 +477,11 @@ const DorkBuilder: React.FC = () => {
 
   const fetchAI = async () => {
     if (!aiTarget.trim()) { toast.error('Enter a target description first'); return; }
-    if (!settings.perplexityApiKey) { toast.error('Add Perplexity API key in Settings'); return; }
+    if (!perplexityApiKey) { toast.error('Add Perplexity API key in Settings'); return; }
     setAiLoading(true); setAiSuggestions([]);
     try {
       const prompt = `Generate exactly 5 Google dork queries for OSINT recon targeting: "${aiTarget}". Return ONLY raw dork strings, one per line, no explanations or numbering.`;
-      const { content } = await perplexitySearch(prompt, settings.perplexityApiKey);
+      const { content } = await perplexitySearch(prompt, perplexityApiKey);
       const lines = content.split('\n').map(l => l.trim().replace(/^\d+\.\s*/, '').replace(/^[-*]\s*/, '')).filter(l => l.length > 3 && !l.startsWith('#'));
       setAiSuggestions(lines.slice(0, 8));
     } catch { toast.error('AI request failed — check your API key.'); }
@@ -588,7 +590,7 @@ const DorkBuilder: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <Sparkles size={16} className="text-violet-400" />
                   <span>AI Dork Suggestions</span>
-                  {!settings.perplexityApiKey && <span className="text-xs text-gray-600">(API key required)</span>}
+                  {!perplexityApiKey && <span className="text-xs text-gray-600">(API key required)</span>}
                 </div>
                 {showAI ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>

@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   dnsLookup, probeSubdomains, hostIntel, geolocateIp, waybackSnapshot,
-  githubUser, sha256Hex, detectSelectorType,
+  githubUser, sha256Hex, detectSelectorType, enrichCves,
 } from './osint';
 
 export type EntityType =
@@ -205,16 +205,24 @@ export async function runPivot(entity: Entity, pivot: string): Promise<PivotOutp
       const r = await hostIntel(v);
       if (r.error) return EMPTY(r.error);
       const nodes: PivotNode[] = r.hostnames.slice(0, 8).map((h) => ({ type: 'domain' as EntityType, label: h, edgeLabel: 'reverse DNS' }));
+      // Enrich the top CVEs with CVSS from NVD (throttled; degrades gracefully).
+      const cveInfo = r.vulns.length ? await enrichCves(r.vulns) : [];
+      const cvssMax = cveInfo.reduce((m, c) => Math.max(m, c.cvss ?? 0), 0);
+      const worst = cveInfo.filter((c) => c.cvss != null).sort((a, b) => (b.cvss ?? 0) - (a.cvss ?? 0))[0];
       return {
         attrs: {
           openPorts: r.ports.join(', ') || 'none',
           cveCount: String(r.vulns.length),
           cves: r.vulns.slice(0, 10).join(', '),
+          cvssMax: cvssMax ? String(cvssMax) : '',
           tags: r.tags.join(', '),
         },
         nodes,
-        evidence: [{ source: 'Shodan InternetDB', summary: `${r.ports.length} ports, ${r.vulns.length} CVEs on ${v}`, raw: JSON.stringify(r) }],
-        note: `${r.ports.length} open ports, ${r.vulns.length} known CVEs${r.vulns.length ? ` (${r.vulns.slice(0, 3).join(', ')}…)` : ''}.`,
+        evidence: [
+          { source: 'Shodan InternetDB', summary: `${r.ports.length} ports, ${r.vulns.length} CVEs on ${v}`, raw: JSON.stringify(r) },
+          ...(worst ? [{ source: 'NVD', summary: `Worst CVE ${worst.id}: CVSS ${worst.cvss} ${worst.severity ?? ''}`, raw: JSON.stringify(cveInfo) }] : []),
+        ],
+        note: `${r.ports.length} open ports, ${r.vulns.length} known CVEs${cvssMax ? ` (max CVSS ${cvssMax})` : ''}.`,
       };
     }
 

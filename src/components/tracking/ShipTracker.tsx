@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Ship, Anchor, RefreshCw, ExternalLink, Search } from 'lucide-react';
 import type { Ship as ShipType, MapFilter } from '../../types';
 import { mockShips } from '../../data/mockData';
+import { connectAISStream } from '../../services/api';
+import { useSettings } from '../../hooks/useLocalStorage';
+import { useKeyVault } from '../../hooks/useKeyVault';
 import MapView from '../common/MapView';
 
 const defaultFilter: MapFilter = {
@@ -13,15 +16,38 @@ const defaultFilter: MapFilter = {
 };
 
 const ShipTracker: React.FC = () => {
+  const [settings] = useSettings();
+  const { getKey } = useKeyVault();
+  const aisKey = getKey('aisStreamApiKey');
   const [ships, setShips] = useState<ShipType[]>(mockShips);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLive, setIsLive] = useState(false);
   const [selectedShip, setSelectedShip] = useState<ShipType | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const shipMapRef = useRef<Map<string, ShipType>>(new Map());
 
-  const shipTypes = ['all', ...Array.from(new Set(mockShips.map((s) => s.type)))];
+  const shipTypes = ['all', ...Array.from(new Set(ships.map((s) => s.type)))];
+
+  // Live AIS stream (AISStream.io). Vessels arrive one PositionReport at a time,
+  // so accumulate into a keyed map and flush to state at 1 Hz (never per-message).
+  useEffect(() => {
+    if (!settings.enableLiveShips || !aisKey) { setIsLive(false); return; }
+    shipMapRef.current = new Map();
+    const ws = connectAISStream(aisKey, (vessels) => {
+      for (const v of vessels) shipMapRef.current.set(v.mmsi, v);
+    });
+    wsRef.current = ws;
+    setIsLive(true);
+    const flush = setInterval(() => {
+      if (shipMapRef.current.size) setShips(Array.from(shipMapRef.current.values()));
+    }, 1000);
+    return () => { clearInterval(flush); ws.close(); wsRef.current = null; };
+  }, [settings.enableLiveShips, aisKey]);
 
   const handleRefresh = () => {
+    if (isLive) return; // live feed streams continuously; nothing to refresh
     setIsLoading(true);
     setTimeout(() => {
       setShips((prev) =>
@@ -79,6 +105,14 @@ const ShipTracker: React.FC = () => {
         </div>
       </div>
 
+      {/* Live-feed enabled but no key */}
+      {settings.enableLiveShips && !aisKey && (
+        <div className="bg-amber-900/20 border border-amber-700/50 rounded-xl p-3 text-xs text-amber-300">
+          Live ships is enabled but no AISStream.io API key is set.{' '}
+          <a href="/settings" className="underline hover:text-amber-200">Add a key in Settings</a> to stream live vessels.
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -107,7 +141,10 @@ const ShipTracker: React.FC = () => {
         <div className="card-header">
           <Ship size={18} className="text-cyan-400" />
           <h3 className="section-title">Live Ship Positions</h3>
-          <span className="badge badge-blue ml-auto">{filtered.length} vessels</span>
+          {isLive
+            ? <span className="badge badge-green ml-auto">● AISStream live</span>
+            : <span className="badge badge-yellow ml-auto">sample data</span>}
+          <span className="badge badge-blue">{filtered.length} vessels</span>
         </div>
         <MapView ships={filtered} filter={defaultFilter} height="380px" center={[20, 0]} zoom={2} />
 

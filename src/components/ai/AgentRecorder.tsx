@@ -25,6 +25,15 @@ export default function AgentRecorder() {
 
   async function loadSessions() {
     const all = await getSessions()
+    // Any session still 'recording' after a reload is orphaned — its capture loop
+    // no longer exists (stopFnsRef is empty), so it can never truly be stopped or
+    // captures nothing. Downgrade to 'paused' so the UI is honest and controllable.
+    for (const s of all) {
+      if (s.status === 'recording' && !stopFnsRef.current[s.id]) {
+        s.status = 'paused'
+        await updateSession(s)
+      }
+    }
     setSessions(all.sort((a, b) => b.startTime.localeCompare(a.startTime)))
     setLoading(false)
   }

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Phone, Search, ExternalLink, AlertTriangle, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { useKeyVault } from '../../hooks/useKeyVault';
+import { lookupPhoneNumber } from '../../services/api';
 
 interface PhoneResult {
   number: string;
@@ -23,11 +25,10 @@ const PHONE_RESOURCES = [
 ];
 
 const PhoneLookup: React.FC = () => {
+  const { getKey } = useKeyVault();
   const [phone, setPhone] = useState('');
   const [result, setResult] = useState<PhoneResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  // Read API key for potential future use (stored in settings)
-  void localStorage.getItem('watcher-numverify-key');
 
   const formatPhone = (input: string) => {
     const cleaned = input.replace(/\D/g, '');
@@ -41,20 +42,44 @@ const PhoneLookup: React.FC = () => {
     setIsLoading(true);
     setResult(null);
 
-    // Simulate a lookup (in production this would call numverify or similar API)
-    await new Promise((r) => setTimeout(r, 1500));
+    const key = getKey('numverifyApiKey');
+    if (!key) {
+      // No key: honest format-only validation — never fabricate carrier data.
+      const cleaned = phone.replace(/\D/g, '');
+      setResult({
+        number: formatPhone(phone),
+        isValid: cleaned.length >= 10,
+        spamLikelihood: 'Add a NumVerify key in Settings for carrier/line data',
+      });
+      setIsLoading(false);
+      return;
+    }
 
-    const cleaned = phone.replace(/\D/g, '');
-    setResult({
-      number: formatPhone(phone),
-      isValid: cleaned.length >= 10,
-      country: cleaned.startsWith('1') || cleaned.length === 10 ? 'United States' : 'Unknown',
-      carrier: cleaned.length >= 10 ? 'Carrier lookup requires API key' : undefined,
-      lineType: 'mobile',
-      location: 'Requires carrier lookup API',
-      spamLikelihood: 'Unknown - check TrueCaller',
-    });
-    setIsLoading(false);
+    try {
+      const d = await lookupPhoneNumber(formatPhone(phone).replace('+', ''), key) as {
+        valid: boolean; international_format?: string; country_name?: string;
+        carrier?: string; line_type?: string; location?: string;
+        success?: boolean; error?: { info: string };
+      };
+      if (d.success === false) throw new Error(d.error?.info ?? 'Lookup failed');
+      setResult({
+        number: d.international_format || formatPhone(phone),
+        isValid: d.valid,
+        country: d.country_name || undefined,
+        carrier: d.carrier || 'Unknown',
+        lineType: d.line_type || undefined,
+        location: d.location || undefined,
+        spamLikelihood: 'Cross-check with TrueCaller',
+      });
+    } catch (e) {
+      setResult({
+        number: formatPhone(phone),
+        isValid: false,
+        spamLikelihood: e instanceof Error ? e.message : 'Lookup failed',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Plane, AlertTriangle, RefreshCw, ExternalLink, Search, Filter, Star, MapPin, Download, Zap, Navigation } from 'lucide-react';
+import { Plane, AlertTriangle, RefreshCw, ExternalLink, Search, Filter, Star, MapPin, Download, Zap, Navigation, Hexagon } from 'lucide-react';
 import type { Aircraft, MapFilter } from '../../types';
 import { mockAircraft } from '../../data/mockData';
 import { fetchLiveAircraft, toCSV } from '../../services/api';
@@ -10,6 +10,9 @@ import { useGeolocation } from '../../hooks/useGeolocation';
 import { useNotifications } from '../../hooks/useNotifications';
 import { detectJammingZones } from '../../services/jammingDetector';
 import { useAirspaceZones } from './AirspaceLayer';
+import { useGeofences } from '../../hooks/useGeofences';
+import { fencesContaining } from '../../services/geofence';
+import { useKeyVault } from '../../hooks/useKeyVault';
 import IntelSummary from '../ai/IntelSummary';
 import { RenderModeToggle, RenderModeProvider } from '../common/RenderModeToggle';
 import toast from 'react-hot-toast';
@@ -34,11 +37,15 @@ const AircraftTracker: React.FC = () => {
   const [showJamming, setShowJamming] = useState(true);
   const [showAirspace, setShowAirspace] = useState(false);
   const { lat: userLat, lng: userLng, locate } = useGeolocation();
-  const { notifyEmergency } = useNotifications();
+  const { notifyEmergency, notify } = useNotifications();
   useAirspaceZones(showAirspace);
+  const { fences, addFence } = useGeofences();
+  const { getKey } = useKeyVault();
+  const [drawing, setDrawing] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const knownEmergencies = useRef<Set<string>>(new Set());
   const watchedSeen = useRef<Set<string>>(new Set());
+  const geoInsideRef = useRef<Set<string>>(new Set());
 
   const jammingZones = useMemo(
     () => (showJamming ? detectJammingZones(aircraft) : []),
@@ -111,6 +118,28 @@ const AircraftTracker: React.FC = () => {
     intervalRef.current = setInterval(() => fetchDataRef.current(), settings.refreshInterval * 1000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [settings.refreshInterval, settings.enableLiveAircraft]);
+
+  // Geofence enter/exit — alert only on transitions, never every refresh.
+  useEffect(() => {
+    if (!fences.length) { geoInsideRef.current = new Set(); return; }
+    const fenceName = new Map(fences.map((f) => [f.id, f.name]));
+    const nowInside = new Set<string>();
+    for (const ac of aircraft) {
+      if (!ac.lat || !ac.lng) continue;
+      for (const f of fencesContaining(ac.lat, ac.lng, fences)) {
+        const key = `${f.id}:${ac.icao}`;
+        nowInside.add(key);
+        if (!geoInsideRef.current.has(key)) notify('Geofence', `${ac.callsign} entered ${f.name}`, { type: 'warning' });
+      }
+    }
+    for (const key of geoInsideRef.current) {
+      if (!nowInside.has(key)) {
+        const [fenceId, icao] = key.split(':');
+        notify('Geofence', `${icao} left ${fenceName.get(fenceId) ?? 'fence'}`, { type: 'success' });
+      }
+    }
+    geoInsideRef.current = nowInside;
+  }, [aircraft, fences, notify]);
 
   // Watchlist matching — dedupe so each watched aircraft only alerts once.
   useEffect(() => {
@@ -201,6 +230,14 @@ const AircraftTracker: React.FC = () => {
             <Navigation size={13} />
             <span className="hidden sm:inline">TFRs</span>
           </button>
+          <button
+            onClick={() => setDrawing(v => !v)}
+            className={`btn-secondary text-xs ${drawing ? 'border-purple-600 text-purple-400' : ''}`}
+            title="Draw a geofence — get alerted when aircraft enter/exit it"
+          >
+            <Hexagon size={13} />
+            <span className="hidden sm:inline">{drawing ? 'Drawing…' : 'Geofence'}</span>
+          </button>
         </div>
 
         {/* Live status bar */}
@@ -250,6 +287,9 @@ const AircraftTracker: React.FC = () => {
           cluster={settings.clusterMarkers}
           trails={settings.showTrails ? trails : {}}
           jammingZones={showJamming ? jammingZones : []}
+          geofences={fences}
+          drawing={drawing}
+          onGeofenceDraw={(ring) => { addFence(ring); setDrawing(false); }}
           onMarkerClick={(_, id) => {
             const ac = aircraft.find((a) => a.icao === id);
             if (ac) setSelectedAc(ac);
@@ -382,7 +422,7 @@ const AircraftTracker: React.FC = () => {
       )}
 
       {/* Event Correlation Intelligence */}
-      <IntelSummary aircraft={aircraft} jammingZones={jammingZones} />
+      <IntelSummary aircraft={aircraft} jammingZones={jammingZones} perplexityApiKey={getKey('perplexityApiKey')} />
     </div>
     </RenderModeProvider>
   );

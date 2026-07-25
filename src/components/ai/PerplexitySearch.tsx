@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Search, Loader2, Send, Trash2, AlertTriangle, ExternalLink, Sparkles, Key, Clock } from 'lucide-react';
 import { perplexitySearch } from '../../services/api';
 import { useSettings } from '../../hooks/useLocalStorage';
+import { useKeyVault } from '../../hooks/useKeyVault';
 import { useSearchHistory } from '../../hooks/useSearchHistory';
 import SearchHistory from '../common/SearchHistory';
 import toast from 'react-hot-toast';
@@ -29,11 +30,13 @@ const SUGGESTED_QUERIES = [
 ];
 
 const PerplexitySearch: React.FC = () => {
-  const [settings, setSettings] = useSettings();
+  const [, setSettings] = useSettings();
+  const { getKey } = useKeyVault();
+  const perplexityApiKey = getKey('perplexityApiKey');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showKeyInput, setShowKeyInput] = useState(!settings.perplexityApiKey);
+  const [showKeyInput, setShowKeyInput] = useState(!perplexityApiKey);
   const [tempKey, setTempKey] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -54,7 +57,7 @@ const PerplexitySearch: React.FC = () => {
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
-    if (!settings.perplexityApiKey) { setShowKeyInput(true); return; }
+    if (!perplexityApiKey) { setShowKeyInput(true); return; }
 
     const query = input.trim();
     const userMessage: Message = {
@@ -70,7 +73,7 @@ const PerplexitySearch: React.FC = () => {
     addEntry({ query, type: 'ai' });
 
     try {
-      const { content, citations } = await perplexitySearch(query, settings.perplexityApiKey);
+      const { content, citations } = await perplexitySearch(query, perplexityApiKey);
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -146,7 +149,7 @@ const PerplexitySearch: React.FC = () => {
             <button onClick={saveApiKey} disabled={!tempKey.trim()} className="btn-primary">
               <Key size={15} />Save
             </button>
-            {settings.perplexityApiKey && (
+            {perplexityApiKey && (
               <button onClick={() => setShowKeyInput(false)} className="btn-secondary">Cancel</button>
             )}
           </div>
@@ -165,7 +168,7 @@ const PerplexitySearch: React.FC = () => {
             </button>
             <button onClick={() => setShowKeyInput(!showKeyInput)}
               className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1">
-              <Key size={12} />{settings.perplexityApiKey ? 'Key ✓' : 'Add Key'}
+              <Key size={12} />{perplexityApiKey ? 'Key ✓' : 'Add Key'}
             </button>
             {messages.length > 0 && (
               <button onClick={() => setMessages([])}
@@ -237,10 +240,10 @@ const PerplexitySearch: React.FC = () => {
         <div className="border-t border-gray-800 pt-4">
           <div className="flex gap-2">
             <textarea ref={textareaRef} className="input-field flex-1 resize-none" rows={2}
-              placeholder={settings.perplexityApiKey ? 'Ask an OSINT question... (Enter to send, Shift+Enter for new line)' : 'Add Perplexity API key to start searching...'}
+              placeholder={perplexityApiKey ? 'Ask an OSINT question... (Enter to send, Shift+Enter for new line)' : 'Add Perplexity API key to start searching...'}
               value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
-              disabled={!settings.perplexityApiKey} />
-            <button onClick={handleSend} disabled={!input.trim() || isLoading || !settings.perplexityApiKey}
+              disabled={!perplexityApiKey} />
+            <button onClick={handleSend} disabled={!input.trim() || isLoading || !perplexityApiKey}
               className="btn-primary self-end">
               {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             </button>

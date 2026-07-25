@@ -1,13 +1,44 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// Explicit egress allowlist — every host the app is allowed to reach. Injected
+// only into the production build so Vite's dev HMR (inline scripts/eval) is not
+// broken. script-src 'self' is the key XSS control; style needs 'unsafe-inline'
+// because Leaflet/react-hot-toast rely on inline styles.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://gibs.earthdata.nasa.gov https://*.tile.openstreetmap.org",
+  "connect-src 'self' https://opensky-network.org https://celestrak.org wss://stream.aisstream.io " +
+    "https://api.perplexity.ai https://nominatim.openstreetmap.org https://apilayer.net " +
+    "https://dns.google https://internetdb.shodan.io https://ipwho.is https://api.pwnedpasswords.com " +
+    "https://archive.org https://web.archive.org https://api.github.com https://haveibeenpwned.com " +
+    "https://services.nvd.nist.gov https://earthquake.usgs.gov https://api.weather.gov https://gibs.earthdata.nasa.gov",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'none'",
+].join('; ')
+
+function cspPlugin(): Plugin {
+  return {
+    name: 'inject-csp',
+    apply: 'build',
+    transformIndexHtml(html) {
+      return html.replace('</title>', `</title>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`)
+    },
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
+    cspPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: 'script', // external registerSW.js (no inline script → CSP-safe)
       includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
         name: 'WatcherV1 - OSINT Platform',
@@ -59,7 +90,7 @@ export default defineConfig({
             options: { cacheName: 'celestrak-cache', expiration: { maxAgeSeconds: 300 } },
           },
           {
-            urlPattern: /^https:\/\/{s}\.basemaps\.cartocdn\.com\//,
+            urlPattern: /^https:\/\/[a-d]\.basemaps\.cartocdn\.com\//,
             handler: 'CacheFirst',
             options: { cacheName: 'map-tiles', expiration: { maxEntries: 500, maxAgeSeconds: 86400 } },
           },

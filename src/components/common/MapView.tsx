@@ -1,10 +1,15 @@
 import React, { useEffect, useRef, useMemo } from 'react';
+import 'leaflet-draw/dist/leaflet.draw.css';
+import type { FeatureCollection } from 'geojson';
 import type { Satellite, Aircraft, Ship, Camera, FlockCamera, MapFilter } from '../../types';
 import type { JammingZone } from '../../services/jammingDetector';
 import type { AirspaceZone } from '../../services/airspaceApi';
+import type { Geofence } from '../../services/geofence';
 import { AIRSPACE_COLORS } from '../../services/airspaceApi';
+import { gibsTileUrl, GIBS_MAX_ZOOM } from '../../services/geoFeeds';
 
 interface TrailPoint { lat: number; lng: number; t: number }
+export interface GeoJsonLayerSpec { id: string; data: FeatureCollection; color: string }
 
 interface MapViewProps {
   satellites?: Satellite[];
@@ -24,6 +29,14 @@ interface MapViewProps {
   onMapClick?: (lat: number, lng: number) => void;
   jammingZones?: JammingZone[];
   airspaceZones?: AirspaceZone[];
+  // GEOINT additions
+  basemap?: 'dark' | 'satellite';
+  showHeatmapReal?: boolean;
+  showTerminator?: boolean;
+  geoJsonLayers?: GeoJsonLayerSpec[];
+  geofences?: Geofence[];
+  drawing?: boolean;
+  onGeofenceDraw?: (ring: [number, number][]) => void;
 }
 
 const MapView: React.FC<MapViewProps> = ({
@@ -44,12 +57,25 @@ const MapView: React.FC<MapViewProps> = ({
   onMapClick,
   jammingZones = [],
   airspaceZones = [],
+  basemap = 'dark',
+  showHeatmapReal = false,
+  showTerminator = false,
+  geoJsonLayers = [],
+  geofences = [],
+  drawing = false,
+  onGeofenceDraw,
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<import('leaflet').Map | null>(null);
   const layersRef = useRef<import('leaflet').Layer[]>([]);
   const userMarkerRef = useRef<import('leaflet').Marker | null>(null);
   const heatLayerRef = useRef<unknown>(null);
+  const realHeatRef = useRef<import('leaflet').Layer | null>(null);
+  const terminatorRef = useRef<{ layer: import('leaflet').Layer; timer: ReturnType<typeof setInterval> } | null>(null);
+  const drawRef = useRef<import('leaflet').Control | null>(null);
+  const geoOverlayRef = useRef<import('leaflet').Layer[]>([]);
+  const onGeofenceDrawRef = useRef(onGeofenceDraw);
+  onGeofenceDrawRef.current = onGeofenceDraw;
 
   // Initialize map once
   useEffect(() => {
@@ -66,14 +92,22 @@ const MapView: React.FC<MapViewProps> = ({
         preferCanvas: true, // Better performance for many markers
       });
 
-      L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com">CARTO</a>',
-          subdomains: 'abcd',
-          maxZoom: 20,
-        }
-      ).addTo(map);
+      if (basemap === 'satellite') {
+        L.tileLayer(gibsTileUrl(), {
+          attribution: '&copy; NASA GIBS / EOSDIS',
+          maxZoom: GIBS_MAX_ZOOM,
+          tileSize: 256,
+        }).addTo(map);
+      } else {
+        L.tileLayer(
+          'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+          {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 20,
+          }
+        ).addTo(map);
+      }
 
       mapInstance.current = map;
 
@@ -365,6 +399,113 @@ const MapView: React.FC<MapViewProps> = ({
       }
     });
   }, [jammingZones, airspaceZones]);
+
+  // ── GeoJSON feed layers + geofence polygons ─────────────────────────────────
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+    import('leaflet').then((L) => {
+      geoOverlayRef.current.forEach((l) => l.remove());
+      geoOverlayRef.current = [];
+
+      for (const spec of geoJsonLayers) {
+        const layer = L.geoJSON(spec.data, {
+          style: { color: spec.color, weight: 1.5, fillColor: spec.color, fillOpacity: 0.15 },
+          pointToLayer: (_f, latlng) =>
+            L.circleMarker(latlng, { radius: 5, color: spec.color, fillColor: spec.color, fillOpacity: 0.7, weight: 1 }),
+          onEachFeature: (f, lyr) => {
+            const p = (f.properties ?? {}) as Record<string, unknown>;
+            const title = String(p.title ?? p.place ?? p.event ?? p.headline ?? spec.id);
+            lyr.bindPopup(`<div style="color:#e2e8f0;max-width:240px">${title}</div>`);
+          },
+        });
+        layer.addTo(map);
+        geoOverlayRef.current.push(layer);
+      }
+
+      // Geofence rings (stored as [lng,lat] GeoJSON order → convert to [lat,lng] for Leaflet)
+      for (const f of geofences) {
+        if (f.ring.length < 3) continue;
+        const latlngs = f.ring.map(([lng, lat]) => [lat, lng] as [number, number]);
+        const poly = L.polygon(latlngs, { color: '#a855f7', weight: 2, fillColor: '#a855f7', fillOpacity: 0.08, dashArray: '5 5' })
+          .bindTooltip(`<b style="color:#c084fc">${f.name}</b>`, { sticky: true });
+        poly.addTo(map);
+        geoOverlayRef.current.push(poly);
+      }
+    });
+  }, [geoJsonLayers, geofences]);
+
+  // ── Real heatmap (leaflet.heat) ─────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+    import('leaflet').then(async (L) => {
+      if (realHeatRef.current) { map.removeLayer(realHeatRef.current); realHeatRef.current = null; }
+      if (!showHeatmapReal) return;
+      await import('leaflet.heat');
+      const pts: [number, number, number][] = [
+        ...aircraft.filter((a) => a.lat && a.lng).map((a) => [a.lat, a.lng, 0.6] as [number, number, number]),
+        ...ships.filter((s) => s.lat && s.lng).map((s) => [s.lat, s.lng, 0.6] as [number, number, number]),
+        ...cameras.filter((c) => c.lat && c.lng).map((c) => [c.lat, c.lng, 0.8] as [number, number, number]),
+        ...flockCameras.filter((f) => f.lat && f.lng).map((f) => [f.lat, f.lng, 1] as [number, number, number]),
+      ];
+      if (!pts.length) return;
+      const heat = (L as unknown as { heatLayer: (p: unknown[], o: unknown) => import('leaflet').Layer })
+        .heatLayer(pts, { radius: 25, blur: 15, maxZoom: 8 });
+      heat.addTo(map);
+      realHeatRef.current = heat;
+    });
+  }, [showHeatmapReal, aircraft, ships, cameras, flockCameras]);
+
+  // ── Day/night terminator ────────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+    let disposed = false;
+    if (!showTerminator) {
+      if (terminatorRef.current) { terminatorRef.current.layer.remove(); clearInterval(terminatorRef.current.timer); terminatorRef.current = null; }
+      return;
+    }
+    import('@joergdietrich/leaflet.terminator').then((mod) => {
+      if (disposed || terminatorRef.current) return;
+      const Terminator = (mod as { default: () => import('leaflet').Layer & { setTime?: () => void } }).default;
+      const t = Terminator();
+      t.addTo(map);
+      const timer = setInterval(() => t.setTime?.(), 60_000);
+      terminatorRef.current = { layer: t, timer };
+    });
+    return () => {
+      disposed = true;
+      if (terminatorRef.current) { terminatorRef.current.layer.remove(); clearInterval(terminatorRef.current.timer); terminatorRef.current = null; }
+    };
+  }, [showTerminator]);
+
+  // ── Draw control for geofences ──────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+    let cleanup = () => {};
+    import('leaflet').then(async (L) => {
+      await import('leaflet-draw');
+      if (!drawing) { if (drawRef.current) { map.removeControl(drawRef.current); drawRef.current = null; } return; }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const LD = L as any;
+      const control = new LD.Control.Draw({
+        draw: { polygon: true, rectangle: true, circle: false, circlemarker: false, marker: false, polyline: false },
+        edit: undefined,
+      });
+      map.addControl(control);
+      drawRef.current = control;
+      const handler = (e: { layer: { getLatLngs: () => { lat: number; lng: number }[][] } }) => {
+        const latlngs = e.layer.getLatLngs()[0];
+        const ring = latlngs.map((p) => [p.lng, p.lat] as [number, number]); // → GeoJSON [lng,lat]
+        onGeofenceDrawRef.current?.(ring);
+      };
+      map.on(LD.Draw.Event.CREATED, handler as (e: unknown) => void);
+      cleanup = () => { map.off(LD.Draw.Event.CREATED, handler as (e: unknown) => void); if (drawRef.current) { map.removeControl(drawRef.current); drawRef.current = null; } };
+    });
+    return () => cleanup();
+  }, [drawing]);
 
   return (
     <div

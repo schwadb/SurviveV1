@@ -1,15 +1,32 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Settings as SettingsIcon, Key, Save, RefreshCw, Moon, Sun, Bell,
-  Globe, Gauge, Wifi, Activity, Layers, Navigation
+  Globe, Gauge, Wifi, Activity, Layers, Navigation, Lock, Unlock
 } from 'lucide-react';
 import { useSettings, type AppSettings } from '../../hooks/useLocalStorage';
 import { useNotifications } from '../../hooks/useNotifications';
+import { useKeyVault } from '../../hooks/useKeyVault';
+import { passphraseStrength } from '../../services/vault';
 import toast from 'react-hot-toast';
 
 const Settings: React.FC = () => {
   const [settings, setSettings] = useSettings();
   const { permission, requestPermission } = useNotifications();
+  const { vaultEnabled, locked, enableVault, disableVault, unlock, lock } = useKeyVault();
+  const [vaultPass, setVaultPass] = useState('');
+
+  const handleEnableVault = async () => {
+    try { await enableVault(vaultPass); setVaultPass(''); toast.success('Keys encrypted in vault'); }
+    catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to enable vault'); }
+  };
+  const handleUnlock = async () => {
+    try { await unlock(vaultPass); setVaultPass(''); toast.success('Vault unlocked'); }
+    catch (e) { toast.error(e instanceof Error ? e.message : 'Wrong passphrase'); }
+  };
+  const handleDisableVault = async () => {
+    try { await disableVault(vaultPass); setVaultPass(''); toast.success('Vault disabled — keys restored to plaintext'); }
+    catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to disable vault'); }
+  };
 
   const update = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) =>
     setSettings(prev => ({ ...prev, [key]: value }));
@@ -78,7 +95,15 @@ const Settings: React.FC = () => {
         <div className="card-header">
           <Key size={18} className="text-yellow-400" />
           <h3 className="section-title">API Keys</h3>
+          {vaultEnabled && <span className="badge badge-blue ml-auto">🔒 stored in vault</span>}
         </div>
+        {vaultEnabled ? (
+          <p className="text-sm text-gray-400">
+            API keys are encrypted in the local vault. {locked
+              ? 'Unlock the vault below to use them.'
+              : 'The vault is unlocked for this session.'} Manage the vault in the card below or disable it to edit keys in plaintext.
+          </p>
+        ) : (
         <div className="space-y-4">
           {[
             {
@@ -132,6 +157,54 @@ const Settings: React.FC = () => {
             </div>
           ))}
         </div>
+        )}
+      </div>
+
+      {/* Secure Vault */}
+      <div className="card">
+        <div className="card-header">
+          <Lock size={18} className="text-indigo-400" />
+          <h3 className="section-title">Secure Key Vault</h3>
+          <span className="badge badge-blue ml-auto">AES-256-GCM</span>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">
+          Encrypt your API keys at rest with a passphrase (PBKDF2). Keys never leave the browser and are
+          held in memory only while unlocked. Without the vault, keys are stored in plaintext localStorage.
+        </p>
+
+        {!vaultEnabled ? (
+          <div className="space-y-2">
+            <input type="password" className="input-field" placeholder="Choose a passphrase"
+              value={vaultPass} onChange={e => setVaultPass(e.target.value)} />
+            {vaultPass && (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-gray-800 rounded overflow-hidden">
+                  <div className="h-full transition-all" style={{
+                    width: `${(passphraseStrength(vaultPass).score / 4) * 100}%`,
+                    background: passphraseStrength(vaultPass).score >= 3 ? '#22c55e' : passphraseStrength(vaultPass).score >= 2 ? '#eab308' : '#ef4444',
+                  }} />
+                </div>
+                <span className="text-xs text-gray-500">{passphraseStrength(vaultPass).label}</span>
+              </div>
+            )}
+            <button onClick={handleEnableVault} disabled={!vaultPass} className="btn-primary text-sm">
+              <Lock size={14} /> Encrypt keys
+            </button>
+          </div>
+        ) : locked ? (
+          <div className="flex gap-2">
+            <input type="password" className="input-field flex-1" placeholder="Passphrase to unlock"
+              value={vaultPass} onChange={e => setVaultPass(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleUnlock()} />
+            <button onClick={handleUnlock} disabled={!vaultPass} className="btn-primary text-sm"><Unlock size={14} /> Unlock</button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-sm text-green-400">🔓 Vault unlocked for this session.</span>
+            <button onClick={lock} className="btn-secondary text-sm ml-auto"><Lock size={14} /> Lock</button>
+            <button onClick={handleDisableVault} className="btn-secondary text-sm">Disable vault</button>
+          </div>
+        )}
       </div>
 
       {/* Live Data */}

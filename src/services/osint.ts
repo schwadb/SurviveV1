@@ -258,6 +258,55 @@ export async function pwnedPassword(password: string): Promise<PwnedResult> {
   }
 }
 
+// ─── NVD CVE enrichment (keyless, heavily rate-limited: ~5 req/30s) ────────────
+export interface CveInfo {
+  id: string;
+  cvss?: number;
+  severity?: string;
+  summary?: string;
+  published?: string;
+  error?: string;
+}
+
+export async function cveDetails(cveId: string): Promise<CveInfo> {
+  try {
+    const d = await fetchJson<{
+      vulnerabilities?: {
+        cve: {
+          descriptions?: { lang: string; value: string }[];
+          published?: string;
+          metrics?: {
+            cvssMetricV31?: { cvssData: { baseScore: number; baseSeverity: string } }[];
+            cvssMetricV30?: { cvssData: { baseScore: number; baseSeverity: string } }[];
+          };
+        };
+      }[];
+    }>(`https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=${encodeURIComponent(cveId)}`);
+    const cve = d.vulnerabilities?.[0]?.cve;
+    if (!cve) return { id: cveId, error: 'not found' };
+    const metric = cve.metrics?.cvssMetricV31?.[0] ?? cve.metrics?.cvssMetricV30?.[0];
+    return {
+      id: cveId,
+      cvss: metric?.cvssData.baseScore,
+      severity: metric?.cvssData.baseSeverity,
+      summary: cve.descriptions?.find((x) => x.lang === 'en')?.value,
+      published: cve.published?.slice(0, 10),
+    };
+  } catch (e) {
+    return { id: cveId, error: e instanceof Error ? e.message : 'lookup failed' };
+  }
+}
+
+/** Enrich a list of CVE IDs, throttled to stay under NVD's unauthenticated limit. */
+export async function enrichCves(ids: string[], max = 6): Promise<CveInfo[]> {
+  const out: CveInfo[] = [];
+  for (const id of ids.slice(0, max)) {
+    out.push(await cveDetails(id));
+    await new Promise((r) => setTimeout(r, 900)); // ~1 req/s
+  }
+  return out;
+}
+
 // ─── Selector type detection (for the command palette / auto-routing) ──────────
 export type SelectorType = 'ip' | 'email' | 'domain' | 'phone' | 'username' | 'unknown';
 
