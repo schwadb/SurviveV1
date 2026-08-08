@@ -280,6 +280,9 @@ main() {
     if command -v calibredb &>/dev/null; then
         bash "$REPO_DIR/scripts/build_ebook_library.sh" || true
     fi
+
+    # Index the new documents' text for dashboard search + AI retrieval.
+    python3 "$REPO_DIR/scripts/index_documents.py" --storage "$STORAGE_PATH" || true
 }
 
 main "$@"

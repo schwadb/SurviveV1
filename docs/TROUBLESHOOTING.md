@@ -269,6 +269,34 @@ cat config/survive.conf
 
 ---
 
+## Hotspot Mode (Grid-Down Wi-Fi)
+
+`sudo bash scripts/hotspot.sh enable` makes the Pi broadcast its own Wi-Fi
+network (settings in `survive.conf`: `SURVIVE_HOTSPOT_SSID` / `_PASS`).
+The dashboard is then at **http://10.42.0.1:8080** (NetworkManager shared
+mode always gives the Pi 10.42.0.1) — `survive.local` also works on the
+hotspot subnet via mDNS.
+
+**Locked yourself out?** (enabled the AP over Wi-Fi SSH and lost the link):
+plug in Ethernet, or simply **power-cycle the Pi** — the hotspot connection
+is created with `autoconnect no`, so a reboot returns to normal Wi-Fi. This
+is deliberate (a dead-man switch for headless boxes). To make the hotspot
+persistent across reboots instead:
+
+```bash
+sudo nmcli connection modify survive-hotspot connection.autoconnect yes
+```
+
+**Why 2.4 GHz?** The AP uses band `bg` on purpose: it works in every
+regulatory domain (5 GHz AP channels fail silently when the Wi-Fi country is
+unset), every phone supports it, and it penetrates walls better — the right
+trade-off in a disaster.
+
+**AP won't start?** Set your Wi-Fi country first:
+`sudo raspi-config nonint do_wifi_country US` (or your country code).
+
+---
+
 ## Getting Help
 
 - Check service status: `bash scripts/status.sh`

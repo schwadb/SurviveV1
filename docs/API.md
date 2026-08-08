@@ -85,6 +85,7 @@ curl -N -X POST http://localhost:8080/api/ai/chat \
 |-------|------|----------|-------------|
 | `message` | string | yes | User's question (truncated to 4096 chars) |
 | `model` | string | no | Ollama model name (default: `survive`) |
+| `history` | array | no | Prior turns `[{"role": "user"\|"assistant", "content": "..."}]` for multi-turn context. Only `user`/`assistant` roles are accepted (400 otherwise); the server keeps at most the last 8 turns / ~3000 chars. |
 
 **Response (success) — one JSON object per line, in order:**
 ```
@@ -138,6 +139,31 @@ curl http://localhost:8080/api/downloads
 ```
 `status` is one of `complete` (recorded in `.download_progress`),
 `in_progress` (its content dir has grown), or `pending`.
+
+---
+
+## GET /api/system
+
+Machine health (cached 5 s): CPU temperature, Pi firmware throttle state
+(current + since-boot sticky bits), RAM/swap via MemAvailable, load average,
+uptime. All fields degrade to zeros/False on non-Pi hardware.
+
+```bash
+curl http://localhost:8080/api/system
+```
+
+**Response:**
+```json
+{
+  "temperature_c": 52.1,
+  "throttle": {"undervoltage": false, "capped": false, "throttled": false,
+               "soft_temp_limit": false, "occurred_since_boot": false, "raw": "0x0"},
+  "memory": {"total_mb": 16384, "available_mb": 12100, "used_percent": 26.1,
+             "swap_total_mb": 512, "swap_used_percent": 0.0},
+  "load": {"avg_1m": 0.42, "avg_5m": 0.31, "avg_15m": 0.25, "cores": 4},
+  "uptime_days": 3.2
+}
+```
 
 ---
 

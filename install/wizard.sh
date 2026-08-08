@@ -231,6 +231,44 @@ choose_map_region() {
     ok "Map region: ${CHOSEN_MAP_REGION}"
 }
 
+# ── Screen: Grid-down hotspot (optional) ──────────────────────────────────────
+CHOSEN_HOTSPOT="n"
+CHOSEN_HOTSPOT_SSID="SurviveV1"
+CHOSEN_HOTSPOT_PASS="survive2026"
+
+choose_hotspot() {
+    header "Grid-Down Wi-Fi Hotspot (optional)"
+    echo ""
+    echo "  In a grid-down scenario there is no router: the Pi can broadcast its"
+    echo "  own Wi-Fi network so phones and laptops connect to it directly."
+    echo ""
+    echo "  NOTE: enabling the hotspot LATER disconnects the Pi from home Wi-Fi"
+    echo "  (they only coexist with Ethernet). It is NOT enabled during install —"
+    echo "  content downloads need internet. This step just saves your settings."
+    echo ""
+    ask "Configure hotspot settings now? [y/N]: "
+    read -r ans
+    if [[ "${ans:-n}" =~ ^[Yy]$ ]]; then
+        CHOSEN_HOTSPOT="y"
+        ask "Hotspot network name (SSID) [SurviveV1]: "
+        read -r ssid
+        CHOSEN_HOTSPOT_SSID="${ssid:-SurviveV1}"
+        while true; do
+            ask "Hotspot password (8-63 chars) [survive2026]: "
+            read -r pass
+            pass="${pass:-survive2026}"
+            if (( ${#pass} >= 8 && ${#pass} <= 63 )); then
+                CHOSEN_HOTSPOT_PASS="$pass"
+                break
+            fi
+            warn "Password must be 8-63 characters."
+        done
+        ok "Hotspot: ${CHOSEN_HOTSPOT_SSID} (enable later with: sudo bash scripts/hotspot.sh enable)"
+    else
+        info "Skipped — defaults are saved in survive.conf; enable any time."
+    fi
+}
+
 # ── Screen: Summary + confirm ─────────────────────────────────────────────────
 confirm_install() {
     header "Installation Summary"
@@ -254,6 +292,9 @@ confirm_install() {
     info "Hostname:    ${CHOSEN_HOSTNAME}  (http://${CHOSEN_HOSTNAME}.local:8080)"
     info "AI model:    ${ai_model}"
     info "Maps:        ${CHOSEN_MAP_REGION}"
+    if [[ "$CHOSEN_HOTSPOT" == "y" ]]; then
+        info "Hotspot:     ${CHOSEN_HOTSPOT_SSID}  (enable after install)"
+    fi
     info "Repo:        ${REPO_DIR}"
     echo ""
     info "Content download (Wikipedia, videos, books) runs separately after install."
@@ -364,6 +405,10 @@ SURVIVE_AI_MODEL="${ai_model}"
 # ── Map region ─────────────────────────────────────────────────────────────────
 MAP_REGION="${CHOSEN_MAP_REGION}"
 
+# ── Grid-down Wi-Fi hotspot (scripts/hotspot.sh) ───────────────────────────────
+SURVIVE_HOTSPOT_SSID="${CHOSEN_HOTSPOT_SSID}"
+SURVIVE_HOTSPOT_PASS="${CHOSEN_HOTSPOT_PASS}"
+
 # ── Cloud sync ─────────────────────────────────────────────────────────────────
 SURVIVE_CLOUD_REMOTE="gdrive"
 SURVIVE_CLOUD_PATH="SurviveV1"
@@ -456,6 +501,9 @@ show_success() {
     echo "    3. Check service status:"
     echo "       bash ${REPO_DIR}/scripts/status.sh"
     echo ""
+    echo "    4. Grid-down mode (Pi broadcasts its own Wi-Fi, no router needed):"
+    echo "       sudo bash ${REPO_DIR}/scripts/hotspot.sh enable"
+    echo ""
     echo -e "  ${DIM}If survive.local doesn't resolve on Windows, use the IP address above.${NC}"
     echo ""
 }
@@ -476,6 +524,7 @@ main() {
     confirm_format
     choose_hostname
     choose_map_region
+    choose_hotspot
     confirm_install
 
     header "Setup"

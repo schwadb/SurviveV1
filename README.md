@@ -100,6 +100,16 @@ SurviveV1/
 | Ollama AI | 11434 | Local LLM API |
 | Nginx | 80 | Reverse proxy (optional) |
 
+### Grid-down access (no router needed)
+
+```bash
+sudo bash scripts/hotspot.sh enable
+```
+
+The Pi broadcasts its own Wi-Fi network (default SSID `SurviveV1`); connect
+any phone or laptop and open **http://10.42.0.1:8080**. Disable with
+`... disable`; a reboot also returns the Pi to normal Wi-Fi.
+
 ---
 
 ## Cloud Sync

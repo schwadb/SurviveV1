@@ -3,7 +3,7 @@
 #   make help      show all targets
 #   make dev       run the dashboard locally with demo storage
 # =============================================================================
-.PHONY: help install deps test lint smoke check start stop status dev download
+.PHONY: help install deps test lint smoke unit check start stop status dev download
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -16,8 +16,8 @@ deps:  ## Install Python dependencies only (for development)
 	pip install -r requirements.txt
 
 lint:  ## Run pylint + shellcheck
-	pylint web/server.py web/constants.py \
-	  --disable=C0114,C0115,C0116,R0903,R0913,R0914 --fail-under=7.0
+	pylint web/server.py web/constants.py scripts/index_documents.py \
+	  --disable=C0114,C0115,C0116,R0903,R0913,R0914,R0801 --fail-under=7.0
 	@command -v shellcheck >/dev/null && \
 	  shellcheck install/*.sh scripts/*.sh setup/*.sh download/*.sh || \
 	  echo "shellcheck not installed — skipping shell lint"
@@ -25,7 +25,10 @@ lint:  ## Run pylint + shellcheck
 smoke:  ## Run dashboard smoke tests
 	bash tests/test_smoke.sh
 
-test: lint smoke  ## Run all checks (lint + smoke)
+unit:  ## Run Python unit tests
+	python3 -m pytest tests/ -q
+
+test: lint unit smoke  ## Run all checks (lint + unit + smoke)
 
 check: test  ## Alias for test
 

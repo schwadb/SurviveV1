@@ -154,6 +154,9 @@ main() {
     success "Mental health content download complete"
     info "PDFs: $PDF_DIR"
     du -sh "$PDF_DIR" 2>/dev/null || true
+
+    # Index the new documents' text for dashboard search + AI retrieval.
+    python3 "$REPO_DIR/scripts/index_documents.py" --storage "$STORAGE_PATH" || true
 }
 
 main "$@"

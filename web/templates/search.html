@@ -135,7 +135,28 @@
     {% endfor %}
     {% endif %}
 
-    {% if not results and not article_results %}
+    <!-- ── Inside your documents (PDF/EPUB full-text) ─────────── -->
+    {% if doc_results %}
+    <div style="color: var(--text-dim); font-size: 13px; margin: 24px 0 12px;">
+      Inside your documents — <strong style="color:var(--text);">{{ doc_results|length }}</strong>
+      matches in local PDFs and books
+    </div>
+    {% for doc in doc_results %}
+    <a href="/serve/{{ doc.path }}{% if doc.page %}#page={{ doc.page }}{% endif %}"
+       class="result-card" target="_blank">
+      <div class="result-icon">📄</div>
+      <div style="flex:1; min-width:0;">
+        <div class="result-name">{{ doc.title }}</div>
+        <div class="result-path" style="white-space:normal; font-family:var(--font);">{{ doc.snippet }}</div>
+      </div>
+      <div class="result-meta">
+        <span class="badge badge-yellow result-ext">{% if doc.page %}p.{{ doc.page }}{% else %}DOC{% endif %}</span>
+      </div>
+    </a>
+    {% endfor %}
+    {% endif %}
+
+    {% if not results and not article_results and not doc_results %}
     <div style="text-align: center; padding: 40px 20px;">
       <div style="font-size: 48px; margin-bottom: 12px;">🔍</div>
       <div style="font-size: 15px; color: var(--text-dim);">

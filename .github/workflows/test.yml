@@ -34,14 +34,16 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: |
-          pip install -q -r requirements.txt
-          pip install -q pylint
+          pip install -q -r requirements.txt -r requirements-dev.txt
       - name: Pylint
         run: |
-          pylint web/server.py \
+          pylint web/server.py scripts/index_documents.py \
             --disable=C0114,C0115,C0116 \
-            --disable=R0903,R0913,R0914 \
+            --disable=R0903,R0913,R0914,R0801 \
             --fail-under=7.0
+      - name: Unit tests
+        run: |
+          python -m pytest tests/ -q --tb=short
       - name: Smoke tests
         run: |
           bash tests/test_smoke.sh

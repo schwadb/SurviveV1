@@ -567,6 +567,9 @@ main() {
 
     success "Gap-filling content download complete"
     du -sh "$PDF_DIR" "$VIDEO_DIR" 2>/dev/null || true
+
+    # Index the new documents' text for dashboard search + AI retrieval.
+    python3 "$REPO_DIR/scripts/index_documents.py" --storage "$STORAGE_PATH" || true
 }
 
 main "$@"

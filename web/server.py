@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pylint: disable=too-many-lines  # single-file Flask app by design (CLAUDE.md)
 """
 SurviveV1 — Dashboard Web Server
 Flask app serving the offline survival knowledge portal
@@ -12,6 +13,7 @@ import secrets
 import shutil
 import socket
 import sqlite3
+import subprocess
 import threading
 import time
 import urllib.request
@@ -346,18 +348,33 @@ def _fetch_article_text(path: str, fallback: str = "", max_chars: int = 2000) ->
 
 
 def _retrieve_context(query: str) -> list:
-    """Search Kiwix and enrich each hit with article text, fetched concurrently.
-    Returns [{title, path, snippet, text}]; empty list if nothing found."""
+    """Search Kiwix and the local document index, enriching Kiwix hits with
+    article text fetched concurrently. Returns [{title, path|url, snippet,
+    text}]; empty list if nothing found anywhere."""
     articles = _kiwix_search(query)
-    if not articles:
-        return []
-    with ThreadPoolExecutor(max_workers=len(articles)) as ex:
-        texts = list(ex.map(
-            lambda a: _fetch_article_text(a["path"], fallback=a["snippet"]),
-            articles,
-        ))
-    for article, text in zip(articles, texts):
-        article["text"] = text
+    doc_chunks = _query_doc_index(query, limit=2, relaxed=True) or []
+    if doc_chunks:
+        # Share the num_ctx budget: 2 Kiwix articles + 2 doc chunks instead of 3+0.
+        articles = articles[:2]
+    if articles:
+        with ThreadPoolExecutor(max_workers=len(articles)) as ex:
+            texts = list(ex.map(
+                lambda a: _fetch_article_text(a["path"], fallback=a["snippet"]),
+                articles,
+            ))
+        for article, text in zip(articles, texts):
+            article["text"] = text
+    for chunk in doc_chunks:
+        page_note = f" (p.{chunk['page']})" if chunk.get("page") else ""
+        articles.append({
+            "title": f"{chunk['title']}{page_note}",
+            # Dashboard-relative link into the actual document; browsers'
+            # built-in PDF viewers honour the #page= anchor.
+            "url": f"/serve/{chunk['path']}"
+                   + (f"#page={chunk['page']}" if chunk.get("page") else ""),
+            "snippet": chunk["snippet"],
+            "text": chunk["snippet"],
+        })
     return articles
 
 
@@ -386,11 +403,42 @@ def _build_rag_prompt(articles: list) -> str:
     return "\n".join(lines)
 
 
+def _validate_history(raw) -> tuple:
+    """Validate and budget client-supplied conversation history.
+
+    Returns (clean_history, error). The role whitelist is security-critical:
+    without it a crafted request injects {"role": "system", ...} and overrides
+    the survival system prompt. The char budget keeps history + RAG excerpts
+    + question inside the survive model's num_ctx 4096 (~16k chars)."""
+    if not isinstance(raw, list):
+        return [], "history must be a list"
+    clean = []
+    for turn in raw[-8:]:  # cap turn count first
+        if not isinstance(turn, dict):
+            return [], "invalid history entry"
+        role = turn.get("role")
+        content = turn.get("content")
+        if role not in ("user", "assistant") or not isinstance(content, str):
+            return [], "invalid history entry"
+        clean.append({"role": role, "content": content[:2000]})
+    # Char budget: walk from the newest turn backwards, keep what fits.
+    total = 0
+    budgeted = []
+    for turn in reversed(clean):
+        total += len(turn["content"])
+        if total > 3000:
+            break
+        budgeted.append(turn)
+    return list(reversed(budgeted)), None
+
+
 def _sources_for(articles: list, req_host: str) -> list:
-    """Build clickable Kiwix source links for the response, rooted at the
-    caller's host so they work over LAN, localhost, or survive.local."""
+    """Build clickable source links for the response. Kiwix hits get absolute
+    URLs rooted at the caller's host (so they work over LAN, localhost, or
+    survive.local); document hits carry a ready-made dashboard-relative URL."""
     return [
-        {"title": a["title"], "url": f"http://{req_host}:{PORT_KIWIX}{a['path']}"}
+        {"title": a["title"],
+         "url": a.get("url") or f"http://{req_host}:{PORT_KIWIX}{a['path']}"}
         for a in articles
     ]
 
@@ -400,12 +448,77 @@ def _sources_for(articles: list, req_host: str) -> list:
 # milliseconds instead of re-walking the 800 GB tree on each request. The DB is
 # a hidden file next to the Kiwix library (dotfiles are skipped by _safe_walk).
 INDEX_DB = STORAGE_PATH / ".search_index.db"
+# Full-text index of the text INSIDE PDFs/EPUBs, built offline by
+# scripts/index_documents.py (never by the web workers — extraction is
+# CPU-heavy). The server only reads it.
+CONTENT_INDEX_DB = STORAGE_PATH / ".content_index.db"
 _index_lock = threading.Lock()          # serialises rebuilds within one process
 _index_building = threading.Event()      # dedupes on-demand builds
 
 
 def _index_connect():
     return sqlite3.connect(str(INDEX_DB), timeout=30)
+
+
+def _fts_sanitize(query: str) -> str:
+    """Turn raw user input into a safe FTS5 prefix query — strips quotes and
+    operators that would otherwise be a syntax error or injection vector.
+    Returns '' when nothing searchable remains."""
+    tokens = re.sub(r"[^a-zA-Z0-9 -]", " ", query).split()
+    if not tokens:
+        return ""
+    return " ".join(tokens[:-1] + [tokens[-1] + "*"])
+
+
+def _query_doc_index(query: str, limit: int = 5, relaxed: bool = False):
+    """Full-text search inside PDFs/EPUBs via the content index. Returns
+    [{title, path, page, snippet}], None if the index has not been built yet,
+    or [] on empty/invalid queries. Never raises.
+
+    FTS5's implicit AND requires EVERY word to appear in a chunk — right for
+    keyword searches, wrong for natural-language questions ("how do I apply a
+    tourniquet" never matches a 1500-char chunk on all six words). With
+    relaxed=True (used by RAG retrieval), an empty strict result falls back to
+    OR-ing the content words (length ≥ 4, drops stopwords like "how"/"the")."""
+    if not CONTENT_INDEX_DB.exists():
+        return None
+    fts = _fts_sanitize(query)
+    if not fts:
+        return []
+    rows = _run_doc_query(fts, limit)
+    if rows is None:
+        return None
+    if not rows and relaxed:
+        words = [w for w in re.sub(r"[^a-zA-Z0-9 -]", " ", query).split()
+                 if len(w) >= 4]
+        if words:
+            rows = _run_doc_query(" OR ".join(f"{w}*" for w in words), limit)
+            if rows is None:
+                return None
+    return [
+        {"title": title, "path": path, "page": page, "snippet": snippet}
+        for (title, path, page, snippet) in rows
+    ]
+
+
+def _run_doc_query(fts: str, limit: int):
+    """Execute one FTS query against the content index; row tuples, None on
+    missing table, [] on FTS errors."""
+    conn = sqlite3.connect(str(CONTENT_INDEX_DB), timeout=30)
+    try:
+        rows = conn.execute(
+            "SELECT title, path, page, snippet(chunks, 0, '', '', '…', 12) "
+            "FROM chunks WHERE chunks MATCH ? LIMIT ?",
+            (fts, limit),
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc):
+            return None  # half-built index → treat as absent
+        logging.debug("doc index query failed: %s", exc)
+        return []
+    finally:
+        conn.close()
+    return rows
 
 
 def _rebuild_search_index() -> int:
@@ -460,12 +573,9 @@ def _query_search_index(query: str, limit: int = 50):
     built (so the caller can fall back to the live walk). Never raises."""
     if not INDEX_DB.exists():
         return None
-    # Sanitise to a safe FTS5 prefix query — strips quotes/operators that would
-    # otherwise be a syntax error or injection vector.
-    tokens = re.sub(r"[^a-zA-Z0-9 -]", " ", query).split()
-    if not tokens:
+    fts = _fts_sanitize(query)
+    if not fts:
         return []
-    fts = " ".join(tokens[:-1] + [tokens[-1] + "*"])
     conn = _index_connect()
     try:
         rows = conn.execute(
@@ -668,6 +778,7 @@ def search():
     query = request.args.get("q", "").strip()[:200]  # cap at 200 chars to prevent ReDoS
     results = []
     article_results = []
+    doc_results = []
 
     if query and len(query) >= 2:
         indexed = _query_search_index(query)
@@ -680,6 +791,8 @@ def search():
             results = indexed
         # Second section: full-text hits inside Kiwix articles (best-effort).
         article_results = _kiwix_search(query, limit=5)
+        # Third section: full-text hits inside local PDFs/EPUBs.
+        doc_results = _query_doc_index(query) or []
 
     meta = _index_meta()
     return render_template(
@@ -687,6 +800,7 @@ def search():
         query=query,
         results=results,
         article_results=article_results,
+        doc_results=doc_results,
         categories=CATEGORIES,
         index_count=meta["count"],
         index_built_at=meta["built_at"],
@@ -744,19 +858,26 @@ def ai_chat():
     if not re.fullmatch(r"[a-zA-Z0-9:.\-_]{1,100}", model):
         return jsonify({"error": "Invalid model name"}), 400
 
+    history, history_error = _validate_history(data.get("history", []))
+    if history_error:
+        return jsonify({"error": history_error}), 400
+
     message = str(data["message"])[:4096]  # bound message length to one context window
 
     # RAG retrieval (best-effort — never blocks the answer if Kiwix is down).
+    # Retrieval uses ONLY the current message — mixing in history degrades
+    # full-text search precision.
     articles = _retrieve_context(message)
     sources = _sources_for(articles, request.host.split(":")[0])
     system_prompt = _build_rag_prompt(articles)
 
     payload = json.dumps({
         "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message},
-        ],
+        "messages": (
+            [{"role": "system", "content": system_prompt}]
+            + history
+            + [{"role": "user", "content": message}]
+        ),
         "stream": True,
     }).encode()
     req = urllib.request.Request(
@@ -927,6 +1048,97 @@ def api_connectivity():
     return jsonify(_connectivity_cache.get(_compute_connectivity))
 
 
+def _read_throttle_state() -> dict:
+    """Parse `vcgencmd get_throttled` (Pi firmware). Bits: 0 under-voltage
+    now, 1 freq-capped now, 2 throttled now, 3 soft temp limit now; bits
+    16-19 = the same conditions since boot. All-False when vcgencmd is
+    missing or its output is unparseable (CI, non-Pi hardware — and some
+    setups print a permission error on stdout WITH exit code 0, so the
+    output parse is the only trustworthy signal)."""
+    state = {"undervoltage": False, "throttled": False, "capped": False,
+             "soft_temp_limit": False, "occurred_since_boot": False, "raw": None}
+    try:
+        out = subprocess.run(
+            ["vcgencmd", "get_throttled"],
+            capture_output=True, text=True, timeout=2, check=False,
+        ).stdout.strip()
+        bits = int(out.split("=")[1], 16)  # e.g. "throttled=0x50005"
+    except (OSError, subprocess.SubprocessError, IndexError, ValueError):
+        return state
+    state.update({
+        "undervoltage": bool(bits & 0x1),
+        "capped": bool(bits & 0x2),
+        "throttled": bool(bits & 0x4),
+        "soft_temp_limit": bool(bits & 0x8),
+        "occurred_since_boot": bool(bits & 0xF0000),
+        "raw": hex(bits),
+    })
+    return state
+
+
+def _compute_system_health() -> dict:
+    """CPU temp, throttle state, RAM/swap, load, uptime. Every source is
+    individually guarded so non-Pi environments return zeros, never errors."""
+    temp_c = 0.0
+    try:
+        raw = Path("/sys/class/thermal/thermal_zone0/temp").read_text(encoding="ascii")
+        temp_c = round(int(raw.strip()) / 1000, 1)
+    except (OSError, ValueError):
+        pass
+
+    meminfo = {}
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="ascii").splitlines():
+            key, _, rest = line.partition(":")
+            meminfo[key] = int(rest.split()[0])  # kB
+    except (OSError, ValueError, IndexError):
+        pass
+    mem_total = meminfo.get("MemTotal", 0)
+    # MemAvailable (not MemFree — that's always ~0 due to page cache) is the
+    # number that actually predicts OOM.
+    mem_avail = meminfo.get("MemAvailable", 0)
+    swap_total = meminfo.get("SwapTotal", 0)
+    swap_free = meminfo.get("SwapFree", 0)
+
+    try:
+        load = os.getloadavg()
+    except OSError:
+        load = (0.0, 0.0, 0.0)
+
+    uptime_s = 0.0
+    try:
+        uptime_s = float(Path("/proc/uptime").read_text(encoding="ascii").split()[0])
+    except (OSError, ValueError, IndexError):
+        pass
+
+    return {
+        "temperature_c": temp_c,
+        "throttle": _read_throttle_state(),
+        "memory": {
+            "total_mb": round(mem_total / 1024),
+            "available_mb": round(mem_avail / 1024),
+            "used_percent": round((1 - mem_avail / mem_total) * 100, 1) if mem_total else 0,
+            "swap_total_mb": round(swap_total / 1024),
+            "swap_used_percent": round((1 - swap_free / swap_total) * 100, 1) if swap_total else 0,
+        },
+        "load": {"avg_1m": round(load[0], 2), "avg_5m": round(load[1], 2),
+                 "avg_15m": round(load[2], 2), "cores": os.cpu_count() or 0},
+        "uptime_days": round(uptime_s / 86400, 1),
+    }
+
+
+# 5 s TTL: temperature moves fast during inference, and the reads are cheap —
+# but with no cache at all, N open status tabs would stack vcgencmd calls.
+_system_cache = _TTLCache(5.0)
+
+
+@app.route("/api/system")
+def api_system():
+    """Machine health for the status page (thermals are what silently ruin
+    CPU inference on under-cooled or under-powered Pis)."""
+    return jsonify(_system_cache.get(_compute_system_health))
+
+
 @app.route("/status")
 def status_page():
     return render_template(
@@ -937,6 +1149,7 @@ def status_page():
         categories=CATEGORIES,
         recent=get_recent_downloads(),
         downloads=_downloads_cache.get(_compute_download_status),
+        system=_system_cache.get(_compute_system_health),
     )
 
 

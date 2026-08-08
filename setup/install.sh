@@ -63,6 +63,7 @@ install_core_deps() {
         nginx \
         sqlite3 \
         zstd xz-utils p7zip-full \
+        poppler-utils \
         ufw \
         jq \
         htop iotop \

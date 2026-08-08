@@ -78,6 +78,44 @@
     </div>
   </div>
 
+  <!-- System health: thermals/power are what silently ruin CPU inference -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-title">System Health</div>
+    <div id="throttleWarning" style="display:none; background:rgba(248,81,73,0.1);
+         border:1px solid rgba(248,81,73,0.4); border-radius:var(--radius);
+         padding:10px 14px; margin-bottom:12px; font-size:13px; color:var(--danger);
+         font-weight:600;"></div>
+    <div class="stat-grid" style="margin-bottom:0;">
+      <div class="stat-card">
+        <div class="stat-val" data-sys="temp"
+             style="color:{{ 'var(--danger)' if system.temperature_c >= 80 else 'var(--warning)' if system.temperature_c >= 70 else 'var(--accent)' }};">
+          {{ system.temperature_c }}°C
+        </div>
+        <div class="stat-label">CPU Temp</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" data-sys="load">{{ system.load.avg_1m }} / {{ system.load.cores }}</div>
+        <div class="stat-label">Load / Cores</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" data-sys="ram"
+             style="color:{{ 'var(--danger)' if system.memory.used_percent >= 90 else 'var(--text)' }};">
+          {{ system.memory.used_percent }}%
+        </div>
+        <div class="stat-label">RAM Used</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" data-sys="swap">{{ system.memory.swap_used_percent }}%</div>
+        <div class="stat-label">Swap Used</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" data-sys="uptime">{{ system.uptime_days }}d</div>
+        <div class="stat-label">Uptime</div>
+      </div>
+    </div>
+    <div id="throttleNote" style="margin-top:10px; font-size:12px; color:var(--warning); display:none;"></div>
+  </div>
+
   <!-- 800 GB content budget gauge -->
   {% set budget_gb = 800 %}
   {% set budget_pct = [(storage.used_gb / budget_gb * 100)|round(1), 100]|min %}
@@ -300,6 +338,41 @@ function applyDownloads(data) {
   if (logLine && data.active_log) logLine.textContent = data.active_log.line;  // textContent — safe
 }
 
+// Update the System Health card in place from /api/system.
+function applySystem(sys) {
+  const set = (key, text) => {
+    const el = document.querySelector(`[data-sys="${key}"]`);
+    if (el) el.textContent = text;
+  };
+  set('temp', sys.temperature_c + '°C');
+  set('load', sys.load.avg_1m + ' / ' + sys.load.cores);
+  set('ram', sys.memory.used_percent + '%');
+  set('swap', sys.memory.swap_used_percent + '%');
+  set('uptime', sys.uptime_days + 'd');
+  const tempEl = document.querySelector('[data-sys="temp"]');
+  if (tempEl) {
+    tempEl.style.color = sys.temperature_c >= 80 ? 'var(--danger)'
+      : sys.temperature_c >= 70 ? 'var(--warning)' : 'var(--accent)';
+  }
+  const warning = document.getElementById('throttleWarning');
+  const noteEl = document.getElementById('throttleNote');
+  const th = sys.throttle || {};
+  if (th.undervoltage || th.throttled || th.soft_temp_limit) {
+    warning.style.display = 'block';
+    warning.textContent = th.undervoltage
+      ? '⚠ UNDER-VOLTAGE detected — use the official 27 W PSU; the AI and SD card are at risk.'
+      : '⚠ CPU is throttling right now — check cooling; AI responses will be slow.';
+  } else {
+    warning.style.display = 'none';
+  }
+  if (!th.throttled && !th.undervoltage && th.occurred_since_boot) {
+    noteEl.style.display = 'block';
+    noteEl.textContent = 'Throttling occurred earlier this boot — check cooling/PSU before long AI sessions.';
+  } else {
+    noteEl.style.display = 'none';
+  }
+}
+
 function refreshStatus(manual) {
   const btn = document.getElementById('refreshBtn');
   const note = document.getElementById('refreshNote');
@@ -307,10 +380,12 @@ function refreshStatus(manual) {
   Promise.all([
     fetch('/api/status', { cache: 'no-store' }).then(r => r.json()),
     fetch('/api/downloads', { cache: 'no-store' }).then(r => r.json()),
+    fetch('/api/system', { cache: 'no-store' }).then(r => r.json()),
   ])
-    .then(([status, downloads]) => {
+    .then(([status, downloads, system]) => {
       applyStatus(status);
       applyDownloads(downloads);
+      applySystem(system);
       note.textContent = 'Updated ' + new Date().toLocaleTimeString();
     })
     .catch(() => { note.textContent = 'Refresh failed — dashboard unreachable'; })

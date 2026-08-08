@@ -317,6 +317,43 @@ const WELCOME_TEXT = [
 ].join('\n');
 document.getElementById('welcomeBubble').textContent = WELCOME_TEXT;
 
+// ── Conversation history (multi-turn context + persistence) ──────────────
+// Sent with each request so follow-up questions keep their context; persisted
+// in localStorage so a page reload doesn't wipe the conversation. All
+// localStorage access is try/catch-wrapped — private-browsing modes throw.
+const HISTORY_KEY = 'survive_chat_v1';
+let chatHistory = [];
+
+function saveHistory() {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(chatHistory.slice(-20)));
+  } catch (e) { /* storage unavailable — history is session-only */ }
+}
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(t => t && (t.role === 'user' || t.role === 'assistant')
+                               && typeof t.content === 'string');
+  } catch (e) { return []; }
+}
+
+function restoreConversation() {
+  chatHistory = loadHistory();
+  if (!chatHistory.length) return;
+  // Re-render restored turns through addMessage (textContent — XSS-safe even
+  // though localStorage is attacker-controllable in principle).
+  chatHistory.forEach(t => addMessage(t.role === 'user' ? 'user' : 'ai', t.content));
+  const note = document.createElement('div');
+  note.style.cssText = 'text-align:center; font-size:11px; color:var(--text-dim); padding:4px;';
+  note.textContent = 'Restored previous conversation — Clear to start fresh.';
+  chatMessages.appendChild(note);
+  scrollToBottom();
+}
+
 function scrollToBottom() {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -406,7 +443,8 @@ async function sendMessage() {
     const res = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg, model }),
+      // history is captured BEFORE this exchange is pushed to it.
+      body: JSON.stringify({ message: msg, model, history: chatHistory }),
       signal: _currentController.signal,
     });
 
@@ -452,6 +490,15 @@ async function sendMessage() {
           if (m.done) {
             if (!aiDiv) { removeTyping(); aiDiv = addMessage('ai', '(no response)'); }
             renderSources(aiDiv, pendingSources);
+            // Only clean completions become history — errored/aborted
+            // exchanges are left out so a retry starts from the same state.
+            // Sources are rendered separately and never stored (they would
+            // bloat the context budget).
+            if (text) {
+              chatHistory.push({ role: 'user', content: msg });
+              chatHistory.push({ role: 'assistant', content: text });
+              saveHistory();
+            }
           }
         }
       }
@@ -485,9 +532,12 @@ function sendPrompt(prompt) {
 
 function clearChat() {
   chatMessages.innerHTML = '';
+  chatHistory = [];
+  try { localStorage.removeItem(HISTORY_KEY); } catch (e) { /* unavailable */ }
   addMessage('ai', 'Chat cleared. How can I help with your survival needs?');
 }
 
+restoreConversation();
 chatInput.focus();
 </script>
 {% endblock %}
