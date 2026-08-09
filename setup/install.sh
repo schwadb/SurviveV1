@@ -28,6 +28,17 @@ success() { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
+# With `set -e`, any unchecked failure aborts the script. Without this trap that
+# abort is SILENT — the installer just returns to the prompt mid-step, which is
+# impossible to diagnose. Always say what died and where.
+_on_error() {
+    local rc=$1 line=$2 cmd=$3
+    error "Installation failed (exit ${rc}) at line ${line}: ${cmd}"
+    error "Full log: $LOG_FILE"
+    error "Fix the issue above, then re-run: sudo bash setup/install.sh"
+}
+trap '_on_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
+
 require_root() {
     [[ $EUID -eq 0 ]] || { error "Run with sudo: sudo bash $0"; exit 1; }
 }
@@ -112,18 +123,38 @@ install_ytdlp() {
 # ── Kiwix tools ───────────────────────────────────────────────────────────────
 install_kiwix() {
     info "Installing Kiwix tools..."
-    KIWIX_VERSION="3.7.0"
-    KIWIX_ARCH="aarch64"
-    KIWIX_URL="https://download.openzim.org/release/kiwix-tools/kiwix-tools_linux-${KIWIX_ARCH}-${KIWIX_VERSION}.tar.gz"
+    if command -v kiwix-serve &>/dev/null && command -v kiwix-manage &>/dev/null; then
+        success "Kiwix tools already present"
+        return
+    fi
 
-    TMP_DIR=$(mktemp -d)
-    wget -q "$KIWIX_URL" -O "$TMP_DIR/kiwix-tools.tar.gz"
-    tar -xzf "$TMP_DIR/kiwix-tools.tar.gz" -C "$TMP_DIR"
-    cp "$TMP_DIR"/kiwix-tools_*/kiwix-serve /usr/local/bin/
-    cp "$TMP_DIR"/kiwix-tools_*/kiwix-manage /usr/local/bin/
-    cp "$TMP_DIR"/kiwix-tools_*/kiwix-search /usr/local/bin/ 2>/dev/null || true
+    # Preferred: the distro package — signed, maintained, and matched to the OS.
+    if apt-get install -y -qq kiwix-tools && command -v kiwix-serve &>/dev/null; then
+        success "Kiwix tools installed from apt"
+        return
+    fi
+
+    warn "kiwix-tools unavailable via apt — falling back to the upstream build"
+    # kiwix-tools is NOT on download.openzim.org any more (that host now carries
+    # only libzim/zim-tools). The unversioned filename below always resolves to
+    # the current release, so this cannot rot the way a pinned version does.
+    local url="https://download.kiwix.org/release/kiwix-tools/kiwix-tools_linux-aarch64.tar.gz"
+    local tmp
+    tmp=$(mktemp -d)
+    # No -q: a download failure must be visible, not silent.
+    if ! wget -O "$tmp/kiwix-tools.tar.gz" "$url"; then
+        rm -rf "$tmp"
+        error "Could not download Kiwix tools from:"
+        error "  $url"
+        error "Check internet access, then re-run: sudo bash setup/install.sh"
+        exit 1
+    fi
+    tar -xzf "$tmp/kiwix-tools.tar.gz" -C "$tmp"
+    cp "$tmp"/kiwix-tools_*/kiwix-serve /usr/local/bin/
+    cp "$tmp"/kiwix-tools_*/kiwix-manage /usr/local/bin/
+    cp "$tmp"/kiwix-tools_*/kiwix-search /usr/local/bin/ 2>/dev/null || true
     chmod +x /usr/local/bin/kiwix-*
-    rm -rf "$TMP_DIR"
+    rm -rf "$tmp"
     command -v kiwix-serve &>/dev/null || { error "kiwix-serve install failed"; exit 1; }
     command -v kiwix-manage &>/dev/null || { error "kiwix-manage install failed"; exit 1; }
     success "Kiwix tools installed"

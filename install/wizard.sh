@@ -21,6 +21,12 @@ warn()    { echo -e "  ${YELLOW}!${NC}  $*"; }
 ask()     { echo -en "  ${BOLD}$*${NC} "; }
 die()     { echo -e "\n${RED}[ERROR]${NC} $*" >&2; exit 1; }
 
+# `set -e` aborts are otherwise silent — always report what failed and where.
+_on_error() {
+    echo -e "\n${RED}[ERROR]${NC} Wizard failed (exit $1) at line $2: $3" >&2
+}
+trap '_on_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
+
 # ── Screen: Welcome ───────────────────────────────────────────────────────────
 show_welcome() {
     clear
@@ -305,6 +311,13 @@ confirm_install() {
     [[ "${ans:-n}" =~ ^[Yy]$ ]] || { echo ""; info "Aborted."; exit 0; }
 }
 
+# Return the last partition name (e.g. "sda1") of a disk, or "" if it has none.
+# NOTE: plain `lsblk -n -o NAME` draws tree characters (└─sda1), which yield a
+# bogus /dev/└─sda1 path; -r (raw) output is required here.
+_first_partition() {
+    lsblk -rno NAME,TYPE "/dev/$1" 2>/dev/null | awk '$2 == "part" { print $1 }' | tail -1
+}
+
 # ── Storage setup: format + mount ─────────────────────────────────────────────
 setup_drive() {
     [[ "$CHOSEN_DEV" == "SKIP" ]] && return
@@ -318,36 +331,59 @@ setup_drive() {
             || wipefs -a "/dev/${CHOSEN_DEV}"
         parted -s "/dev/${CHOSEN_DEV}" mklabel gpt
         parted -s "/dev/${CHOSEN_DEV}" mkpart primary ext4 0% 100%
-        sleep 1
-        # Partition name is usually /dev/sda1 or /dev/sda1 depending on type
+        partprobe "/dev/${CHOSEN_DEV}" 2>/dev/null || true
+        udevadm settle 2>/dev/null || sleep 2
         local part
-        part=$(lsblk -n -o NAME "/dev/${CHOSEN_DEV}" | tail -1 | xargs)
-        part="/dev/${part}"
-        mkfs.ext4 -F -L survive "$part"
-        CHOSEN_PART="$part"
-    else
-        # Use first partition, or the raw device if no partitions
-        local part
-        part=$(lsblk -n -o NAME "/dev/${CHOSEN_DEV}" | tail -1 | xargs)
+        part=$(_first_partition "${CHOSEN_DEV}")
+        [[ -n "$part" ]] || die "Partition did not appear on /dev/${CHOSEN_DEV} after formatting."
+        mkfs.ext4 -F -L survive "/dev/${part}"
         CHOSEN_PART="/dev/${part}"
+    else
+        # Existing partition if the disk has one, else the raw device.
+        local part
+        part=$(_first_partition "${CHOSEN_DEV}")
+        if [[ -n "$part" ]]; then
+            CHOSEN_PART="/dev/${part}"
+        else
+            CHOSEN_PART="/dev/${CHOSEN_DEV}"
+        fi
     fi
+    info "Using partition: ${CHOSEN_PART}"
 
     mkdir -p "${CHOSEN_MOUNT}"
 
-    # Add to /etc/fstab if not already there
-    local uuid
-    uuid=$(blkid -s UUID -o value "${CHOSEN_PART}" 2>/dev/null || echo "")
-    if [[ -n "$uuid" ]]; then
-        if ! grep -q "$uuid" /etc/fstab 2>/dev/null; then
-            echo "UUID=${uuid}  ${CHOSEN_MOUNT}  ext4  defaults,noatime  0  2" >> /etc/fstab
-            ok "Added to /etc/fstab (auto-mount on boot)"
-        fi
-        mount -a 2>/dev/null || mount "${CHOSEN_PART}" "${CHOSEN_MOUNT}"
-    else
-        mount "${CHOSEN_PART}" "${CHOSEN_MOUNT}"
+    # Already mounted there (e.g. re-running the wizard)? Nothing to do.
+    if mountpoint -q "${CHOSEN_MOUNT}"; then
+        ok "Already mounted at ${CHOSEN_MOUNT}"
+        return
     fi
 
-    ok "Drive mounted at ${CHOSEN_MOUNT}"
+    # Add to /etc/fstab if not already there. The filesystem type is detected
+    # rather than assumed — a kept (non-formatted) drive may be ext4, exfat…
+    local uuid fstype
+    uuid=$(blkid -s UUID -o value "${CHOSEN_PART}" 2>/dev/null || echo "")
+    fstype=$(blkid -s TYPE -o value "${CHOSEN_PART}" 2>/dev/null || echo "auto")
+    if [[ -n "$uuid" ]]; then
+        if ! grep -q "$uuid" /etc/fstab 2>/dev/null; then
+            echo "UUID=${uuid}  ${CHOSEN_MOUNT}  ${fstype}  defaults,nofail,noatime  0  2" >> /etc/fstab
+            ok "Added to /etc/fstab (auto-mount on boot)"
+        fi
+        mount "${CHOSEN_MOUNT}" 2>/dev/null || mount "${CHOSEN_PART}" "${CHOSEN_MOUNT}" || true
+    else
+        mount "${CHOSEN_PART}" "${CHOSEN_MOUNT}" || true
+    fi
+
+    # Verify — never report success on an unmounted drive; every later step
+    # (and the whole content download) depends on this actually working.
+    if ! mountpoint -q "${CHOSEN_MOUNT}"; then
+        error "Failed to mount ${CHOSEN_PART} at ${CHOSEN_MOUNT}"
+        echo ""
+        lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT "/dev/${CHOSEN_DEV}" 2>/dev/null || true
+        echo ""
+        error "If the drive has no filesystem yet, re-run the wizard and choose to format it."
+        exit 1
+    fi
+    ok "Drive mounted at ${CHOSEN_MOUNT} ($(df -h --output=size "${CHOSEN_MOUNT}" | tail -1 | xargs) available)"
 }
 
 # ── Update hostname ────────────────────────────────────────────────────────────
