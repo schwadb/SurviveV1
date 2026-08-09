@@ -358,6 +358,28 @@ setup_drive() {
         return
     fi
 
+    # The drive may already be mounted somewhere else — a manual mount or a
+    # desktop automount (commonly /mnt/ssd or /media/<user>/…). Mounting the
+    # same device a second time would leave two live paths and a stale fstab
+    # line, so relocate it to the SurviveV1 mount point instead.
+    local existing
+    existing=$(findmnt -nro TARGET --source "${CHOSEN_PART}" 2>/dev/null | head -1 || true)
+    if [[ -n "$existing" ]] && [[ "$existing" != "${CHOSEN_MOUNT}" ]]; then
+        info "${CHOSEN_PART} is currently mounted at ${existing} — relocating to ${CHOSEN_MOUNT}"
+        if ! umount "$existing" 2>/dev/null; then
+            error "Could not unmount ${existing} — something is using it."
+            error "Close any programs/terminals in that directory (or reboot), then re-run."
+            error "Culprits:"; lsof "$existing" 2>/dev/null | head -5 || fuser -vm "$existing" 2>&1 | head -5 || true
+            exit 1
+        fi
+        # A leftover fstab line would send the drive back to the old path on
+        # the next boot, silently breaking every service after a reboot.
+        if grep -qsE "^[^#].*[[:space:]]${existing}[[:space:]]" /etc/fstab; then
+            sed -i -E "s|^([^#].*[[:space:]]${existing}[[:space:]].*)$|# disabled by SurviveV1 wizard: \1|" /etc/fstab
+            warn "Commented out the old ${existing} entry in /etc/fstab"
+        fi
+    fi
+
     # Add to /etc/fstab if not already there. The filesystem type is detected
     # rather than assumed — a kept (non-formatted) drive may be ext4, exfat…
     local uuid fstype
