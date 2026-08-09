@@ -71,8 +71,9 @@ calibredb add --with-library="$LIBRARY" --automerge=ignore -- "${EBOOKS[@]}" \
     || { error "calibredb add failed"; exit 1; }
 
 # Ownership: the systemd unit runs cps as User=pi, which needs write access.
-if [[ "$(id -u)" -eq 0 ]] && id pi &>/dev/null; then
-    chown -R pi:pi "$LIBRARY"
+_SVC_USER="${SUDO_USER:-pi}"
+if [[ "$(id -u)" -eq 0 ]] && id "$_SVC_USER" &>/dev/null; then
+    chown -R "$_SVC_USER:$_SVC_USER" "$LIBRARY"
 fi
 
 COUNT=$(calibredb --with-library="$LIBRARY" list 2>/dev/null | tail -n +2 | wc -l)

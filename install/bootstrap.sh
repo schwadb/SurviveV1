@@ -66,11 +66,12 @@ else
     ok "RAM: ${RAM_MB} MB"
 fi
 
-# OS — Raspberry Pi OS Bookworm preferred
-if grep -q "Bookworm\|bookworm" /etc/os-release 2>/dev/null; then
-    ok "OS: Raspberry Pi OS Bookworm"
+# OS — Raspberry Pi OS Bookworm (Debian 12) or Trixie (Debian 13)
+if grep -qi "bookworm\|trixie" /etc/os-release 2>/dev/null; then
+    OS_NAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+    ok "OS: Raspberry Pi OS (${OS_NAME})"
 elif grep -q "Bullseye\|bullseye" /etc/os-release 2>/dev/null; then
-    warn "OS: Bullseye detected — Bookworm is recommended for best compatibility"
+    warn "OS: Bullseye detected — Bookworm or newer is recommended"
 elif grep -q "ID=debian\|ID=raspbian" /etc/os-release 2>/dev/null; then
     OS_NAME=$(. /etc/os-release && echo "$PRETTY_NAME")
     warn "OS: ${OS_NAME} — untested, may work"
@@ -111,7 +112,9 @@ if [[ -d "${SURVIVE_DIR}/.git" ]]; then
     warn "Repository already exists at ${SURVIVE_DIR}"
     ask_update() {
         echo -en "  ${BOLD}Update to latest ${SURVIVE_BRANCH}? [Y/n]${NC} "
-        read -r ans
+        # Under `curl | bash` stdin is the (exhausted) script pipe, not the
+        # keyboard — read from the terminal directly, defaulting to yes.
+        read -r ans < /dev/tty 2>/dev/null || ans=y
         if [[ "${ans:-y}" =~ ^[Yy]$ ]]; then
             git -C "${SURVIVE_DIR}" fetch origin
             git -C "${SURVIVE_DIR}" checkout "${SURVIVE_BRANCH}"
@@ -144,8 +147,18 @@ WIZARD="${SURVIVE_DIR}/install/wizard.sh"
 chmod +x "$WIZARD"
 
 # Elevate to root for the wizard (installer requires root for apt, systemd, etc.)
-if [[ $EUID -ne 0 ]]; then
-    exec sudo bash "$WIZARD"
+#
+# stdin handling is critical here: under `curl | bash`, stdin is the pipe that
+# carried this script and is at EOF — the wizard's interactive `read` calls
+# would all fail instantly (and its `set -e` would exit silently at the very
+# first prompt). Hand the wizard the real terminal instead.
+SUDO_CMD=()
+[[ $EUID -ne 0 ]] && SUDO_CMD=(sudo)
+if [[ -t 0 ]]; then
+    exec "${SUDO_CMD[@]}" bash "$WIZARD"
+elif [[ -r /dev/tty ]]; then
+    exec "${SUDO_CMD[@]}" bash "$WIZARD" < /dev/tty
 else
-    exec bash "$WIZARD"
+    die "No interactive terminal available for the wizard.\n" \
+        "  Run it directly instead:  cd ${SURVIVE_DIR} && sudo bash install/wizard.sh"
 fi

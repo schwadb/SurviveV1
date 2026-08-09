@@ -270,9 +270,16 @@ SAMBA
 # ── Install systemd services ──────────────────────────────────────────────────
 install_services() {
     info "Installing systemd services..."
+    # The unit files ship with User=pi, but the real login may be anything
+    # (Raspberry Pi Imager lets users pick a name). Substitute the invoking
+    # user so services actually start on non-'pi' systems.
+    local svc_user="${SUDO_USER:-pi}"
+    id "$svc_user" &>/dev/null || svc_user="pi"
     for unit in "$REPO_DIR"/systemd/*.service; do
-        cp "$unit" /etc/systemd/system/
+        sed "s/^User=pi$/User=${svc_user}/" "$unit" \
+            > "/etc/systemd/system/$(basename "$unit")"
     done
+    info "Services will run as user: ${svc_user}"
     systemctl daemon-reload
     systemctl enable survive-dashboard.service
     systemctl enable kiwix.service

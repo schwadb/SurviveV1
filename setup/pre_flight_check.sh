@@ -28,10 +28,10 @@ else
     warn "Architecture: $(uname -m) — expected aarch64 (Raspberry Pi 5 64-bit)"
 fi
 
-if grep -q "Bookworm" /etc/os-release 2>/dev/null; then
-    pass "OS: Raspberry Pi OS Bookworm"
+if grep -qi "bookworm\|trixie" /etc/os-release 2>/dev/null; then
+    pass "OS: Raspberry Pi OS ($(. /etc/os-release && echo "$VERSION_CODENAME"))"
 elif grep -q "Bullseye" /etc/os-release 2>/dev/null; then
-    warn "OS: Bullseye — Bookworm recommended for best compatibility"
+    warn "OS: Bullseye — Bookworm or newer recommended"
 else
     OS_ID=$(. /etc/os-release && echo "$PRETTY_NAME")
     warn "OS: $OS_ID — untested, may work"
