@@ -21,6 +21,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _CONF="$REPO_DIR/config/survive.conf"
+[[ -f "$_CONF" ]] || _CONF="${_CONF}.example"   # fall back to shipped defaults
 # Env overrides win over the conf's baked-in values (same pattern as
 # build_ebook_library.sh).
 _ENV_SSID="${SURVIVE_HOTSPOT_SSID:-}"

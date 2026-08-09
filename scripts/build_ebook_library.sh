@@ -13,6 +13,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _CONF="$REPO_DIR/config/survive.conf"
+[[ -f "$_CONF" ]] || _CONF="${_CONF}.example"   # fall back to shipped defaults
 # Capture an explicitly-set env override before sourcing the conf, so a caller
 # (or test) passing SURVIVE_STORAGE_PATH= wins over the conf's baked-in default.
 _ENV_STORAGE="${SURVIVE_STORAGE_PATH:-}"

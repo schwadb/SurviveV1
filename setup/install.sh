@@ -9,7 +9,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 SURVIVE_CONFIG="$REPO_DIR/config/survive.conf"
 
-# Load or create config
+# Load or create config. survive.conf is machine-specific and untracked; the
+# wizard writes it, and a bare clone starts from the shipped example.
+if [[ ! -f "$SURVIVE_CONFIG" ]] && [[ -f "${SURVIVE_CONFIG}.example" ]]; then
+    cp "${SURVIVE_CONFIG}.example" "$SURVIVE_CONFIG"
+fi
 if [[ -f "$SURVIVE_CONFIG" ]]; then
     # shellcheck source=/dev/null
     source "$SURVIVE_CONFIG"
