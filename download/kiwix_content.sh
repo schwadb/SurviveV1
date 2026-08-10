@@ -40,10 +40,39 @@ mark_failed() { echo "$(date -Iseconds) $1 :: $2" >> "$FAILED_LOG"; }
 
 # Download a ZIM, then validate size and checksum BEFORE treating the download
 # as successful. A partial/corrupt file is removed so the next run re-fetches.
+# ZIM snapshots carry a build date (…_2026-02.zim) and Kiwix deletes old ones
+# from the mirror, so any pinned filename eventually 404s. Given a pinned URL,
+# return the same file's newest available build. Falls back to the pinned URL
+# (returns non-zero) when the listing can't be fetched — e.g. no internet.
+resolve_zim_url() {
+    local url="$1" dir base prefix listing latest
+    dir="${url%/*}"            # …/zim/wikipedia
+    base="${url##*/}"          # wikipedia_en_all_maxi_2024-01.zim
+    prefix="${base%_*.zim}"    # wikipedia_en_all_maxi
+    prefix="${prefix//./\\.}"  # escape dots (foo.stackexchange.com_en_all)
+    listing=$(curl -sL --max-time 30 "$dir/" 2>/dev/null) || return 1
+    latest=$(grep -oE "${prefix}_[0-9]{4}-[0-9]{2}\.zim" <<< "$listing" \
+             | sort -u | tail -1)
+    [[ -n "$latest" ]] || return 1
+    echo "$dir/$latest"
+}
+
 download_zim() {
     local name="$1"
     local url="$2"
     local dest_dir="$3"
+
+    # Swap the pinned build for whatever is currently published.
+    local resolved
+    if resolved=$(resolve_zim_url "$url"); then
+        if [[ "$resolved" != "$url" ]]; then
+            info "[$name] Current build: $(basename "$resolved")"
+            url="$resolved"
+        fi
+    else
+        warn "[$name] Could not list the mirror — trying the pinned URL"
+    fi
+
     local filename
     filename=$(basename "$url")
     local dest="$dest_dir/$filename"
@@ -119,7 +148,7 @@ dl_wikipedia() {
         info "=== Wikipedia (Full, with images) ==="
         # Full Wikipedia with images ~100GB
         download_zim "Wikipedia EN" \
-            "$KIWIX_MIRROR/wikipedia/wikipedia_en_all_maxi_2024-01.zim" \
+            "$KIWIX_MIRROR/wikipedia/wikipedia_en_all_maxi_2026-02.zim" \
             "$ZIM_DIR/wikipedia"
     fi
 
@@ -127,7 +156,7 @@ dl_wikipedia() {
         info "=== Wikipedia (No pictures) ==="
         # No-picture version ~22GB
         download_zim "Wikipedia EN (no-pic)" \
-            "$KIWIX_MIRROR/wikipedia/wikipedia_en_all_nopic_2024-01.zim" \
+            "$KIWIX_MIRROR/wikipedia/wikipedia_en_all_nopic_2026-06.zim" \
             "$ZIM_DIR/wikipedia"
     fi
 }
@@ -139,16 +168,16 @@ dl_wikibooks() {
 
     info "=== Wikibooks, Wikivoyage, Wikisource ==="
     download_zim "Wikibooks EN" \
-        "$KIWIX_MIRROR/wikibooks/wikibooks_en_all_maxi_2024-01.zim" \
+        "$KIWIX_MIRROR/wikibooks/wikibooks_en_all_maxi_2026-04.zim" \
         "$ZIM_DIR/reference"
     download_zim "Wikivoyage EN" \
-        "$KIWIX_MIRROR/wikivoyage/wikivoyage_en_all_maxi_2024-01.zim" \
+        "$KIWIX_MIRROR/wikivoyage/wikivoyage_en_all_maxi_2026-06.zim" \
         "$ZIM_DIR/reference"
     download_zim "Wikisource EN" \
-        "$KIWIX_MIRROR/wikisource/wikisource_en_all_maxi_2024-01.zim" \
+        "$KIWIX_MIRROR/wikisource/wikisource_en_all_maxi_2026-05.zim" \
         "$ZIM_DIR/reference"
     download_zim "Wiktionary EN" \
-        "$KIWIX_MIRROR/wiktionary/wiktionary_en_all_maxi_2024-01.zim" \
+        "$KIWIX_MIRROR/wiktionary/wiktionary_en_all_nopic_2026-05.zim" \
         "$ZIM_DIR/reference"
 }
 
@@ -159,7 +188,7 @@ dl_ifix() {
 
     info "=== iFixit Repair Guides ==="
     download_zim "iFixit EN" \
-        "$KIWIX_MIRROR/ifixit/ifixit_en_all_2024-01.zim" \
+        "$KIWIX_MIRROR/ifixit/ifixit_en_all_2025-12.zim" \
         "$ZIM_DIR/skills"
 }
 
@@ -170,21 +199,21 @@ dl_stackexchange() {
 
     info "=== Stack Exchange collections ==="
     declare -A SE_PACKAGES=(
-        ["Stack Overflow"]="$KIWIX_MIRROR/stackoverflow/stackoverflow_en_all_2024-01.zim"
-        ["Super User"]="$KIWIX_MIRROR/superuser/superuser_en_all_2024-01.zim"
-        ["DIY"]="$KIWIX_MIRROR/diy.stackexchange.com/diy.stackexchange.com_en_all_2024-01.zim"
-        ["Cooking"]="$KIWIX_MIRROR/cooking.stackexchange.com/cooking.stackexchange.com_en_all_2024-01.zim"
-        ["Ham Radio"]="$KIWIX_MIRROR/ham.stackexchange.com/ham.stackexchange.com_en_all_2024-01.zim"
-        ["Outdoors"]="$KIWIX_MIRROR/outdoors.stackexchange.com/outdoors.stackexchange.com_en_all_2024-01.zim"
-        ["Gardening"]="$KIWIX_MIRROR/gardening.stackexchange.com/gardening.stackexchange.com_en_all_2024-01.zim"
-        ["Medical Sciences"]="$KIWIX_MIRROR/medicalsciences.stackexchange.com/medicalsciences.stackexchange.com_en_all_2024-01.zim"
-        ["Sustainability"]="$KIWIX_MIRROR/sustainability.stackexchange.com/sustainability.stackexchange.com_en_all_2024-01.zim"
-        ["Biology"]="$KIWIX_MIRROR/biology.stackexchange.com/biology.stackexchange.com_en_all_2024-01.zim"
-        ["Chemistry"]="$KIWIX_MIRROR/chemistry.stackexchange.com/chemistry.stackexchange.com_en_all_2024-01.zim"
-        ["Physics"]="$KIWIX_MIRROR/physics.stackexchange.com/physics.stackexchange.com_en_all_2024-01.zim"
-        ["Engineering"]="$KIWIX_MIRROR/engineering.stackexchange.com/engineering.stackexchange.com_en_all_2024-01.zim"
-        ["Electronics"]="$KIWIX_MIRROR/electronics.stackexchange.com/electronics.stackexchange.com_en_all_2024-01.zim"
-        ["Unix/Linux"]="$KIWIX_MIRROR/unix.stackexchange.com/unix.stackexchange.com_en_all_2024-01.zim"
+        ["Stack Overflow"]="$KIWIX_MIRROR/stack_exchange/stackoverflow.com_en_all_2023-11.zim"
+        ["Super User"]="$KIWIX_MIRROR/stack_exchange/superuser.com_en_all_2026-02.zim"
+        ["DIY"]="$KIWIX_MIRROR/stack_exchange/diy.stackexchange.com_en_all_2026-02.zim"
+        ["Cooking"]="$KIWIX_MIRROR/stack_exchange/cooking.stackexchange.com_en_all_2026-02.zim"
+        ["Ham Radio"]="$KIWIX_MIRROR/stack_exchange/ham.stackexchange.com_en_all_2026-02.zim"
+        ["Outdoors"]="$KIWIX_MIRROR/stack_exchange/outdoors.stackexchange.com_en_all_2026-02.zim"
+        ["Gardening"]="$KIWIX_MIRROR/stack_exchange/gardening.stackexchange.com_en_all_2026-02.zim"
+        ["Medical Sciences"]="$KIWIX_MIRROR/stack_exchange/medicalsciences.stackexchange.com_en_all_2026-02.zim"
+        ["Sustainability"]="$KIWIX_MIRROR/stack_exchange/sustainability.stackexchange.com_en_all_2026-02.zim"
+        ["Biology"]="$KIWIX_MIRROR/stack_exchange/biology.stackexchange.com_en_all_2026-02.zim"
+        ["Chemistry"]="$KIWIX_MIRROR/stack_exchange/chemistry.stackexchange.com_en_all_2026-02.zim"
+        ["Physics"]="$KIWIX_MIRROR/stack_exchange/physics.stackexchange.com_en_all_2026-02.zim"
+        ["Engineering"]="$KIWIX_MIRROR/stack_exchange/engineering.stackexchange.com_en_all_2026-02.zim"
+        ["Electronics"]="$KIWIX_MIRROR/stack_exchange/electronics.stackexchange.com_en_all_2026-02.zim"
+        ["Unix/Linux"]="$KIWIX_MIRROR/stack_exchange/unix.stackexchange.com_en_all_2026-02.zim"
     )
 
     for name in "${!SE_PACKAGES[@]}"; do
@@ -199,7 +228,7 @@ dl_gutenberg() {
 
     info "=== Project Gutenberg (~60k books) ==="
     download_zim "Gutenberg EN" \
-        "$KIWIX_MIRROR/gutenberg/gutenberg_en_all_2024-01.zim" \
+        "$KIWIX_MIRROR/gutenberg/gutenberg_en_all_2025-11.zim" \
         "$ZIM_DIR/books"
 }
 
@@ -210,7 +239,7 @@ dl_khan() {
     info "=== Khan Academy (Kiwix mini versions) ==="
     # Note: Full Khan Academy via Kolibri is preferred. These are smaller ZIM versions.
     download_zim "Khan Academy EN" \
-        "$KIWIX_MIRROR/Khan_Academy/khan_academy_en_all_2024-01.zim" \
+        "$KIWIX_MIRROR/other/khanacademy_en_all_2023-03.zim" \
         "$ZIM_DIR/education"
 }
 
@@ -220,10 +249,10 @@ dl_medical() {
 
     info "=== Medical References ==="
     download_zim "Medline Plus" \
-        "$KIWIX_MIRROR/medlineplus/medlineplus_en_all_2024-01.zim" \
+        "$KIWIX_MIRROR/zimit/medlineplus.gov_en_all_2025-01.zim" \
         "$ZIM_DIR/medicine"
     download_zim "WikiMed" \
-        "$KIWIX_MIRROR/wikimed/wikimed_en_all_maxi_2024-01.zim" \
+        "$KIWIX_MIRROR/other/mdwiki_en_all_maxi_2025-11.zim" \
         "$ZIM_DIR/medicine"
 }
 
@@ -233,7 +262,7 @@ dl_ted() {
 
     info "=== TED Talks ==="
     download_zim "TED EN" \
-        "$KIWIX_MIRROR/ted/ted_en_all_2024-01.zim" \
+        "$KIWIX_MIRROR/ted/ted_mul_technology_2026-01.zim" \
         "$ZIM_DIR/education"
 }
 
