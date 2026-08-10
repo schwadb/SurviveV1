@@ -44,8 +44,31 @@ detect_hailo() {
 
 # ── Ensure Ollama is running ──────────────────────────────────────────────────
 start_ollama() {
+    # OLLAMA_MODELS is a SERVER-side variable. Pulling against a server that
+    # was started with a different models directory silently writes there —
+    # which is how the vendor's ollama.service (models in
+    # /usr/share/ollama/.ollama) ends up filling the SD card. So: verify the
+    # running server's directory and restart it if it disagrees.
+    local pid running_dir
+    pid=$(pgrep -x ollama | head -1 || true)
+    if [[ -n "$pid" ]]; then
+        running_dir=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null \
+                      | sed -n 's/^OLLAMA_MODELS=//p' | head -1)
+        if [[ "$running_dir" != "$MODELS_DIR" ]]; then
+            warn "Ollama is running with models in ${running_dir:-/usr/share/ollama/.ollama (default)}"
+            warn "Restarting it against $MODELS_DIR so models land on your storage drive"
+            systemctl stop ollama 2>/dev/null || true
+            pkill -x ollama 2>/dev/null || true
+            sleep 2
+            if pgrep -x ollama &>/dev/null; then
+                warn "Could not stop the running server — re-run this script with sudo,"
+                warn "or models will be written to ${running_dir:-the SD card}."
+            fi
+        fi
+    fi
+
     if ! pgrep -x ollama &>/dev/null; then
-        info "Starting Ollama server..."
+        info "Starting Ollama server (models: $MODELS_DIR)..."
         OLLAMA_MODELS="$MODELS_DIR" ollama serve &>/var/log/survive_ollama.log &
         sleep 4
     fi

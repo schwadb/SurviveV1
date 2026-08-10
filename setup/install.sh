@@ -230,6 +230,18 @@ install_ollama() {
     info "Installing Ollama for local AI..."
     curl -fsSL https://ollama.ai/install.sh | sh
     command -v ollama &>/dev/null || { error "Ollama install failed"; exit 1; }
+
+    # The vendor installer registers its own ollama.service running as the
+    # 'ollama' system user, whose models live in /usr/share/ollama/.ollama —
+    # on the SD CARD. OLLAMA_MODELS is read by the SERVER, so exporting it for
+    # `ollama pull` does NOT redirect a server that is already running; models
+    # silently fill the boot disk (8-14 GB) until apt runs out of space.
+    # Retire the vendor unit here; install_services() then installs ours, which
+    # points OLLAMA_MODELS at the storage drive.
+    if systemctl list-unit-files ollama.service &>/dev/null; then
+        info "Disabling the vendor ollama.service (its models would fill the SD card)"
+        systemctl disable --now ollama.service 2>/dev/null || true
+    fi
     success "Ollama installed"
 }
 
