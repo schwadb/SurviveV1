@@ -15,6 +15,14 @@ STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 SERVICE_TEMPLATE_DIR="$REPO_DIR/systemd"
 SYSTEMD_DIR="/etc/systemd/system"
 
+# The templates ship with User=pi, but Raspberry Pi Imager lets the user pick
+# any login name. A unit naming a nonexistent user fails instantly with
+# status=217/USER — before any of its own logging — so substitute the real
+# account. SUDO_USER is the human who ran sudo; fall back to the repo owner.
+SERVICE_USER="${SURVIVE_SERVICE_USER:-${SUDO_USER:-}}"
+[[ -n "$SERVICE_USER" ]] || SERVICE_USER=$(stat -c '%U' "$REPO_DIR")
+id "$SERVICE_USER" &>/dev/null || SERVICE_USER="pi"
+
 GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[SERVICES]${NC} $*"; }
 success() { echo -e "${GREEN}[SERVICES]${NC} $*"; }
@@ -22,13 +30,17 @@ success() { echo -e "${GREEN}[SERVICES]${NC} $*"; }
 [[ $EUID -eq 0 ]] || { echo "Run with sudo: sudo bash $0"; exit 1; }
 
 info "Generating service files for storage path: $STORAGE_PATH"
+info "Services will run as user: $SERVICE_USER"
 
 for template in "$SERVICE_TEMPLATE_DIR"/*.service; do
     name=$(basename "$template")
     dest="$SYSTEMD_DIR/$name"
 
-    # Replace /mnt/survive with the configured storage path
-    sed "s|/mnt/survive|$STORAGE_PATH|g" "$template" > "$dest"
+    # Replace /mnt/survive with the configured storage path, and the template's
+    # placeholder account with this machine's real user.
+    sed -e "s|/mnt/survive|$STORAGE_PATH|g" \
+        -e "s|^User=pi$|User=$SERVICE_USER|" \
+        "$template" > "$dest"
     success "Installed $dest"
 done
 
