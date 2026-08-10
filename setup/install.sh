@@ -62,6 +62,23 @@ EOF
 
 # ── System update ─────────────────────────────────────────────────────────────
 update_system() {
+    # Guard: apt needs several GB of headroom on the root filesystem. The
+    # classic way this fills up is content/models downloaded while the storage
+    # drive was NOT mounted — those files land on the SD card under the
+    # /mnt/survive directory and are then HIDDEN by the real mount.
+    local free_mb
+    free_mb=$(df -Pm / | awk 'NR==2 {print $4}')
+    if (( free_mb < 2048 )); then
+        error "Only ${free_mb} MB free on the root filesystem — apt needs ~2 GB."
+        error "Common causes and fixes:"
+        error "  sudo apt-get clean                        # drop cached .deb files"
+        error "  # Files hidden UNDER the storage mountpoint from an early download:"
+        error "  sudo mount --bind / /tmp/rootview && sudo du -sh /tmp/rootview/mnt/survive"
+        error "  sudo rm -rf /tmp/rootview/mnt/survive/* && sudo umount /tmp/rootview"
+        error "  du -sh ~/.ollama /usr/share/ollama        # stray AI models on the SD card"
+        exit 1
+    fi
+
     info "Updating system packages..."
     apt-get update -qq
     apt-get upgrade -y -qq

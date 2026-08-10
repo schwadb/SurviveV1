@@ -52,6 +52,17 @@ run_or_dry() {
 
 # ── Disk space check ──────────────────────────────────────────────────────────
 check_disk_space() {
+    # Refuse to write onto the SD card. If the configured storage path is not
+    # a real mountpoint, hundreds of GB of downloads land on the root
+    # filesystem — and are then HIDDEN under the mount when the drive finally
+    # appears, silently filling the card.
+    if [[ "$STORAGE_PATH" == /mnt/* ]] && ! mountpoint -q "$STORAGE_PATH"; then
+        error "$STORAGE_PATH is not a mounted drive — downloads would fill the SD card."
+        error "Mount your storage first (sudo mount $STORAGE_PATH), or re-run the wizard:"
+        error "  sudo bash install/wizard.sh"
+        exit 1
+    fi
+
     AVAILABLE_GB=$(df -BG "$STORAGE_PATH" | tail -1 | awk '{print $4}' | tr -d 'G')
     BUDGET_GB="${SURVIVE_BUDGET_GB:-800}"
     info "Available: ${AVAILABLE_GB}GB | Budget: ${BUDGET_GB}GB"
