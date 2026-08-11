@@ -352,10 +352,14 @@ setup_drive() {
 
     mkdir -p "${CHOSEN_MOUNT}"
 
-    # Already mounted there (e.g. re-running the wizard)? Nothing to do.
+    # Already mounted at the target (e.g. a manual mount from an earlier
+    # attempt)? Skip the mount, but still fall through to the /etc/fstab block
+    # below — returning here left systems with a working mount that silently
+    # did NOT come back after a reboot.
+    local already_mounted=false
     if mountpoint -q "${CHOSEN_MOUNT}"; then
         ok "Already mounted at ${CHOSEN_MOUNT}"
-        return
+        already_mounted=true
     fi
 
     # The drive may already be mounted somewhere else — a manual mount or a
@@ -389,7 +393,19 @@ setup_drive() {
         if ! grep -q "$uuid" /etc/fstab 2>/dev/null; then
             echo "UUID=${uuid}  ${CHOSEN_MOUNT}  ${fstype}  defaults,nofail,noatime  0  2" >> /etc/fstab
             ok "Added to /etc/fstab (auto-mount on boot)"
+        else
+            ok "/etc/fstab already auto-mounts this drive"
         fi
+    else
+        warn "${CHOSEN_PART} has no UUID — cannot add a reliable /etc/fstab entry."
+        warn "The drive will NOT auto-mount after a reboot."
+    fi
+
+    if [[ "$already_mounted" == "true" ]]; then
+        return   # nothing to mount; fstab is now in place for the next boot
+    fi
+
+    if [[ -n "$uuid" ]]; then
         mount "${CHOSEN_MOUNT}" 2>/dev/null || mount "${CHOSEN_PART}" "${CHOSEN_MOUNT}" || true
     else
         mount "${CHOSEN_PART}" "${CHOSEN_MOUNT}" || true
