@@ -21,8 +21,10 @@ StartLimitBurst=3
 # Cold-loading a large Wikipedia ZIM on a Pi takes 5-15 min.
 TimeoutStartSec=300
 TimeoutStopSec=30
-# Cap against libkiwix memory-leak patterns seen on ARM.
-MemoryMax=1G
+# kiwix-serve mmaps the ZIM files; with cgroup v2 that mapped page cache counts
+# toward this limit, so 1G caused constant reclaim thrashing on a 100 GB
+# Wikipedia archive. 4G leaves room to cache hot pages on a 16 GB Pi.
+MemoryMax=4G
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=survive-kiwix

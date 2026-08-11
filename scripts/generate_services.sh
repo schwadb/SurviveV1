@@ -23,6 +23,11 @@ SERVICE_USER="${SURVIVE_SERVICE_USER:-${SUDO_USER:-}}"
 [[ -n "$SERVICE_USER" ]] || SERVICE_USER=$(stat -c '%U' "$REPO_DIR")
 id "$SERVICE_USER" &>/dev/null || SERVICE_USER="pi"
 
+# kiwix-serve lives in /usr/bin when installed from apt (the normal path) and
+# /usr/local/bin when installed from the upstream tarball. systemd needs an
+# absolute ExecStart, so resolve it here instead of guessing in the template.
+KIWIX_BIN=$(command -v kiwix-serve || echo /usr/local/bin/kiwix-serve)
+
 GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[SERVICES]${NC} $*"; }
 success() { echo -e "${GREEN}[SERVICES]${NC} $*"; }
@@ -31,6 +36,7 @@ success() { echo -e "${GREEN}[SERVICES]${NC} $*"; }
 
 info "Generating service files for storage path: $STORAGE_PATH"
 info "Services will run as user: $SERVICE_USER"
+info "kiwix-serve binary: $KIWIX_BIN"
 
 for template in "$SERVICE_TEMPLATE_DIR"/*.service; do
     name=$(basename "$template")
@@ -40,6 +46,7 @@ for template in "$SERVICE_TEMPLATE_DIR"/*.service; do
     # placeholder account with this machine's real user.
     sed -e "s|/mnt/survive|$STORAGE_PATH|g" \
         -e "s|^User=pi$|User=$SERVICE_USER|" \
+        -e "s|/usr/local/bin/kiwix-serve|$KIWIX_BIN|" \
         "$template" > "$dest"
     success "Installed $dest"
 done
