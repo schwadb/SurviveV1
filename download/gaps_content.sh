@@ -37,6 +37,41 @@ warn()    { echo -e "${YELLOW}[GAPS]${NC} $*"; }
 
 FAILED_LOG="$LOG_DIR/failed_downloads.log"
 
+
+# Many .gov/.org sites now reject non-browser clients (HTTP 403) or have moved
+# files (404). Two mitigations, in order:
+#   1. present a normal browser User-Agent
+#   2. fall back to the Wayback Machine, which keeps byte-identical snapshots
+#      ("id_" returns the original file, without the archive toolbar)
+SURVIVE_UA="Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+
+_fetch() {  # _fetch <url> <dest-file>
+    wget -q --show-progress --tries=3 --timeout=60 \
+        --user-agent="$SURVIVE_UA" -O "$2" "$1"
+}
+
+# A blocked request often returns an HTML error page with HTTP 200; saving that
+# as a .pdf hides the failure until someone opens the file months later.
+_is_valid_pdf() {
+    [[ -s "$1" ]] || return 1
+    [[ "$1" != *.pdf ]] && return 0        # only PDFs are magic-checked
+    [[ "$(head -c 4 "$1" 2>/dev/null)" == "%PDF" ]]
+}
+
+# Try the original URL, then its most recent Wayback snapshot.
+_fetch_with_fallback() {  # _fetch_with_fallback <url> <dest-file> <name>
+    if _fetch "$1" "$2" && _is_valid_pdf "$2"; then
+        return 0
+    fi
+    rm -f "$2"
+    echo "  [$3] direct download failed -- trying the Wayback Machine..." >&2
+    if _fetch "https://web.archive.org/web/2id_/$1" "$2" && _is_valid_pdf "$2"; then
+        return 0
+    fi
+    rm -f "$2"
+    return 1
+}
+
 dl_file() {
     local name="$1"
     local url="$2"
@@ -45,13 +80,12 @@ dl_file() {
 
     [[ -f "$dest/$filename" ]] && { info "[$name] Already exists"; return 0; }
     info "Downloading: $name"
-    wget -q --show-progress --tries=3 --timeout=60 \
-        -O "$dest/$filename" "$url" \
-        && success "$name saved" \
-        || {
-            warn "$name failed — see docs/gaps_analysis.md for manual download"
-            echo "$(date '+%Y-%m-%d %H:%M:%S') FAILED [$name] $url" >> "$FAILED_LOG"
-        }
+    if _fetch_with_fallback "$url" "$dest/$filename" "$name"; then
+        success "$name saved"
+    else
+        warn "$name failed — see docs/gaps_analysis.md for manual download"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') FAILED [$name] $url" >> "$FAILED_LOG"
+    fi
 }
 
 dl_channel() {
