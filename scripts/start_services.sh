@@ -76,10 +76,10 @@ start_manual() {
                 return
             fi
             info "Starting Kiwix on :8081..."
+            # No --address: kiwix-serve 3.x rejects the 0.0.0.0 wildcard.
             nohup kiwix-serve \
                 --library "$KIWIX_LIB" \
                 --port 8081 \
-                --address 0.0.0.0 \
                 > /tmp/kiwix.log 2>&1 &
             echo $! > /tmp/kiwix.pid
             success "Kiwix started (PID $(cat /tmp/kiwix.pid))"

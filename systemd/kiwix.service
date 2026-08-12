@@ -9,10 +9,12 @@ Type=simple
 User=pi
 ExecStartPre=/bin/mkdir -p /mnt/survive/zim
 # --threads 2 is enough for a single-user appliance; 4 ate RAM without benefit.
+# No --address: kiwix-serve 3.x validates the value against real interface
+# addresses and rejects the 0.0.0.0 wildcard ("IP address is not available on
+# this system"). Omitting it listens on all interfaces, which is the intent.
 ExecStart=/usr/local/bin/kiwix-serve \
     --library /mnt/survive/.kiwix_library.xml \
     --port 8081 \
-    --address 0.0.0.0 \
     --threads 2
 Restart=on-failure
 RestartSec=10
