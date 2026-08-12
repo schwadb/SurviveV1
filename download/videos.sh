@@ -87,7 +87,7 @@ dl_playlist() {
     # --no-overwrites      : never overwrite existing files (prevents clobber).
     # --socket-timeout     : unblock hung sockets so the script can continue.
     # Per-file success is verified downstream by check_downloads().
-    yt-dlp \
+    yt-dlp "${YTDLP_AUTH[@]}" \
         --format "bestvideo[height<=${QUALITY}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${QUALITY}][ext=mp4]/best" \
         --merge-output-format mp4 \
         --embed-thumbnail \
@@ -112,6 +112,30 @@ dl_playlist() {
     || warn "[$category] $name had errors (some videos may have been geo-blocked)"
 }
 
+
+# ── YouTube authentication ────────────────────────────────────────────────────
+# YouTube now answers many automated requests with "Sign in to confirm you're
+# not a bot". Supply credentials via config/survive.conf:
+#   SURVIVE_YTDLP_COOKIES="/home/pi/yt_cookies.txt"   # exported cookies file
+#   SURVIVE_YTDLP_BROWSER="chromium"                  # or read them live
+# Without either, downloads are attempted anyway (some videos still work) and
+# blocked items are skipped rather than aborting the run.
+_ytdlp_auth_args() {
+    if [[ -n "${SURVIVE_YTDLP_COOKIES:-}" ]] && [[ -f "${SURVIVE_YTDLP_COOKIES}" ]]; then
+        printf '%s\n--cookies\n%s' "" "${SURVIVE_YTDLP_COOKIES}"
+    elif [[ -n "${SURVIVE_YTDLP_BROWSER:-}" ]]; then
+        printf '%s\n--cookies-from-browser\n%s' "" "${SURVIVE_YTDLP_BROWSER}"
+    fi
+}
+mapfile -t YTDLP_AUTH < <(_ytdlp_auth_args)
+# Drop the leading empty element produced when no auth is configured.
+[[ ${#YTDLP_AUTH[@]} -gt 0 ]] && [[ -z "${YTDLP_AUTH[0]}" ]] && YTDLP_AUTH=("${YTDLP_AUTH[@]:1}")
+if [[ ${#YTDLP_AUTH[@]} -eq 0 ]]; then
+    echo "[WARN] No YouTube credentials configured (SURVIVE_YTDLP_COOKIES /" >&2
+    echo "[WARN] SURVIVE_YTDLP_BROWSER in survive.conf). Blocked videos will be" >&2
+    echo "[WARN] skipped -- see docs/TROUBLESHOOTING.md 'YouTube bot check'." >&2
+fi
+
 dl_channel() {
     local category="$1"
     local name="$2"
@@ -121,7 +145,7 @@ dl_channel() {
     info "[$category] Channel: $name (max $max videos)"
     local BW_ARGS=()
     [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--limit-rate "${SURVIVE_BANDWIDTH_LIMIT}")
-    yt-dlp \
+    yt-dlp "${YTDLP_AUTH[@]}" \
         --format "bestvideo[height<=${QUALITY}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${QUALITY}]/best" \
         --merge-output-format mp4 \
         --embed-metadata \

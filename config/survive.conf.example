@@ -60,3 +60,12 @@ SURVIVE_OLLAMA_LIST_TIMEOUT="2"     # fetching model list from Ollama
 # chunks — not a cap on total answer length. A generating model emits a chunk
 # every second, so 60 s is generous; raise it only if the model stalls mid-answer.
 SURVIVE_AI_CHAT_TIMEOUT="60"
+
+# ── YouTube downloads ──────────────────────────────────────────────────────────
+# YouTube blocks many automated downloads with "Sign in to confirm you're not a
+# bot". Point ONE of these at credentials to fetch video content:
+#   SURVIVE_YTDLP_COOKIES  path to a cookies.txt exported from a logged-in browser
+#   SURVIVE_YTDLP_BROWSER  read cookies live from a local browser (e.g. chromium)
+# Leave both empty to attempt anonymous downloads (blocked items are skipped).
+SURVIVE_YTDLP_COOKIES=""
+SURVIVE_YTDLP_BROWSER=""

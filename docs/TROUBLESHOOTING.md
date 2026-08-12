@@ -297,6 +297,37 @@ trade-off in a disaster.
 
 ---
 
+## YouTube "Sign in to confirm you're not a bot"
+
+yt-dlp downloads fail with this message when YouTube decides the request looks
+automated. It is a YouTube policy change, not a fault in the download scripts —
+and it comes and goes.
+
+Fixes, cheapest first:
+
+```bash
+# 1. Update yt-dlp — the project ships fixes for these blocks constantly
+sudo yt-dlp -U    # or: sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && sudo chmod +x /usr/local/bin/yt-dlp
+```
+
+```bash
+# 2. Supply cookies from a logged-in YouTube session.
+#    On the Pi's desktop browser, install a "Get cookies.txt" extension, export
+#    while logged in to youtube.com, then set in config/survive.conf:
+SURVIVE_YTDLP_COOKIES="/home/<user>/yt_cookies.txt"
+```
+
+```bash
+# 3. Or read cookies straight from a local browser profile:
+SURVIVE_YTDLP_BROWSER="chromium"
+```
+
+Note that using a personal account for bulk downloads can get that account rate
+limited; a throwaway account is the safer choice. Blocked videos are skipped
+rather than aborting the run, so partial video libraries are expected.
+
+---
+
 ## Getting Help
 
 - Check service status: `bash scripts/status.sh`
