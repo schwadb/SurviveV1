@@ -15,9 +15,12 @@ User=pi
 # Keeping app state in .calibre-web/ stops it polluting the book library, and
 # the dot-prefix keeps it out of the dashboard's content walks.
 Environment="CALIBRE_DBPATH=/mnt/survive/.calibre-web"
-# systemd starts units in / , which is not writable; Calibre-Web creates files
-# relative to the cwd, so point it at its own writable state directory.
-WorkingDirectory=/mnt/survive/.calibre-web
+# Point the cwd at the state directory, but with a leading "-" so a missing
+# directory is not fatal: systemd chdir's BEFORE running ExecStartPre, so a
+# hard WorkingDirectory here fails with 200/CHDIR on the very first start —
+# before the mkdir below has had a chance to run. The -p/-g paths are
+# absolute, so the cwd is belt-and-braces rather than load-bearing.
+WorkingDirectory=-/mnt/survive/.calibre-web
 ExecStartPre=/bin/mkdir -p /mnt/survive/.calibre-web /mnt/survive/books/calibre-library
 ExecStart=/opt/survive/venv/bin/cps \
     -p /mnt/survive/.calibre-web/app.db \
