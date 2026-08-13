@@ -62,8 +62,21 @@ mapfile -d '' EBOOKS < <(
 )
 
 if [[ ${#EBOOKS[@]} -eq 0 ]]; then
-    warn "No ebooks found under $BOOKS_DIR yet — nothing to import."
-    warn "Download some first:  bash download/books_pdfs.sh"
+    warn "No ebooks found under $BOOKS_DIR yet."
+    # Calibre-Web refuses to start against a directory with no metadata.db
+    # ("new db is invalid"), so create a valid empty library rather than
+    # leaving the service unusable. --empty adds a formatless placeholder
+    # record, which is what forces the database into existence.
+    if [[ ! -f "$LIBRARY/metadata.db" ]]; then
+        info "Creating an empty Calibre library so Calibre-Web can start..."
+        mkdir -p "$LIBRARY"
+        calibredb add --with-library="$LIBRARY" --empty \
+            --title "SurviveV1 placeholder (delete once you add books)" \
+            >/dev/null 2>&1 || warn "Could not initialise an empty library"
+    fi
+    [[ -f "$LIBRARY/metadata.db" ]] && ok_msg="ready" || ok_msg="NOT created"
+    warn "Library at $LIBRARY: $ok_msg"
+    warn "Add content with:  bash download/books_pdfs.sh"
     exit 0
 fi
 
