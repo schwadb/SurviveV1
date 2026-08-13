@@ -426,10 +426,31 @@ main() {
         bash "$REPO_DIR/scripts/generate_services.sh" || warn "generate_services.sh failed"
     fi
 
-    # Optional (comment out if not needed)
-    # install_kolibri
-    # install_calibre
-    # install_jellyfin
+    # Content services. These were previously commented out, which shipped a
+    # dashboard advertising Kolibri, Calibre-Web and Jellyfin on a machine where
+    # none of them existed — every one showed "STOPPED" with no explanation.
+    # Now gated by the content flags, so disabling a category also skips paying
+    # for its (large) dependencies.
+    if [[ "${CONTENT_KOLIBRI:-Y}" =~ [Yy] ]]; then
+        install_kolibri || warn "Kolibri install failed — dashboard tile will stay DOWN"
+    else
+        info "CONTENT_KOLIBRI=N — skipping Kolibri"
+    fi
+
+    if [[ "${CONTENT_GUTENBERG:-Y}" =~ [Yy] ]] || [[ "${CONTENT_PDFS:-Y}" =~ [Yy] ]]; then
+        install_calibre || warn "Calibre-Web install failed — dashboard tile will stay DOWN"
+    else
+        info "No book/PDF content selected — skipping Calibre-Web"
+    fi
+
+    if [[ "${CONTENT_VIDEOS:-Y}" =~ [Yy] ]]; then
+        install_jellyfin || warn "Jellyfin install failed — dashboard tile will stay DOWN"
+    else
+        info "CONTENT_VIDEOS=N — skipping Jellyfin"
+    fi
+
+    # The Hailo stack is hardware-specific (8L vs 10H need different drivers)
+    # and cannot accelerate Ollama regardless — see docs/ai_hat_setup.md.
     # setup_ai_hat
 
     echo ""
