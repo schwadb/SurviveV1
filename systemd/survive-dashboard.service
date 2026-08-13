@@ -4,6 +4,11 @@ After=network.target local-fs.target
 Wants=network.target local-fs.target
 RequiresMountsFor=/mnt/survive
 
+# Restart rate limiting belongs in [Unit]; systemd ignores these keys in
+# [Service] ("Unknown key ... ignoring"), so the limit never applied.
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
 [Service]
 Type=simple
 User=pi
@@ -25,8 +30,6 @@ ExecStart=/opt/survive/venv/bin/gunicorn \
 ExecStartPost=/bin/sh -c 'for i in 1 2 3 4 5 6 7 8 9 10; do curl -sf http://127.0.0.1:8080/health >/dev/null && exit 0; sleep 1; done; exit 1'
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=60
-StartLimitBurst=3
 TimeoutStopSec=30
 StandardOutput=journal
 StandardError=journal

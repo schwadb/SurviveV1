@@ -4,6 +4,11 @@ After=network.target local-fs.target
 Wants=local-fs.target
 RequiresMountsFor=/mnt/survive
 
+# Restart rate limiting belongs in [Unit]; systemd ignores these keys in
+# [Service] ("Unknown key ... ignoring"), so the limit never applied.
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
 [Service]
 Type=simple
 User=pi
@@ -18,8 +23,6 @@ ExecStart=/usr/local/bin/kiwix-serve \
     --threads 2
 Restart=on-failure
 RestartSec=10
-StartLimitIntervalSec=60
-StartLimitBurst=3
 # Cold-loading a large Wikipedia ZIM on a Pi takes 5-15 min.
 TimeoutStartSec=300
 TimeoutStopSec=30
