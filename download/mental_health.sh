@@ -44,22 +44,34 @@ _fetch() {  # _fetch <url> <dest-file>
         --user-agent="$SURVIVE_UA" -O "$2" "$1"
 }
 
-# A blocked request often returns an HTML error page with HTTP 200; saving that
-# as a .pdf hides the failure until someone opens the file months later.
-_is_valid_pdf() {
+# A blocked or moved request often returns an HTML page with HTTP 200. Saving
+# that as a .pdf/.epub hides the failure until someone opens it — Standard
+# Ebooks did exactly this, producing six "books" that were XHTML pages and
+# made Calibre fail with "File is not a zip file".
+_is_valid_download() {
     [[ -s "$1" ]] || return 1
-    [[ "$1" != *.pdf ]] && return 0        # only PDFs are magic-checked
-    [[ "$(head -c 4 "$1" 2>/dev/null)" == "%PDF" ]]
+    local magic
+    case "${1,,}" in
+        *.pdf)
+            [[ "$(head -c 4 "$1" 2>/dev/null)" == "%PDF" ]] ;;
+        *.epub|*.mobi|*.azw3|*.zip)
+            # EPUB/AZW3 are ZIP containers -> "PK"; MOBI starts with its own
+            # header, so accept either rather than rejecting valid files.
+            magic=$(head -c 2 "$1" 2>/dev/null)
+            [[ "$magic" == "PK" ]] || head -c 68 "$1" 2>/dev/null | grep -q "BOOKMOBI" ;;
+        *)
+            return 0 ;;   # unknown type: size check only
+    esac
 }
 
 # Try the original URL, then its most recent Wayback snapshot.
 _fetch_with_fallback() {  # _fetch_with_fallback <url> <dest-file> <name>
-    if _fetch "$1" "$2" && _is_valid_pdf "$2"; then
+    if _fetch "$1" "$2" && _is_valid_download "$2"; then
         return 0
     fi
     rm -f "$2"
     echo "  [$3] direct download failed -- trying the Wayback Machine..." >&2
-    if _fetch "https://web.archive.org/web/2id_/$1" "$2" && _is_valid_pdf "$2"; then
+    if _fetch "https://web.archive.org/web/2id_/$1" "$2" && _is_valid_download "$2"; then
         return 0
     fi
     rm -f "$2"
