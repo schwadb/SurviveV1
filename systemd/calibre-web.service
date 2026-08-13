@@ -11,6 +11,11 @@ User=pi
 # library itself is /mnt/survive/books/calibre-library (built by
 # scripts/build_ebook_library.sh and selected in the first-run wizard).
 Environment="CALIBRE_DBPATH=/mnt/survive/books/calibre-library"
+# systemd starts services in / , which is not writable. Calibre-Web creates
+# its app.db relative to the working directory, so without this it dies with
+# "sqlite3.OperationalError: unable to open database file" — while starting
+# fine when launched by hand from a writable directory.
+WorkingDirectory=/mnt/survive/books/calibre-library
 # Bind all interfaces (0.0.0.0), not 127.0.0.1: the dashboard links directly
 # to http://<host>:8083, so a localhost-only bind makes E-Books unreachable
 # from every device except the Pi itself. nginx still proxies /books/ for
