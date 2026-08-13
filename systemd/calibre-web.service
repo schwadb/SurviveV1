@@ -7,22 +7,21 @@ RequiresMountsFor=/mnt/survive
 [Service]
 Type=simple
 User=pi
-# CALIBRE_DBPATH is where cps keeps its app settings DB (app.db); the book
-# library itself is /mnt/survive/books/calibre-library (built by
-# scripts/build_ebook_library.sh and selected in the first-run wizard).
-Environment="CALIBRE_DBPATH=/mnt/survive/books/calibre-library"
-# systemd starts services in / , which is not writable. Calibre-Web creates
-# its app.db relative to the working directory, so without this it dies with
-# "sqlite3.OperationalError: unable to open database file" — while starting
-# fine when launched by hand from a writable directory.
-WorkingDirectory=/mnt/survive/books/calibre-library
-# Bind all interfaces (0.0.0.0), not 127.0.0.1: the dashboard links directly
-# to http://<host>:8083, so a localhost-only bind makes E-Books unreachable
-# from every device except the Pi itself. nginx still proxies /books/ for
-# users who prefer port 80.
-ExecStartPre=/bin/mkdir -p /mnt/survive/books/calibre-library
+# Calibre-Web keeps its own application state (settings, users, sessions)
+# SEPARATE from the Calibre book library:
+#   -p  path to the settings DB   (NOT a port — 8083 is the built-in default)
+#   -g  path to the gdrive DB
+#   -i  listen address
+# Keeping app state in .calibre-web/ stops it polluting the book library, and
+# the dot-prefix keeps it out of the dashboard's content walks.
+Environment="CALIBRE_DBPATH=/mnt/survive/.calibre-web"
+# systemd starts units in / , which is not writable; Calibre-Web creates files
+# relative to the cwd, so point it at its own writable state directory.
+WorkingDirectory=/mnt/survive/.calibre-web
+ExecStartPre=/bin/mkdir -p /mnt/survive/.calibre-web /mnt/survive/books/calibre-library
 ExecStart=/opt/survive/venv/bin/cps \
-    -p 8083 \
+    -p /mnt/survive/.calibre-web/app.db \
+    -g /mnt/survive/.calibre-web/gdrive.db \
     -i 0.0.0.0
 Restart=on-failure
 RestartSec=10
