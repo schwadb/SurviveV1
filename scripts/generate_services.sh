@@ -23,10 +23,14 @@ SERVICE_USER="${SURVIVE_SERVICE_USER:-${SUDO_USER:-}}"
 [[ -n "$SERVICE_USER" ]] || SERVICE_USER=$(stat -c '%U' "$REPO_DIR")
 id "$SERVICE_USER" &>/dev/null || SERVICE_USER="pi"
 
-# kiwix-serve lives in /usr/bin when installed from apt (the normal path) and
-# /usr/local/bin when installed from the upstream tarball. systemd needs an
-# absolute ExecStart, so resolve it here instead of guessing in the template.
-KIWIX_BIN=$(command -v kiwix-serve || echo /usr/local/bin/kiwix-serve)
+# Binaries land in different prefixes depending on how they were installed
+# (apt -> /usr/bin, upstream installers -> /usr/local/bin). systemd needs an
+# absolute ExecStart and does no PATH lookup, so a template guessing wrong
+# fails with 203/EXEC. Resolve each one here instead.
+declare -A RESOLVED_BIN=()
+for _b in kiwix-serve ollama kolibri martin; do
+    RESOLVED_BIN[$_b]=$(command -v "$_b" 2>/dev/null || echo "/usr/local/bin/$_b")
+done
 
 GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[SERVICES]${NC} $*"; }
@@ -36,7 +40,13 @@ success() { echo -e "${GREEN}[SERVICES]${NC} $*"; }
 
 info "Generating service files for storage path: $STORAGE_PATH"
 info "Services will run as user: $SERVICE_USER"
-info "kiwix-serve binary: $KIWIX_BIN"
+for _b in "${!RESOLVED_BIN[@]}"; do
+    if [[ -x "${RESOLVED_BIN[$_b]}" ]]; then
+        info "$_b -> ${RESOLVED_BIN[$_b]}"
+    else
+        info "$_b -> not installed (unit will stay DOWN until it is)"
+    fi
+done
 
 for template in "$SERVICE_TEMPLATE_DIR"/*.service; do
     name=$(basename "$template")
@@ -46,7 +56,10 @@ for template in "$SERVICE_TEMPLATE_DIR"/*.service; do
     # placeholder account with this machine's real user.
     sed -e "s|/mnt/survive|$STORAGE_PATH|g" \
         -e "s|^User=pi$|User=$SERVICE_USER|" \
-        -e "s|/usr/local/bin/kiwix-serve|$KIWIX_BIN|" \
+        -e "s|/usr/local/bin/kiwix-serve|${RESOLVED_BIN[kiwix-serve]}|" \
+        -e "s|/usr/local/bin/ollama|${RESOLVED_BIN[ollama]}|" \
+        -e "s|/usr/local/bin/kolibri|${RESOLVED_BIN[kolibri]}|" \
+        -e "s|/usr/local/bin/martin|${RESOLVED_BIN[martin]}|" \
         "$template" > "$dest"
     success "Installed $dest"
 done
