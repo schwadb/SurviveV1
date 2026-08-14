@@ -48,6 +48,8 @@ is_valid() {
         *.mbtiles)
             # MBTiles is a SQLite database.
             [[ "$(head -c 15 "$f" 2>/dev/null)" == "SQLite format 3" ]] ;;
+        *.pmtiles)
+            [[ "$(head -c 7 "$f" 2>/dev/null)" == "PMTiles" ]] ;;
         *)
             return 0 ;;
     esac
@@ -69,7 +71,7 @@ while IFS= read -r -d '' f; do
     fi
 done < <(find "$STORAGE_PATH" \
               \( -iname '*.pdf' -o -iname '*.epub' -o -iname '*.mobi' \
-                 -o -iname '*.azw3' -o -iname '*.zim' -o -iname '*.mbtiles' \) \
+                 -o -iname '*.azw3' -o -iname '*.zim' -o -iname '*.mbtiles' -o -iname '*.pmtiles' \) \
               -type f -print0 2>/dev/null)
 
 echo ""

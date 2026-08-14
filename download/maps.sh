@@ -28,7 +28,7 @@ case "$REGION" in
     *) echo "Unknown region '$REGION'. Valid: north-america south-america europe africa asia australia-oceania us us-northeast world" >&2; exit 1 ;;
 esac
 
-mkdir -p "$MAP_DIR"/{tiles,mbtiles,pbf,apps,USGS}
+mkdir -p "$MAP_DIR"/{tiles,mbtiles,pmtiles,pbf,apps,USGS,sprites,fonts}
 
 BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[MAPS]${NC} $*"; }
@@ -134,51 +134,151 @@ dl_osm_pbf() {
 }
 
 # ── Download pre-rendered MBTiles ──────────────────────────────────────────────
-dl_mbtiles() {
-    info "=== Pre-rendered MBTiles (vector tiles) ==="
+# ── pmtiles CLI (needed to extract from the Protomaps planet build) ───────────
+install_pmtiles_cli() {
+    command -v pmtiles &>/dev/null && return 0
+    info "Installing pmtiles CLI..."
+    local url
+    url=$(curl -fsSL --max-time 60 \
+            https://api.github.com/repos/protomaps/go-pmtiles/releases/latest 2>/dev/null \
+        | grep -oE '"browser_download_url": *"[^"]+"' | cut -d'"' -f4 \
+        | grep -i linux | grep -iE 'arm64|aarch64' \
+        | grep -iE '\.(tar\.gz|zip)$' | head -1) || true
+    if [[ -z "$url" ]]; then
+        warn "Could not resolve a pmtiles release for $(uname -m)"
+        return 1
+    fi
+    local tmp; tmp=$(mktemp -d)
+    if wget -q -O "$tmp/pmtiles.pkg" "$url"; then
+        case "$url" in
+            *.zip) unzip -q -o "$tmp/pmtiles.pkg" -d "$tmp" ;;
+            *)     tar -xzf "$tmp/pmtiles.pkg" -C "$tmp" ;;
+        esac
+        local bin; bin=$(find "$tmp" -type f -name pmtiles | head -1)
+        [[ -n "$bin" ]] && sudo install -m 0755 "$bin" /usr/local/bin/pmtiles
+    fi
+    rm -rf "$tmp"
+    command -v pmtiles &>/dev/null && success "pmtiles CLI installed" \
+        || { warn "pmtiles CLI install failed"; return 1; }
+}
 
-    # Download low-zoom world overview (always useful, small)
-    # Full region tiles via Versatiles: https://download.versatiles.org/
-    info "Downloading world overview tiles (zoom 0-8)..."
-    wget -q --show-progress \
-        --continue \
-        -O "$MAP_DIR/mbtiles/world-overview.mbtiles" \
-        "https://github.com/nicowillis/mbtiles-data/raw/main/world.mbtiles" \
-    || warn "World overview tiles failed — try manual download from protomaps.com"
+# The Protomaps project publishes a full-planet vector basemap daily at
+# build.protomaps.com/YYYYMMDD.pmtiles. pmtiles-extract can pull just a zoom
+# range or bounding box from it over HTTP, so the Pi downloads only what it
+# keeps. Builds are retained for a limited window — walk back a few days.
+resolve_protomaps_build() {
+    if [[ -n "${PROTOMAPS_BUILD_URL:-}" ]]; then
+        echo "$PROTOMAPS_BUILD_URL"; return 0
+    fi
+    local d url
+    for i in 0 1 2 3 4 5 6 7 8 9; do
+        d=$(date -u -d "-$i day" +%Y%m%d)
+        url="https://build.protomaps.com/${d}.pmtiles"
+        if curl -sfI --max-time 30 "$url" >/dev/null 2>&1; then
+            echo "$url"; return 0
+        fi
+    done
+    return 1
+}
+
+dl_mbtiles() {
+    info "=== World basemap (Protomaps) ==="
+    mkdir -p "$MAP_DIR/pmtiles"
+
+    # The old source for world-overview.mbtiles (a personal GitHub repo) is
+    # gone; if what's on disk is an HTML page saved as .mbtiles, drop it.
+    local old="$MAP_DIR/mbtiles/world-overview.mbtiles"
+    if [[ -f "$old" ]] && [[ "$(head -c 15 "$old" 2>/dev/null)" != "SQLite format 3" ]]; then
+        warn "Removing invalid world-overview.mbtiles (was an HTML page, not tiles)"
+        rm -f "$old"
+    fi
+
+    install_pmtiles_cli || { warn "Skipping basemap extract (no pmtiles CLI)"; return 0; }
+
+    local build
+    if ! build=$(resolve_protomaps_build); then
+        warn "No Protomaps build reachable — check https://maps.protomaps.com/builds/"
+        warn "and re-run with PROTOMAPS_BUILD_URL=<url> if the naming changed."
+        return 0
+    fi
+    info "Using planet build: $build"
+
+    # World overview: every zoom up to 6 is only a few hundred MB and gives a
+    # navigable world map immediately.
+    if [[ ! -f "$MAP_DIR/pmtiles/world-overview.pmtiles" ]]; then
+        info "Extracting world overview (zoom 0-6)..."
+        pmtiles extract "$build" "$MAP_DIR/pmtiles/world-overview.pmtiles" \
+            --maxzoom=6 \
+            && success "World overview ready" \
+            || warn "World overview extract failed"
+    else
+        info "World overview already present"
+    fi
+
+    # Street-level tiles for the configured region only.
+    local bbox=""
+    case "$REGION" in
+        north-america)     bbox="-170,7,-50,84" ;;
+        south-america)     bbox="-93,-56,-32,13" ;;
+        europe)            bbox="-25,34,45,72" ;;
+        africa)            bbox="-19,-35,52,38" ;;
+        asia)              bbox="25,-11,180,82" ;;
+        australia-oceania) bbox="110,-48,180,-8" ;;
+        us)                bbox="-125,24,-66,50" ;;
+        us-northeast)      bbox="-80.6,40.4,-66.8,47.5" ;;
+        world)             bbox="" ;;  # full planet: use the build directly
+        none)              return 0 ;;
+    esac
+
+    local dest="$MAP_DIR/pmtiles/${REGION}-streets.pmtiles"
+    if [[ -f "$dest" ]]; then
+        info "Region tiles already present: $dest"
+    elif [[ -n "$bbox" ]]; then
+        info "Extracting street-level tiles for ${REGION} (this is tens of GB"
+        info "and can take hours; resume by re-running this script)..."
+        pmtiles extract "$build" "$dest" --bbox="$bbox" \
+            && success "Region tiles ready: $dest" \
+            || warn "Region extract failed — the overview map still works"
+    elif [[ "$REGION" == "world" ]]; then
+        warn "REGION=world: the full planet basemap is ~120 GB."
+        warn "Download it explicitly if intended:"
+        warn "  pmtiles extract $build $MAP_DIR/pmtiles/planet.pmtiles"
+    fi
 }
 
 # ── OpenMapTiles schema setup ──────────────────────────────────────────────────
 setup_tile_server() {
     info "=== Setting up tile server ==="
 
-    # Create config for Martin tile server
-    {
-        echo "# Martin Tile Server Configuration for SurviveV1"
-        echo "listen_addresses:"
-        echo "  - 0.0.0.0:3000"
-        echo ""
-        echo "mbtiles:"
-        echo "  sources:"
-        local found=false
-        for f in "$MAP_DIR/mbtiles"/*.mbtiles; do
-            [[ -e "$f" ]] || continue
-            found=true
-            local name
-            name=$(basename "$f" .mbtiles)
-            echo "    $name: $f"
-        done
-        if [[ "$found" == "false" ]]; then
-            echo "    # No .mbtiles files found yet — re-run after dl_mbtiles completes"
-        fi
-        echo ""
-        echo "sprite:"
-        echo "  paths:"
-        echo "    - $MAP_DIR/sprites"
-        echo ""
-        echo "font:"
-        echo "  paths:"
-        echo "    - $MAP_DIR/fonts"
-    } > "$MAP_DIR/martin_config.yaml"
+    # Auto-discovery directories instead of per-file sources: new tile files
+    # appear without regenerating this config. web_ui gives a human-usable
+    # map browser at :3000 — without it Martin serves only raw JSON/tiles,
+    # which reads as "maps don't work" even when everything is healthy.
+    cat > "$MAP_DIR/martin_config.yaml" <<CONF
+# Martin Tile Server Configuration for SurviveV1 (generated by maps.sh)
+listen_addresses:
+  - 0.0.0.0:3000
+
+# Browsable tile catalog + map preview at http://<host>:3000
+# (If an old Martin build rejects this key, delete this line.)
+web_ui: enable-for-all
+
+mbtiles:
+  paths:
+    - $MAP_DIR/mbtiles
+
+pmtiles:
+  paths:
+    - $MAP_DIR/pmtiles
+
+sprite:
+  paths:
+    - $MAP_DIR/sprites
+
+font:
+  paths:
+    - $MAP_DIR/fonts
+CONF
     success "Martin config: $MAP_DIR/martin_config.yaml"
 }
 
