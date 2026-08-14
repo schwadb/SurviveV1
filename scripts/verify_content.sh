@@ -45,6 +45,9 @@ is_valid() {
         *.zim)
             # ZIM magic is 0x005A494D ("\0ZIM") in the first four bytes.
             head -c 4 "$f" 2>/dev/null | grep -q "ZIM" ;;
+        *.mbtiles)
+            # MBTiles is a SQLite database.
+            [[ "$(head -c 15 "$f" 2>/dev/null)" == "SQLite format 3" ]] ;;
         *)
             return 0 ;;
     esac
@@ -66,7 +69,8 @@ while IFS= read -r -d '' f; do
     fi
 done < <(find "$STORAGE_PATH" \
               \( -iname '*.pdf' -o -iname '*.epub' -o -iname '*.mobi' \
-                 -o -iname '*.azw3' -o -iname '*.zim' \) -type f -print0 2>/dev/null)
+                 -o -iname '*.azw3' -o -iname '*.zim' -o -iname '*.mbtiles' \) \
+              -type f -print0 2>/dev/null)
 
 echo ""
 if (( bad == 0 )); then
