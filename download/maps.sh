@@ -69,16 +69,37 @@ install_map_server() {
             warn "tileserver-gl install failed"
     fi
 
-    # Option 2: Martin tile server (Rust-based, faster on Pi)
-    MARTIN_VER="0.14.3"
-    MARTIN_URL="https://github.com/maplibre/martin/releases/download/v${MARTIN_VER}/martin-aarch64-unknown-linux-musl.tar.gz"
-    TMP=$(mktemp -d)
-    wget -q "$MARTIN_URL" -O "$TMP/martin.tar.gz" && \
-        tar -xzf "$TMP/martin.tar.gz" -C /usr/local/bin/ && \
-        chmod +x /usr/local/bin/martin && \
-        success "Martin tile server installed" || \
-        warn "Martin install failed — using tileserver-gl"
-    rm -rf "$TMP"
+    # Option 2: Martin tile server (Rust-based, faster on Pi).
+    # Resolved from the current release rather than pinned: the previously
+    # hardcoded v0.14.3 asset now 404s, which left the Maps tile permanently
+    # DOWN with no explanation.
+    if command -v martin &>/dev/null; then
+        success "Martin already installed"
+    else
+        MARTIN_URL=$(curl -fsSL --max-time 60 \
+                https://api.github.com/repos/maplibre/martin/releases/latest 2>/dev/null \
+            | grep -oE '"browser_download_url": *"[^"]+"' | cut -d'"' -f4 \
+            | grep -iE "linux" | grep -iE "$(uname -m)|arm64" \
+            | grep -E '\.tar\.gz$' | head -1) || true
+        if [[ -n "${MARTIN_URL:-}" ]]; then
+            TMP=$(mktemp -d)
+            if wget -q "$MARTIN_URL" -O "$TMP/martin.tar.gz"; then
+                tar -xzf "$TMP/martin.tar.gz" -C "$TMP"
+                MARTIN_BIN=$(find "$TMP" -type f -name martin | head -1)
+                if [[ -n "$MARTIN_BIN" ]]; then
+                    install -m 0755 "$MARTIN_BIN" /usr/local/bin/martin
+                    success "Martin tile server installed ($(basename "$MARTIN_URL"))"
+                else
+                    warn "No martin binary in the archive — using tileserver-gl"
+                fi
+            else
+                warn "Martin download failed — using tileserver-gl"
+            fi
+            rm -rf "$TMP"
+        else
+            warn "No Martin release found for $(uname -m) — using tileserver-gl"
+        fi
+    fi
 }
 
 # ── Download OSM data ─────────────────────────────────────────────────────────

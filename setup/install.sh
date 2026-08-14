@@ -210,6 +210,56 @@ install_calibre() {
     success "Calibre + Calibre-Web installed"
 }
 
+# ── Martin tile server (offline maps) ─────────────────────────────────────────
+install_martin() {
+    if command -v martin &>/dev/null; then
+        success "Martin already installed ($(command -v martin))"
+        return 0
+    fi
+    info "Installing Martin tile server..."
+
+    # Do NOT pin a version: the previously hardcoded v0.14.3 asset is gone from
+    # GitHub (404), which is why the maps tile never came up. Ask the API for
+    # the current release and pick whichever asset matches this architecture.
+    local arch_pat="aarch64"
+    [[ "$(uname -m)" == "aarch64" ]] || arch_pat="$(uname -m)"
+    local url
+    url=$(curl -fsSL --max-time 60 \
+            https://api.github.com/repos/maplibre/martin/releases/latest 2>/dev/null \
+          | grep -oE '"browser_download_url": *"[^"]+"' \
+          | cut -d'"' -f4 \
+          | grep -iE "linux" | grep -iE "${arch_pat}|arm64" \
+          | grep -E '\.tar\.gz$' | head -1) || true
+
+    if [[ -z "$url" ]]; then
+        warn "Could not determine a Martin release for $(uname -m)."
+        warn "Install manually from https://github.com/maplibre/martin/releases"
+        warn "and re-run: sudo bash scripts/generate_services.sh"
+        return 1
+    fi
+
+    info "Downloading $(basename "$url")"
+    local tmp
+    tmp=$(mktemp -d)
+    if wget -q -O "$tmp/martin.tar.gz" "$url"; then
+        tar -xzf "$tmp/martin.tar.gz" -C "$tmp"
+        # The archive layout varies between releases; find the binary.
+        local bin
+        bin=$(find "$tmp" -type f -name martin -perm -u+x | head -1)
+        [[ -n "$bin" ]] || bin=$(find "$tmp" -type f -name martin | head -1)
+        if [[ -n "$bin" ]]; then
+            install -m 0755 "$bin" /usr/local/bin/martin
+            success "Martin installed ($(/usr/local/bin/martin --version 2>&1 | head -1))"
+        else
+            warn "No martin binary inside the archive"
+        fi
+    else
+        warn "Martin download failed: $url"
+    fi
+    rm -rf "$tmp"
+    command -v martin &>/dev/null
+}
+
 # ── Jellyfin (video streaming) ────────────────────────────────────────────────
 install_jellyfin() {
     info "Installing Jellyfin media server..."
@@ -441,6 +491,12 @@ main() {
         install_calibre || warn "Calibre-Web install failed — dashboard tile will stay DOWN"
     else
         info "No book/PDF content selected — skipping Calibre-Web"
+    fi
+
+    if [[ "${CONTENT_MAPS:-Y}" =~ [Yy] ]]; then
+        install_martin || warn "Martin install failed — Maps tile will stay DOWN"
+    else
+        info "CONTENT_MAPS=N — skipping Martin tile server"
     fi
 
     if [[ "${CONTENT_VIDEOS:-Y}" =~ [Yy] ]]; then
