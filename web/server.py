@@ -16,6 +16,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
@@ -826,6 +827,9 @@ def ai_page():
 @app.route("/api/ai/chat", methods=["POST"])
 @csrf.exempt
 @limiter.limit("5 per minute")
+# Each early return is a distinct client-facing error contract (415/400/404/502);
+# collapsing them would obscure which failure the caller actually hit.
+# pylint: disable=too-many-return-statements
 def ai_chat():
     """Retrieval-augmented, streaming proxy to the local Ollama API.
 
@@ -891,9 +895,26 @@ def ai_chat():
     try:
         # pylint: disable=consider-using-with
         upstream = urllib.request.urlopen(req, timeout=TIMEOUT_AI_CHAT)
+    except urllib.error.HTTPError as exc:
+        # Ollama is reachable but rejected the request. Reporting this as
+        # "service unavailable" sends users hunting a dead service when the
+        # real cause is usually a model that is not installed.
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")[:200]
+        except OSError:
+            pass
+        logging.warning("Ollama rejected the request (%s): %s", exc.code, detail)
+        if exc.code == 404:
+            return jsonify({"error": (
+                f"Model '{model}' is not installed. Available models are listed "
+                "in the dropdown; install more with: bash ai/setup_ollama.sh setup"
+            )}), 404
+        return jsonify({"error": f"AI service error (HTTP {exc.code})"}), 502
     except (OSError, json.JSONDecodeError):
         logging.exception("AI chat proxy error (connect)")
-        return jsonify({"error": "AI service unavailable"}), 502
+        return jsonify({"error": "AI service unavailable — is Ollama running? "
+                                 "Check: systemctl status ollama"}), 502
 
     def generate():
         # With streaming, TIMEOUT_AI_CHAT is a per-read idle timeout, not a
