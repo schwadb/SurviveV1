@@ -184,14 +184,35 @@ install_kiwix() {
 # ── Kolibri (Khan Academy offline) ───────────────────────────────────────────
 install_kolibri() {
     info "Installing Kolibri..."
-    if ! command -v kolibri &>/dev/null; then
-        wget -q "https://learningequality.org/r/kolibri-install-pi" -O /tmp/kolibri_install.sh
-        bash /tmp/kolibri_install.sh || {
-            # Fallback: pip install
-            /opt/survive/venv/bin/pip install -q kolibri
-        }
+    if command -v kolibri &>/dev/null || [[ -x /opt/survive/venv/bin/kolibri ]]; then
+        success "Kolibri already installed"
+        return 0
     fi
-    success "Kolibri installed"
+
+    # Try the vendor installer, then pip. Neither is guaranteed: Kolibri
+    # historically lags new Python releases, and this OS ships Python 3.13.
+    if wget -q "https://learningequality.org/r/kolibri-install-pi" -O /tmp/kolibri_install.sh \
+       && [[ -s /tmp/kolibri_install.sh ]]; then
+        bash /tmp/kolibri_install.sh || true
+    else
+        warn "Could not fetch the Kolibri installer script"
+    fi
+    if ! command -v kolibri &>/dev/null; then
+        /opt/survive/venv/bin/pip install -q kolibri || true
+    fi
+
+    # Report the truth. This previously printed "Kolibri installed"
+    # unconditionally, so a failed install looked like a success and the
+    # dashboard tile stayed DOWN with no explanation.
+    if command -v kolibri &>/dev/null || [[ -x /opt/survive/venv/bin/kolibri ]]; then
+        success "Kolibri installed"
+        return 0
+    fi
+    warn "Kolibri did NOT install (often a Python version conflict —"
+    warn "this system has Python $(python3 -V 2>&1 | awk '{print $2}'))."
+    warn "The Education tile will stay DOWN. Khan Academy content is also"
+    warn "available as a Kiwix ZIM, which needs no extra service."
+    return 1
 }
 
 # ── Calibre + Calibre-Web ─────────────────────────────────────────────────────
