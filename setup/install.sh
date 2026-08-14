@@ -470,11 +470,6 @@ main() {
     configure_samba
     configure_avahi
     install_services
-    # Generate any host-specific service units (was previously documented
-    # as a manual step; call it here so services auto-start on reboot).
-    if [[ -x "$REPO_DIR/scripts/generate_services.sh" ]]; then
-        bash "$REPO_DIR/scripts/generate_services.sh" || warn "generate_services.sh failed"
-    fi
 
     # Content services. These were previously commented out, which shipped a
     # dashboard advertising Kolibri, Calibre-Web and Jellyfin on a machine where
@@ -508,6 +503,14 @@ main() {
     # The Hailo stack is hardware-specific (8L vs 10H need different drivers)
     # and cannot accelerate Ollama regardless — see docs/ai_hat_setup.md.
     # setup_ai_hat
+
+    # Regenerate units LAST: binary paths are resolved with `command -v`, so
+    # this must happen after Kolibri/Calibre/Jellyfin/Martin are on disk.
+    # Running it earlier resolved them as "not installed" and baked in the
+    # wrong ExecStart.
+    if [[ -x "$REPO_DIR/scripts/generate_services.sh" ]]; then
+        bash "$REPO_DIR/scripts/generate_services.sh" || warn "generate_services.sh failed"
+    fi
 
     echo ""
     success "============================================"

@@ -2,6 +2,6 @@ Flask==3.0.3
 flask-wtf==1.2.1
 flask-limiter==3.8.0
 gunicorn==22.0.0
-requests==2.31.0
+requests>=2.32.0,<2.35.0   # calibreweb requires this range
 tqdm==4.66.2
 pyyaml==6.0.1

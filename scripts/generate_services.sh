@@ -29,7 +29,12 @@ id "$SERVICE_USER" &>/dev/null || SERVICE_USER="pi"
 # fails with 203/EXEC. Resolve each one here instead.
 declare -A RESOLVED_BIN=()
 for _b in kiwix-serve ollama kolibri martin; do
-    RESOLVED_BIN[$_b]=$(command -v "$_b" 2>/dev/null || echo "/usr/local/bin/$_b")
+    _found=$(command -v "$_b" 2>/dev/null || true)
+    # pip-installed tools (Kolibri, Calibre-Web) land in the venv, which is not
+    # on root's PATH during install.
+    [[ -n "$_found" ]] || [[ ! -x "/opt/survive/venv/bin/$_b" ]] \
+        || _found="/opt/survive/venv/bin/$_b"
+    RESOLVED_BIN[$_b]="${_found:-/usr/local/bin/$_b}"
 done
 
 GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
