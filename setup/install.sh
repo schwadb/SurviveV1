@@ -47,6 +47,26 @@ require_root() {
     [[ $EUID -eq 0 ]] || { error "Run with sudo: sudo bash $0"; exit 1; }
 }
 
+# ── Enable and start everything ───────────────────────────────────────────────
+enable_core_services() {
+    info "Enabling services to start on boot (and starting them now)..."
+    systemctl daemon-reload
+    local units=(survive-dashboard kiwix ollama martin-tiles calibre-web)
+    if command -v kolibri &>/dev/null || [[ -x /opt/survive/venv/bin/kolibri ]]; then
+        units+=(kolibri)
+    fi
+    local u
+    for u in "${units[@]}"; do
+        systemctl reset-failed "$u" 2>/dev/null || true
+        systemctl enable "$u" 2>/dev/null || true
+        if systemctl restart "$u" 2>/dev/null; then
+            success "$u started"
+        else
+            warn "$u failed to start — check: journalctl -u $u -n 20"
+        fi
+    done
+}
+
 # ── Banner ────────────────────────────────────────────────────────────────────
 banner() {
 cat << 'EOF'
@@ -540,6 +560,12 @@ main() {
     if [[ -x "$REPO_DIR/scripts/generate_services.sh" ]]; then
         bash "$REPO_DIR/scripts/generate_services.sh" || warn "generate_services.sh failed"
     fi
+
+    # The installer used to END with "Enable and start with: <commands>" —
+    # leaving every service stopped (and, because the vendor Ollama unit
+    # shares our unit name, leaving Ollama disabled after we retire the
+    # vendor copy). Finish the job instead of assigning homework.
+    enable_core_services
 
     echo ""
     success "============================================"
