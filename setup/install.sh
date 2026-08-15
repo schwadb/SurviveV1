@@ -355,9 +355,17 @@ configure_firewall() {
     ufw allow 443/tcp  # nginx TLS
     ufw allow 8080/tcp # dashboard (direct access)
     ufw allow 445/tcp  # samba file sharing
-    # Backend services are intentionally NOT opened externally:
-    # 8081 (kiwix), 8082 (kolibri), 8083 (calibre), 8096 (jellyfin),
-    # 3000 (martin maps), 11434 (ollama) — access via nginx reverse proxy only.
+    # The dashboard's tiles and nav links send the browser DIRECTLY to each
+    # service's port, so these must be reachable from the LAN. (An earlier
+    # version blocked them "nginx-only", which made every service except the
+    # dashboard appear dead from any other device.)
+    ufw allow 8081/tcp # kiwix (wikipedia/books)
+    ufw allow 8082/tcp # kolibri (khan academy)
+    ufw allow 8083/tcp # calibre-web (e-books)
+    ufw allow 8096/tcp # jellyfin (videos)
+    ufw allow 3000/tcp # martin (offline maps)
+    # 11434 (ollama) stays closed: the dashboard proxies all AI traffic, and
+    # the raw Ollama API has no authentication.
     # Allow from loopback for inter-service communication
     ufw allow in on lo
     ufw --force enable
