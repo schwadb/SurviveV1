@@ -142,7 +142,12 @@ STORAGE_PATH = _configured_storage if STORAGE_MOUNTED else DATA_DIR
 # Tunable timeouts (seconds) — override via environment or survive.conf
 TIMEOUT_SERVICE_CHECK = float(os.environ.get("SURVIVE_SERVICE_CHECK_TIMEOUT", "1"))
 TIMEOUT_OLLAMA_LIST   = float(os.environ.get("SURVIVE_OLLAMA_LIST_TIMEOUT", "2"))
-TIMEOUT_AI_CHAT       = float(os.environ.get("SURVIVE_AI_CHAT_TIMEOUT", "60"))
+# 300, not 60: this is an IDLE timeout between stream chunks, and the one
+# gap that must survive is the COLD LOAD — gemma4:12b is 7.6 GB read from a
+# USB drive into RAM before the first token exists, which alone takes
+# 30-80 s on a Pi 5. At 60 s the dashboard declared the AI dead exactly and
+# only when the user picked the best model.
+TIMEOUT_AI_CHAT       = float(os.environ.get("SURVIVE_AI_CHAT_TIMEOUT", "300"))
 
 _CACHE_TTL = 60.0  # seconds — how long content-stat / recent-file caches are valid
 

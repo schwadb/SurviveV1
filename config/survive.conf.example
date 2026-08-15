@@ -56,10 +56,12 @@ SURVIVE_BANDWIDTH_LIMIT="0"
 # Tune these up if services respond slowly on your hardware
 SURVIVE_SERVICE_CHECK_TIMEOUT="1"   # port reachability check
 SURVIVE_OLLAMA_LIST_TIMEOUT="2"     # fetching model list from Ollama
-# AI chat now streams token-by-token, so this is an IDLE timeout between
-# chunks — not a cap on total answer length. A generating model emits a chunk
-# every second, so 60 s is generous; raise it only if the model stalls mid-answer.
-SURVIVE_AI_CHAT_TIMEOUT="60"
+# AI chat streams token-by-token, so this is an IDLE timeout between chunks —
+# not a cap on total answer length. It must cover the model COLD LOAD (7.6 GB
+# from USB for gemma4:12b: 30-80 s on a Pi 5), hence 300.
+# NOTE: the dashboard runs under systemd and does NOT read this file; this
+# value only affects manual runs. The systemd default is baked into server.py.
+SURVIVE_AI_CHAT_TIMEOUT="300"
 
 # ── YouTube downloads ──────────────────────────────────────────────────────────
 # YouTube blocks many automated downloads with "Sign in to confirm you're not a
