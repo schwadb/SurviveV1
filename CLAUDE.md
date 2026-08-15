@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Offline-first survival knowledge base for Raspberry Pi 5 + Hailo-8L AI Hat. Flask dashboard at `:8080` aggregates six backend services and provides search, file browsing, and an AI chat interface over ~800 GB of curated content stored on a USB SSD at `/mnt/survive`.
 
-**Critical hardware constraint:** The Hailo-8L NPU (13 TOPS) is a vision accelerator — it **cannot** accelerate Ollama LLMs. All LLM inference is CPU-only. The Hailo-10H (AI HAT+) would support LLM offload but is not the target hardware here. Model size limits by RAM: 4 GB Pi → up to ~3B params; 8 GB Pi → up to ~7B params.
+**Critical hardware constraint:** The Hailo-8L NPU (13 TOPS) is a vision accelerator — it **cannot** accelerate Ollama LLMs; with an 8L, all LLM inference is CPU-only. The Hailo-10H CAN run LLMs on-NPU: install its stack with `sudo bash scripts/setup_hailo10.sh` (the 8L and 10H use different drivers — `hailo-all` vs `hailo-h10-all` — and the wrong one fails silently with "Hailo devices not found"). Even on a 10H, Ollama itself stays CPU-only; NPU LLMs come via Hailo's gen-ai packages. Model size limits by RAM: 4 GB Pi → up to ~3B params; 8 GB Pi → up to ~7B params.
 
 ---
 
