@@ -257,12 +257,67 @@ dl_medical() {
 }
 
 # ── TED Talks ─────────────────────────────────────────────────────────────────
+# These ZIMs carry the actual talk videos, playable offline in the browser —
+# the reliable video source now that YouTube blocks automated downloads.
 dl_ted() {
     [[ -n "$ONLY_PACKAGE" ]] && [[ "$ONLY_PACKAGE" != "ted" ]] && return
 
-    info "=== TED Talks ==="
-    download_zim "TED EN" \
+    info "=== TED Talks (offline video) ==="
+    download_zim "TED Technology" \
         "$KIWIX_MIRROR/ted/ted_mul_technology_2026-01.zim" \
+        "$ZIM_DIR/education"
+    download_zim "TED Health Care" \
+        "$KIWIX_MIRROR/ted/ted_mul_health-care_2026-04.zim" \
+        "$ZIM_DIR/education"
+    download_zim "TED Public Health" \
+        "$KIWIX_MIRROR/ted/ted_mul_public-health_2026-04.zim" \
+        "$ZIM_DIR/education"
+    download_zim "TED Mental Health" \
+        "$KIWIX_MIRROR/ted/ted_mul_mental-health_2026-05.zim" \
+        "$ZIM_DIR/education"
+    download_zim "TED Science" \
+        "$KIWIX_MIRROR/ted/ted_mul_science_2026-05.zim" \
+        "$ZIM_DIR/education"
+}
+
+# ── Expansion pack: purpose-built survival + off-grid + education ZIMs ───────
+# Curated additions for machines with spare space (~7 GB total). The zimgit-*
+# collections are Kiwix's own hand-picked disaster libraries.
+dl_expansion() {
+    [[ -n "$ONLY_PACKAGE" ]] && [[ "$ONLY_PACKAGE" != "expansion" ]] && return
+    [[ "${CONTENT_EXPANSION:-Y}" =~ [Yy] ]] || return
+
+    info "=== Expansion pack: survival collections ==="
+    download_zim "Post-disaster Library" \
+        "$KIWIX_MIRROR/other/zimgit-post-disaster_en_2024-05.zim" \
+        "$ZIM_DIR/skills"
+    download_zim "Emergency Medicine Collection" \
+        "$KIWIX_MIRROR/other/zimgit-medicine_en_2024-08.zim" \
+        "$ZIM_DIR/medicine"
+    download_zim "Water Purification Collection" \
+        "$KIWIX_MIRROR/other/zimgit-water_en_2024-08.zim" \
+        "$ZIM_DIR/skills"
+    download_zim "Food Preparation Collection" \
+        "$KIWIX_MIRROR/other/zimgit-food-preparation_en_2025-04.zim" \
+        "$ZIM_DIR/skills"
+    download_zim "Knots Guide" \
+        "$KIWIX_MIRROR/other/zimgit-knots_en_2024-08.zim" \
+        "$ZIM_DIR/skills"
+
+    info "=== Expansion pack: off-grid living ==="
+    download_zim "Appropedia (appropriate technology)" \
+        "$KIWIX_MIRROR/other/appropedia_en_all_maxi_2026-02.zim" \
+        "$ZIM_DIR/skills"
+    download_zim "Energypedia (off-grid energy)" \
+        "$KIWIX_MIRROR/other/energypedia_en_all_maxi_2026-06.zim" \
+        "$ZIM_DIR/skills"
+
+    info "=== Expansion pack: education ==="
+    download_zim "PhET Science Simulations" \
+        "$KIWIX_MIRROR/phet/phet_en_all_2026-05.zim" \
+        "$ZIM_DIR/education"
+    download_zim "Wikiversity EN" \
+        "$KIWIX_MIRROR/wikiversity/wikiversity_en_all_maxi_2026-05.zim" \
         "$ZIM_DIR/education"
 }
 
@@ -292,6 +347,7 @@ main() {
     dl_khan
     dl_medical
     dl_ted
+    dl_expansion
 
     register_zims
 

@@ -20,6 +20,9 @@ CONTENT_MAPS="Y"
 CONTENT_PDFS="Y"
 CONTENT_AI_MODELS="Y"
 CONTENT_IFIX="Y"
+# Curated extras (~7 GB): Kiwix post-disaster/medicine/water/food/knots
+# collections, Appropedia, Energypedia, PhET simulations, Wikiversity
+CONTENT_EXPANSION="Y"
 
 # ── Video quality (480, 720, 1080) ─────────────────────────────────────────────
 VIDEO_QUALITY="720"
