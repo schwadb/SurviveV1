@@ -107,7 +107,7 @@ dl_military_manuals() {
     local DIR="$PDF_DIR/military_manuals"
 
     dl_file "FM 21-76 US Army Survival Manual" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/fm21-76%281992%29.pdf" \
+        "https://archive.org/download/milmanual-mcrp-3-02f-fm-21-76-survival/mcrp_3-02f_fm_21-76_survival.pdf" \
         "$DIR" "FM21-76_Army_Survival_Manual.pdf"
 
     dl_file "ATP 3-50.21 Survival" \
@@ -115,7 +115,7 @@ dl_military_manuals() {
         "$DIR" "ATP_3-50-21_Survival.pdf"
 
     dl_file "FM 4-25.11 First Aid" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/fm4-25x11%282002%29.pdf" \
+        "https://archive.org/download/fm-4-25.11-first-aid/FM%204-25.11%20First%20Aid.pdf" \
         "$DIR" "FM4-25-11_First_Aid.pdf"
 
     dl_file "TC 3-97.61 Military Mountaineering" \
@@ -123,23 +123,19 @@ dl_military_manuals() {
         "$DIR" "TC3-97-61_Mountaineering.pdf"
 
     dl_file "FM 3-05.70 Special Forces Survival" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/fm3-05x70%282002%29.pdf" \
+        "https://archive.org/download/fm-3-05.70-survival-2002/FM%203-05.70%20Survival%20%202002.pdf" \
         "$DIR" "FM3-05-70_SF_Survival.pdf"
 
     dl_file "FM 3-05.213 Special Forces Use of Pack Animals" \
         "https://armypubs.army.mil/epubs/DR_pubs/DR_a/pdf/web/fm3_05x213.pdf" \
         "$DIR" "FM3-05-213_Pack_Animals.pdf"
 
-    dl_file "TM 31-210 Improvised Munitions Handbook" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/TM31-210.pdf" \
-        "$DIR" "TM31-210_Improvised_Munitions.pdf"
-
     dl_file "FM 21-10 Field Sanitation" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/fm21-10%281986%29.pdf" \
+        "https://archive.org/download/milmanual-fm-21-10-mcrp-4-11.1d-field-hygiene-and-sanitation/fm_21-10_mcrp_4-11.1d_field_hygiene_and_sanitation.pdf" \
         "$DIR" "FM21-10_Field_Sanitation.pdf"
 
     dl_file "FM 90-5 Jungle Operations" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/fm90-5%281982%29.pdf" \
+        "https://archive.org/download/milmanual-fm-90-5-jungle-operations/fm_90-5_jungle_operations.pdf" \
         "$DIR" "FM90-5_Jungle_Operations.pdf"
 
     dl_file "SAS Survival Handbook (excerpt)" \
@@ -152,16 +148,18 @@ dl_medical_refs() {
     info "=== Medical References ==="
     local DIR="$BOOKS_DIR/medicine"
 
+    # Hesperian now gates its own PDFs behind an email form — use the
+    # freely-mirrored copies on archive.org instead.
     dl_file "Where There Is No Doctor (Hesperian)" \
-        "https://store.hesperian.org/prod/pdf/A010E.pdf" \
+        "https://archive.org/download/where-there-is-no-doctor/Where%20There%20Is%20No%20Doctor.pdf" \
         "$DIR" "Where_There_Is_No_Doctor.pdf"
 
     dl_file "Where There Is No Dentist" \
-        "https://store.hesperian.org/prod/pdf/B020E.pdf" \
+        "https://archive.org/download/Where_There_is_no_Dentist/Where_There_is_no_Dentist.pdf" \
         "$DIR" "Where_There_Is_No_Dentist.pdf"
 
     dl_file "A Book for Midwives" \
-        "https://store.hesperian.org/prod/pdf/A230E.pdf" \
+        "https://archive.org/download/ABookForMidwives/26.SusanKlien-ABookForMidwives.pdf" \
         "$DIR" "A_Book_for_Midwives.pdf"
 
     dl_file "Helping Children Who Are Blind" \

@@ -148,17 +148,14 @@ dl_advanced_medicine() {
     info "=== TIER 1: Advanced Survival Medicine ==="
     local DIR="$PDF_DIR/medicine_advanced"
 
-    # Emergency War Surgery — NATO/Borden Institute (public domain)
-    dl_file "Emergency War Surgery (NATO)" \
-        "https://www.cs.amedd.army.mil/FileDownloadpublic.aspx?docid=3b00c934-a0fe-4b12-acae-17c21a2dfa3e" \
-        "$DIR" "Emergency_War_Surgery_NATO.pdf" || \
-    dl_file "Emergency War Surgery (mirror)" \
-        "https://www.borden.army.mil/portalx/default/PHCC_Downloads/Trauma/Emergency%20War%20Surgery%204th%20ed.pdf" \
-        "$DIR" "Emergency_War_Surgery_NATO.pdf"
+    # Emergency War Surgery — Borden Institute (public domain, 5th ed. 2018)
+    dl_file "Emergency War Surgery 5th Ed" \
+        "https://archive.org/download/ews5man-mil/ews5man.pdf" \
+        "$DIR" "Emergency_War_Surgery_5th_Ed.pdf"
 
     # Special Operations Forces Medical Handbook
     dl_file "SOF Medical Handbook" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/SOFMedHandbook(2001).pdf" \
+        "https://archive.org/download/SOFMH2001/SOFMH2001.pdf" \
         "$DIR" "SOF_Medical_Handbook.pdf"
 
     # Wilderness Medicine pocket guide (free)
@@ -168,7 +165,7 @@ dl_advanced_medicine() {
 
     # Combat Medic Field Reference
     dl_file "Combat Medic Field Reference" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/fm8-10-1%281994%29.pdf" \
+        "https://archive.org/download/FM_8_10_1_T_M_C_T_T_P_1994/FM%208-10-1%20The%20Medical%20Company.%20Tactics%2C%20Techniques%20and%20Procedures-1994.pdf" \
         "$DIR" "FM8-10-1_Combat_Medic.pdf"
 
     # Survival and Austere Medicine 3rd Ed (2017) — free from griddownmed.blog
@@ -198,7 +195,7 @@ dl_obstetrics() {
 
     # Hesperian "A Book for Midwives" (free legal download)
     dl_file "A Book for Midwives (Hesperian)" \
-        "https://store.hesperian.org/prod/pdf/A230E.pdf" \
+        "https://archive.org/download/ABookForMidwives/26.SusanKlien-ABookForMidwives.pdf" \
         "$DIR" "Hesperian_Book_for_Midwives.pdf"
 
     # Emergency Childbirth — Gregory White (public domain)
@@ -223,7 +220,7 @@ dl_dental() {
 
     # Where There Is No Dentist (Hesperian — free)
     dl_file "Where There Is No Dentist (Hesperian)" \
-        "https://store.hesperian.org/prod/pdf/B020E.pdf" \
+        "https://archive.org/download/Where_There_is_no_Dentist/Where_There_is_no_Dentist.pdf" \
         "$DIR" "Where_There_Is_No_Dentist.pdf"
 
     # WHO Oral Health Guide for Primary Care
@@ -487,23 +484,23 @@ dl_security() {
 
     # US Army FM 7-8 Infantry Rifle Platoon (public domain tactics)
     dl_file "FM 7-8 Infantry Rifle Platoon and Squad" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/fm7-8%281992%29.pdf" \
+        "https://archive.org/download/milmanual-fm-7-8-infantry-rifle-platoon-and-squad/fm_7-8_infantry_rifle_platoon_and_squad.pdf" \
         "$DIR" "FM7-8_Infantry_Rifle_Platoon.pdf"
 
     # FM 21-60 Visual Signals (hand signals, public domain)
     dl_file "FM 21-60 Visual Signals (Hand Signals)" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/fm21-60%281987%29.pdf" \
+        "https://archive.org/download/milmanual-fm-21-60-visual-signals/fm_21-60_visual_signals.pdf" \
         "$DIR" "FM21-60_Visual_Signals.pdf"
 
     # Ranger Handbook SH 21-76 (widely available PDF)
     dl_file "Ranger Handbook SH 21-76" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/sh21-76%281992%29.pdf" \
+        "https://archive.org/download/sh-21-76-ranger-handbook-2006/SH%2021-76%20Ranger%20Handbook%20%202006.pdf" \
         "$DIR" "SH21-76_Ranger_Handbook.pdf"
 
-    # FMFM 1-3B (Small Unit Tactics, USMC, public domain)
-    dl_file "MCRP 3-11B Marine Rifle Squad" \
-        "https://www.bits.de/NRANEU/others/amd-us-archive/mcrp3-11b.pdf" \
-        "$DIR" "MCRP3-11B_Marine_Rifle_Squad.pdf"
+    # MCWP 3-11.2 Marine Rifle Squad (USMC, public domain)
+    dl_file "MCWP 3-11.2 Marine Rifle Squad" \
+        "https://archive.org/download/milmanual-mcwp-3-11.2-marine-rifle-squad/mcwp_3-11.2_marine_rifle_squad.pdf" \
+        "$DIR" "MCWP3-11-2_Marine_Rifle_Squad.pdf"
 }
 
 dl_community_economics() {
@@ -554,16 +551,20 @@ dl_hesperian_bundle() {
     info "=== FREE: Complete Hesperian Health Guides ==="
     local DIR="$PDF_DIR/medicine_advanced"
 
+    # Hesperian's own store now gates PDFs behind an email form; archive.org
+    # hosts freely-mirrored copies of most titles. Titles still pointing at
+    # store.hesperian.org have no public mirror — they fail into the manual
+    # download list (grab them at https://hesperian.org > free downloads).
     declare -A HESPERIAN=(
-        ["Where_There_Is_No_Doctor.pdf"]="https://store.hesperian.org/prod/pdf/A010E.pdf"
-        ["Where_There_Is_No_Dentist.pdf"]="https://store.hesperian.org/prod/pdf/B020E.pdf"
-        ["Book_for_Midwives.pdf"]="https://store.hesperian.org/prod/pdf/A230E.pdf"
+        ["Where_There_Is_No_Doctor.pdf"]="https://archive.org/download/where-there-is-no-doctor/Where%20There%20Is%20No%20Doctor.pdf"
+        ["Where_There_Is_No_Dentist.pdf"]="https://archive.org/download/Where_There_is_no_Dentist/Where_There_is_no_Dentist.pdf"
+        ["Book_for_Midwives.pdf"]="https://archive.org/download/ABookForMidwives/26.SusanKlien-ABookForMidwives.pdf"
         ["Where_There_Is_No_Psychiatrist.pdf"]="https://store.hesperian.org/prod/pdf/A490E.pdf"
         ["Helping_Children_Who_Are_Blind.pdf"]="https://store.hesperian.org/prod/pdf/A250E.pdf"
         ["Helping_Children_Who_Are_Deaf.pdf"]="https://store.hesperian.org/prod/pdf/A280E.pdf"
-        ["A_Health_Handbook_for_Women_with_Disabilities.pdf"]="https://store.hesperian.org/prod/pdf/A315E.pdf"
+        ["A_Health_Handbook_for_Women_with_Disabilities.pdf"]="https://archive.org/download/A_Health_Handbook_for_Women_with_Disabilities/A_Health_Handbook_for_Women_with_Disabilities.pdf"
         ["Workers_Guide_to_Health_and_Safety.pdf"]="https://store.hesperian.org/prod/pdf/A420E.pdf"
-        ["Helping_Health_Workers_Learn.pdf"]="https://store.hesperian.org/prod/pdf/A050E.pdf"
+        ["Helping_Health_Workers_Learn.pdf"]="https://archive.org/download/HelpingHealthWorkersLearn-DavidWerner/13.DavidWerner-HelpingHealthWorkersLearn.pdf"
     )
 
     for filename in "${!HESPERIAN[@]}"; do
