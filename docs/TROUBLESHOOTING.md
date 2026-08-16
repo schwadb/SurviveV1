@@ -322,6 +322,26 @@ SURVIVE_YTDLP_COOKIES="/home/<user>/yt_cookies.txt"
 SURVIVE_YTDLP_BROWSER="chromium"
 ```
 
+**The "n challenge" (formats missing even with cookies):** YouTube also
+obfuscates stream URLs with JavaScript that yt-dlp must execute. Requirements
+(all three, in the SAME environment):
+
+```bash
+sudo apt install -y nodejs
+sudo pip install --break-system-packages -U yt-dlp yt-dlp-ejs
+```
+
+Important: the standalone yt-dlp binary CANNOT load the yt-dlp-ejs solver —
+yt-dlp must be the pip-installed package. If `which yt-dlp` shows a binary
+that predates the pip install, delete it so the pip copy takes over.
+
+If "n challenge solving failed" persists with all of the above current,
+YouTube is ahead of the tooling — a known, recurring state. Retry monthly:
+
+```bash
+sudo pip install --break-system-packages -U yt-dlp yt-dlp-ejs
+```
+
 Note that using a personal account for bulk downloads can get that account rate
 limited; a throwaway account is the safer choice. Blocked videos are skipped
 rather than aborting the run, so partial video libraries are expected.
