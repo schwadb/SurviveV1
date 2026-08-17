@@ -83,20 +83,38 @@ download_zim() {
     # over time), and a re-run must not fetch a second 100+ GB copy of a
     # title it already owns. A file mid-download (an .aria2 sidecar exists)
     # doesn't count — aria2c resumes it below.
-    local existing="" cand
+    local existing="" cand resumed=false
     while IFS= read -r -d '' cand; do
         [[ -f "$cand.aria2" ]] && continue
         existing="$cand"; break
     done < <(find "$ZIM_DIR" -type f -name "$filename" -print0 2>/dev/null)
     if [[ -n "$existing" ]]; then
-        success "[$name] Already downloaded: $existing"
-        return 0
+        # A file can be truncated yet have no .aria2 control file (crash,
+        # disk-full). Only the mirror's content-length says whether it is
+        # actually complete; wget -c resumes by size, no control file needed.
+        local remote_sz local_sz
+        remote_sz=$(curl -sIL --max-time 30 "$url" 2>/dev/null \
+                    | grep -i '^content-length' | tail -1 | tr -dc '0-9')
+        local_sz=$(stat -c %s "$existing" 2>/dev/null || echo 0)
+        if [[ -z "$remote_sz" ]] || (( local_sz >= remote_sz )); then
+            success "[$name] Already downloaded: $existing"
+            return 0
+        fi
+        info "[$name] Incomplete file ($(( local_sz / 1024 / 1024 )) of $(( remote_sz / 1024 / 1024 )) MB) -- resuming"
+        rm -f "$existing.aria2__temp"
+        if ! wget -c -q --show-progress --tries=3 -O "$existing" "$url"; then
+            warn "[$name] resume failed -- will retry next run"
+            mark_failed "$name" "wget resume"
+            return 1
+        fi
+        dest="$existing"   # validate the resumed file below
+        resumed=true
     fi
 
     # Same title, different build date. Keep the copy we have unless the
     # user explicitly asked for updates with --update — silently pulling a
     # fresh build would duplicate huge files.
-    if [[ "$UPDATE_MODE" != "true" ]]; then
+    if [[ "$resumed" != "true" && "$UPDATE_MODE" != "true" ]]; then
         local prefix_glob="${filename%_*.zim}_[0-9][0-9][0-9][0-9]-[0-9][0-9].zim"
         while IFS= read -r -d '' cand; do
             [[ -f "$cand.aria2" ]] && continue
@@ -110,23 +128,25 @@ download_zim() {
         fi
     fi
 
-    info "[$name] Downloading to $dest..."
-    local BW_ARGS=()
-    [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--max-overall-download-limit="${SURVIVE_BANDWIDTH_LIMIT}")
+    if [[ "$resumed" != "true" ]]; then
+        info "[$name] Downloading to $dest..."
+        local BW_ARGS=()
+        [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--max-overall-download-limit="${SURVIVE_BANDWIDTH_LIMIT}")
 
-    if ! aria2c \
-            --continue=true \
-            --max-connection-per-server=4 \
-            --split=4 \
-            --dir="$dest_dir" \
-            --out="$filename" \
-            --console-log-level=warn \
-            --summary-interval=60 \
-            "${BW_ARGS[@]}" \
-            "$url"; then
-        warn "[$name] aria2c exited non-zero -- will retry next run"
-        mark_failed "$name" "aria2c exit"
-        return 1
+        if ! aria2c \
+                --continue=true \
+                --max-connection-per-server=4 \
+                --split=4 \
+                --dir="$dest_dir" \
+                --out="$filename" \
+                --console-log-level=warn \
+                --summary-interval=60 \
+                "${BW_ARGS[@]}" \
+                "$url"; then
+            warn "[$name] aria2c exited non-zero -- will retry next run"
+            mark_failed "$name" "aria2c exit"
+            return 1
+        fi
     fi
 
     # Minimum plausible ZIM is ~1 MB -- anything smaller is a 404 page
