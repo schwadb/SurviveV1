@@ -179,6 +179,49 @@ curl http://localhost:8080/api/connectivity
 
 ---
 
+## POST /api/update/start
+
+Launch a background "safe refresh" of all local content
+(`scripts/update_content.sh`): new videos, books, PDFs, newly-added or
+missing Kiwix ZIMs, and AI model updates. Existing large ZIM builds are
+never replaced. Requires `Content-Type: application/json` (415 otherwise);
+409 if an update is already running; 503 if the Pi is offline.
+Rate-limited to 3/min.
+
+```bash
+curl -X POST http://localhost:8080/api/update/start \
+  -H "Content-Type: application/json" -d '{}'
+```
+
+**Response:** `202 {"started": true, "pid": 12345}`
+
+---
+
+## GET /api/update/status
+
+State of the current/last update run, reconstructed from on-disk artifacts
+(log + pid file), so it survives dashboard restarts.
+
+```bash
+curl http://localhost:8080/api/update/status
+```
+
+**Response:**
+
+```json
+{
+  "running": false,
+  "started": "2026-08-17T10:00:00",
+  "exit_code": 0,
+  "log_tail": ["[UPDATE] Content update complete"]
+}
+```
+
+`exit_code` is `null` while running or before any run; the log lives at
+`$STORAGE/.logs/update_content.log`.
+
+---
+
 ## GET /search
 
 Search for files by name. Returns HTML page.

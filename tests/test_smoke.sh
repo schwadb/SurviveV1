@@ -198,9 +198,11 @@ echo -e "${BLUE}═════════════════════�
 echo -e "${BLUE}  SurviveV1 Smoke Tests${NC}"
 echo -e "${BLUE}════════════════════════════════════════${NC}"
 
-# Create minimal test storage dir and a symlink that escapes it (used in security test)
-mkdir -p /tmp/survive_test
-ln -sfn /etc /tmp/survive_test/escape_link
+# Create minimal test storage dir and a symlink that escapes it (used in
+# security test). Must honour SURVIVE_STORAGE_PATH — the server does.
+_TEST_STORAGE="${SURVIVE_STORAGE_PATH:-/tmp/survive_test}"
+mkdir -p "$_TEST_STORAGE"
+ln -sfn /etc "$_TEST_STORAGE/escape_link"
 
 start_server
 run_tests

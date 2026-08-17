@@ -1074,6 +1074,115 @@ def api_connectivity():
     return jsonify(_connectivity_cache.get(_compute_connectivity))
 
 
+# ── One-click content update ─────────────────────────────────────────────────
+# POST /api/update/start launches scripts/update_content.sh detached from the
+# request (updates run minutes to hours). State lives on disk — pid file plus
+# a finish marker appended to the log by the wrapper — because gunicorn runs
+# multiple workers and the one that spawned the process is not necessarily
+# the one answering the next status poll.
+UPDATE_SCRIPT = REPO_DIR / "scripts" / "update_content.sh"
+_UPDATE_FINISH_MARK = "UPDATE_FINISHED exit="
+
+
+def _update_paths() -> tuple:
+    logs_dir = STORAGE_PATH / ".logs"
+    return logs_dir / "update_content.log", logs_dir / "update_content.pid"
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except (OSError, OverflowError):
+        return False
+    return True
+
+
+def _read_update_state() -> dict:
+    """Current update-run state, reconstructed purely from disk artifacts."""
+    log_file, pid_file = _update_paths()
+    state = {"running": False, "started": None, "exit_code": None, "log_tail": []}
+
+    pid = None
+    try:
+        pid = int(pid_file.read_text().strip())
+        state["started"] = datetime.fromtimestamp(pid_file.stat().st_mtime).isoformat()
+    except (OSError, ValueError):
+        pass
+
+    try:
+        size = log_file.stat().st_size
+        with open(log_file, "rb") as fh:
+            fh.seek(max(0, size - 8192))
+            tail = fh.read().decode("utf-8", errors="replace")
+        lines = [_ANSI_RE.sub("", ln).strip() for ln in tail.splitlines() if ln.strip()]
+    except OSError:
+        lines = []
+
+    for line in reversed(lines):
+        if line.startswith(_UPDATE_FINISH_MARK):
+            try:
+                state["exit_code"] = int(line[len(_UPDATE_FINISH_MARK):])
+            except ValueError:
+                state["exit_code"] = -1
+            break
+
+    # The finish marker is the wrapper's final act, so it outranks the pid
+    # check (which sees zombies as alive until they are reaped).
+    if state["exit_code"] is None and pid and _pid_alive(pid):
+        state["running"] = True
+
+    state["log_tail"] = [ln for ln in lines[-25:] if not ln.startswith(_UPDATE_FINISH_MARK)]
+    return state
+
+
+@app.route("/api/update/status")
+def api_update_status():
+    """Poll target for the dashboard's update button."""
+    return jsonify(_read_update_state())
+
+
+@app.route("/api/update/start", methods=["POST"])
+@csrf.exempt
+@limiter.limit("3 per minute")
+def api_update_start():
+    """Kick off a safe content refresh (scripts/update_content.sh) in the
+    background: new videos/books/PDFs, missing ZIMs, AI model updates —
+    never replacement builds of existing large ZIMs."""
+    # Same CSRF defence as /api/ai/chat: cross-origin JSON needs a preflight.
+    if (request.content_type or "").split(";")[0].strip() != "application/json":
+        return jsonify({"error": "Content-Type must be application/json"}), 415
+
+    state = _read_update_state()
+    if state["running"]:
+        return jsonify({"error": "An update is already running"}), 409
+    if not _compute_connectivity()["online"]:
+        return jsonify({"error": "No internet connection — connect the Pi first"}), 503
+    if not UPDATE_SCRIPT.exists():
+        return jsonify({"error": f"Update script missing: {UPDATE_SCRIPT}"}), 500
+
+    log_file, pid_file = _update_paths()
+    try:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        log_file.write_text("")  # each run gets a fresh log
+        # The wrapper (not this process) writes the finish marker, so the
+        # outcome is recorded even if gunicorn restarts mid-run.
+        proc = subprocess.Popen(  # pylint: disable=consider-using-with
+            ["bash", "-c",
+             'bash "$1" >>"$2" 2>&1; echo "UPDATE_FINISHED exit=$?" >>"$2"',
+             "update_wrapper", str(UPDATE_SCRIPT), str(log_file)],
+            cwd=str(REPO_DIR),
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, start_new_session=True,
+        )
+        pid_file.write_text(str(proc.pid))
+    except OSError as exc:
+        return jsonify({"error": f"Could not start update: {exc}"}), 500
+
+    # Reap the child on exit so the pid check never sees a stale zombie.
+    threading.Thread(target=proc.wait, daemon=True).start()
+    return jsonify({"started": True, "pid": proc.pid}), 202
+
+
 def _read_throttle_state() -> dict:
     """Parse `vcgencmd get_throttled` (Pi firmware). Bits: 0 under-voltage
     now, 1 freq-capped now, 2 throttled now, 3 soft temp limit now; bits

@@ -168,6 +168,19 @@
       <span id="dlLogLine">{{ downloads.active_log.line }}</span>
     </div>
     {% endif %}
+    <div id="update" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <button id="updateBtn" class="btn btn-primary btn-sm" onclick="startUpdate()">
+          🔄 Update All Content</button>
+        <span id="updateNote" style="font-size:12px; color:var(--text-dim);">
+          Fetches new videos, books, PDFs, reference additions, and AI model
+          updates. Existing large archives are kept as-is. Needs internet.
+        </span>
+      </div>
+      <pre id="updateLog" style="display:none; margin-top:10px; max-height:220px; overflow:auto;
+           background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius);
+           padding:10px; font-family:var(--mono); font-size:11px; white-space:pre-wrap;"></pre>
+    </div>
     <div style="margin-top:12px; font-size:12px; color:var(--text-dim);">
       Start: <code style="background:var(--surface2); padding:2px 6px; border-radius:4px;">bash download/download_all.sh</code>
       &nbsp;·&nbsp; Resume: <code style="background:var(--surface2); padding:2px 6px; border-radius:4px;">bash download/download_all.sh --resume</code>
@@ -393,5 +406,68 @@ function refreshStatus(manual) {
 }
 
 setInterval(() => refreshStatus(false), 15000);
+
+// ── One-click content update ────────────────────────────────────────────────
+let updatePollTimer = null;
+
+function renderUpdate(st) {
+  const btn = document.getElementById('updateBtn');
+  const note = document.getElementById('updateNote');
+  const log = document.getElementById('updateLog');
+  if (st.running) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Updating…';
+    note.textContent = 'Update running — large downloads can take hours. ' +
+                       'Safe to close this page; progress resumes here.';
+  } else {
+    btn.disabled = false;
+    btn.textContent = '🔄 Update All Content';
+    if (st.exit_code === 0) {
+      note.textContent = 'Last update completed successfully.';
+    } else if (st.exit_code !== null && st.exit_code !== undefined) {
+      note.textContent = 'Last update finished with errors — details in the log below.';
+    }
+  }
+  if (st.log_tail && st.log_tail.length) {
+    log.style.display = 'block';
+    log.textContent = st.log_tail.join('\n');   // textContent — safe
+    log.scrollTop = log.scrollHeight;
+  }
+  if (st.running && !updatePollTimer) {
+    updatePollTimer = setInterval(pollUpdate, 4000);
+  } else if (!st.running && updatePollTimer) {
+    clearInterval(updatePollTimer);
+    updatePollTimer = null;
+  }
+}
+
+function pollUpdate() {
+  fetch('/api/update/status', { cache: 'no-store' })
+    .then(r => r.json()).then(renderUpdate).catch(() => {});
+}
+
+function startUpdate() {
+  if (!confirm('Start a full content update?\n\nThis downloads new videos, ' +
+               'books, and reference content in the background and can run ' +
+               'for a long time. Existing large archives are not re-downloaded.')) return;
+  const note = document.getElementById('updateNote');
+  note.textContent = 'Starting…';
+  fetch('/api/update/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+    .then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        note.textContent = d.error || ('Could not start update (HTTP ' + r.status + ')');
+        return;
+      }
+      pollUpdate();
+    })
+    .catch(() => { note.textContent = 'Could not reach the dashboard.'; });
+}
+
+pollUpdate();  // restore button/log state on page load (update may be mid-run)
 </script>
 {% endblock %}

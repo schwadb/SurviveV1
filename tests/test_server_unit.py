@@ -292,3 +292,35 @@ def test_model_names_valid(server, name):
 @pytest.mark.parametrize("name", ["a/b", "", "a b", "x" * 101])
 def test_model_names_invalid(server, name):
     assert not re.fullmatch(r"[a-zA-Z0-9:.\-_]{1,100}", name)
+
+
+# ── One-click update endpoints ────────────────────────────────────────────────
+
+def test_update_status_idle(client):
+    resp = client.get("/api/update/status")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["running"] is False
+    assert data["exit_code"] is None
+    assert data["log_tail"] == []
+
+
+def test_update_start_requires_json(client):
+    resp = client.post("/api/update/start", data="x=1",
+                       content_type="application/x-www-form-urlencoded")
+    assert resp.status_code == 415
+
+
+def test_update_state_reads_finish_marker(server, tmp_path, monkeypatch):
+    logs = tmp_path / ".logs"
+    logs.mkdir()
+    (logs / "update_content.pid").write_text("999999")
+    (logs / "update_content.log").write_text(
+        "[UPDATE] doing things\nUPDATE_FINISHED exit=2\n"
+    )
+    monkeypatch.setattr(server, "STORAGE_PATH", tmp_path)
+    state = server._read_update_state()  # pylint: disable=protected-access
+    assert state["running"] is False
+    assert state["exit_code"] == 2
+    # the marker line itself is not shown in the log tail
+    assert all("UPDATE_FINISHED" not in ln for ln in state["log_tail"])

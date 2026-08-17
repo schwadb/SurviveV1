@@ -39,6 +39,18 @@ FAILED_LOG="$ZIM_DIR/.failed_downloads.log"
 
 mark_failed() { echo "$(date -Iseconds) $1 :: $2" >> "$FAILED_LOG"; }
 
+# Refuse to start a download that cannot fit. A 100% full disk breaks far
+# more than the one download (indexes, logs, the running services), so keep
+# a safety margin free. Returns 0 when unable to measure — don't block on
+# a df quirk.
+SPACE_MARGIN_MB="${SURVIVE_SPACE_MARGIN_MB:-10240}"
+_space_ok() {
+    local need_bytes="$1" avail_kb
+    avail_kb=$(df --output=avail -k "$ZIM_DIR" 2>/dev/null | tail -1 | tr -dc '0-9')
+    [[ -z "$avail_kb" ]] && return 0
+    (( avail_kb * 1024 - need_bytes > SPACE_MARGIN_MB * 1024 * 1024 ))
+}
+
 # Download a ZIM, then validate size and checksum BEFORE treating the download
 # as successful. A partial/corrupt file is removed so the next run re-fetches.
 # ZIM snapshots carry a build date (…_2026-02.zim) and Kiwix deletes old ones
@@ -100,6 +112,11 @@ download_zim() {
             success "[$name] Already downloaded: $existing"
             return 0
         fi
+        if ! _space_ok "$(( remote_sz - local_sz ))"; then
+            warn "[$name] Not enough free space to finish ($(( (remote_sz - local_sz) / 1024 / 1024 )) MB needed) -- skipping"
+            mark_failed "$name" "insufficient disk space"
+            return 1
+        fi
         info "[$name] Incomplete file ($(( local_sz / 1024 / 1024 )) of $(( remote_sz / 1024 / 1024 )) MB) -- resuming"
         rm -f "$existing.aria2__temp"
         if ! wget -c -q --show-progress --tries=3 -O "$existing" "$url"; then
@@ -129,6 +146,14 @@ download_zim() {
     fi
 
     if [[ "$resumed" != "true" ]]; then
+        local new_sz
+        new_sz=$(curl -sIL --max-time 30 "$url" 2>/dev/null \
+                 | grep -i '^content-length' | tail -1 | tr -dc '0-9')
+        if [[ -n "$new_sz" ]] && ! _space_ok "$new_sz"; then
+            warn "[$name] Not enough free space ($(( new_sz / 1024 / 1024 )) MB needed) -- skipping"
+            mark_failed "$name" "insufficient disk space"
+            return 1
+        fi
         info "[$name] Downloading to $dest..."
         local BW_ARGS=()
         [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--max-overall-download-limit="${SURVIVE_BANDWIDTH_LIMIT}")

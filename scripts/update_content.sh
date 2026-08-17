@@ -54,7 +54,26 @@ main() {
     # Update new YouTube videos (yt-dlp archive prevents re-downloading)
     if [[ "${CONTENT_VIDEOS:-Y}" =~ [Yy] ]]; then
         info "Checking for new survival videos..."
-        bash "$REPO_DIR/download/videos.sh" --storage "$STORAGE_PATH"
+        bash "$REPO_DIR/download/videos.sh" --storage "$STORAGE_PATH" \
+            || warn "Video refresh finished with errors (see above)"
+    fi
+
+    # Fill gaps in the Kiwix library: newly-added catalog items, resumed
+    # partials, missing titles. Deliberately NOT --update — replacing an
+    # existing 100+ GB build is a manual decision, never a button press.
+    info "Refreshing Kiwix library (new/missing content only)..."
+    bash "$REPO_DIR/download/kiwix_content.sh" --storage "$STORAGE_PATH" \
+        || warn "Kiwix refresh finished with errors (see above)"
+
+    # Books and PDFs (existing files are skipped)
+    if [[ "${CONTENT_PDFS:-Y}" =~ [Yy] ]]; then
+        info "Refreshing books and PDFs..."
+        bash "$REPO_DIR/download/books_pdfs.sh" --storage "$STORAGE_PATH" \
+            || warn "books_pdfs finished with errors"
+        bash "$REPO_DIR/download/gaps_content.sh" --storage "$STORAGE_PATH" \
+            || warn "gaps_content finished with errors"
+        bash "$REPO_DIR/download/mental_health.sh" --storage "$STORAGE_PATH" \
+            || warn "mental_health finished with errors"
     fi
 
     # Re-register any new ZIM files
@@ -69,6 +88,21 @@ main() {
 
     # Rebuild the dashboard search index against the refreshed content.
     rm -f "$STORAGE_PATH/.search_index.db"
+
+    # Incrementally index new documents for full-text search / AI retrieval.
+    if command -v python3 &>/dev/null; then
+        info "Updating document index..."
+        python3 "$REPO_DIR/scripts/index_documents.py" --storage "$STORAGE_PATH" \
+            || warn "Document indexing failed"
+    fi
+
+    # Newly registered ZIMs appear only after kiwix-serve reloads its library.
+    # Works unattended only with passwordless sudo; otherwise just say so.
+    if sudo -n systemctl restart kiwix 2>/dev/null; then
+        success "Kiwix restarted — new content is live"
+    else
+        info "Restart Kiwix to see new library entries: sudo systemctl restart kiwix"
+    fi
 
     success "Content update complete"
 }
