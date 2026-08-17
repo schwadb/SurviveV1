@@ -328,6 +328,8 @@ dl_ted() {
     download_zim "TED Mental Health" \
         "$KIWIX_MIRROR/ted/ted_mul_mental-health_2026-05.zim" \
         "$ZIM_DIR/education"
+    # Largest and least survival-critical — keep it the final download of
+    # the whole run so a full disk can only ever cost us this one.
     download_zim "TED Science" \
         "$KIWIX_MIRROR/ted/ted_mul_science_2026-05.zim" \
         "$ZIM_DIR/education"
@@ -399,8 +401,10 @@ main() {
     dl_gutenberg
     dl_khan
     dl_medical
-    dl_ted
     dl_expansion
+    # TED goes last (Science alone is 15 GB): on a nearly-full drive the
+    # least-critical content should be what a disk-full failure lands on.
+    dl_ted
 
     register_zims
 
