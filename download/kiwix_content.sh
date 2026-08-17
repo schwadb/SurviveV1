@@ -13,12 +13,13 @@ if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF -- using de
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 ZIM_DIR="$STORAGE_PATH/zim"
 ONLY_PACKAGE=""
+UPDATE_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --storage) STORAGE_PATH="$2"; ZIM_DIR="$2/zim"; shift 2 ;;
         --resume)  shift ;;  # aria2c --continue=true handles resume automatically
-        --update)  shift ;;
+        --update)  UPDATE_MODE=true; shift ;;
         --only)    ONLY_PACKAGE="$2"; shift 2 ;;
         *) shift ;;
     esac
@@ -76,6 +77,38 @@ download_zim() {
     local filename
     filename=$(basename "$url")
     local dest="$dest_dir/$filename"
+
+    # Never download a ZIM we already have. Files may live at a different
+    # path than today's layout expects (the directory structure has changed
+    # over time), and a re-run must not fetch a second 100+ GB copy of a
+    # title it already owns. A file mid-download (an .aria2 sidecar exists)
+    # doesn't count — aria2c resumes it below.
+    local existing="" cand
+    while IFS= read -r -d '' cand; do
+        [[ -f "$cand.aria2" ]] && continue
+        existing="$cand"; break
+    done < <(find "$ZIM_DIR" -type f -name "$filename" -print0 2>/dev/null)
+    if [[ -n "$existing" ]]; then
+        success "[$name] Already downloaded: $existing"
+        return 0
+    fi
+
+    # Same title, different build date. Keep the copy we have unless the
+    # user explicitly asked for updates with --update — silently pulling a
+    # fresh build would duplicate huge files.
+    if [[ "$UPDATE_MODE" != "true" ]]; then
+        local prefix_glob="${filename%_*.zim}_[0-9][0-9][0-9][0-9]-[0-9][0-9].zim"
+        while IFS= read -r -d '' cand; do
+            [[ -f "$cand.aria2" ]] && continue
+            existing="$cand"; break
+        done < <(find "$ZIM_DIR" -type f -name "$prefix_glob" -print0 2>/dev/null)
+        if [[ -n "$existing" ]]; then
+            info "[$name] Existing build kept: $existing"
+            info "[$name] (re-run with --update to fetch newer builds;"
+            info "[$name]  delete the old build afterwards to reclaim space)"
+            return 0
+        fi
+    fi
 
     info "[$name] Downloading to $dest..."
     local BW_ARGS=()
