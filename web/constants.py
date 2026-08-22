@@ -37,12 +37,18 @@ CONTENT_BUDGET_GB = 800  # target total content size in GB
 # gets written to $STORAGE_PATH/.download_progress. A mismatch makes the
 # category read as "pending" forever. `dir` is the storage subdir whose size is
 # reported (must be a key produced by _compute_content_stats in server.py).
+# NOTE on "dir": several libraries are delivered as Kiwix ZIMs, so their bytes
+# live under zim/ and count toward the "kiwix" row — NOT their own row. The
+# Gutenberg library (~207 GB) is a ZIM (zim/books/gutenberg_*.zim), so it is
+# counted under "Wikipedia, Gutenberg & ZIM"; the separate "E-Books (EPUB)"
+# row measures only the small curated EPUB folder (books/). Likewise Khan
+# Academy now ships as a ZIM (zim/education/), counted under the kiwix row.
 DOWNLOAD_CATEGORIES = [
-    {"id": "kiwix",         "name": "Wikipedia & ZIM",     "budget_gb": 190, "dir": "zim"},
+    {"id": "kiwix",         "name": "Wikipedia, Gutenberg & ZIM", "budget_gb": 600, "dir": "zim"},
     {"id": "videos",        "name": "Survival Videos",     "budget_gb": 150, "dir": "videos"},
-    {"id": "books",         "name": "Books & Gutenberg",   "budget_gb": 60,  "dir": "books"},
+    {"id": "books",         "name": "E-Books (EPUB)",      "budget_gb": 1,   "dir": "books"},
     {"id": "maps",          "name": "Offline Maps",        "budget_gb": 70,  "dir": "maps"},
-    {"id": "kolibri",       "name": "Khan Academy",        "budget_gb": 200, "dir": "kolibri"},
+    {"id": "kolibri",       "name": "Khan Academy (Kolibri)", "budget_gb": 200, "dir": "kolibri"},
     {"id": "gaps",          "name": "Expert Gap Content",  "budget_gb": 15,  "dir": "pdfs"},
     {"id": "mental_health", "name": "Mental Health",       "budget_gb": 5,   "dir": "pdfs"},
 ]
