@@ -295,6 +295,24 @@ trade-off in a disaster.
 **AP won't start?** Set your Wi-Fi country first:
 `sudo raspi-config nonint do_wifi_country US` (or your country code).
 
+**Phone shows "IP configuration error" / "Failed to obtain IP address"?**
+The phone associated but the Pi's firewall (ufw) dropped its DHCP request.
+`hotspot.sh enable` now opens DHCP/DNS/dashboard on `wlan0` automatically,
+but if you enabled the AP with an older copy of the script, open them by
+hand:
+
+```bash
+sudo ufw allow in on wlan0 to any port 67 proto udp   # DHCP
+sudo ufw allow in on wlan0 to any port 53             # DNS
+sudo ufw allow in on wlan0 to any port 8080 proto tcp # dashboard
+sudo ufw reload
+```
+
+Then on the phone: forget the network and reconnect. Confirm the DHCP
+server is actually running with
+`sudo journalctl -u NetworkManager | grep -i dhcp` — you want a line like
+`DHCP, IP range 10.42.0.10 -- 10.42.0.254`.
+
 ---
 
 ## YouTube "Sign in to confirm you're not a bot"

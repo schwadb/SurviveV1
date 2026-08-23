@@ -55,6 +55,30 @@ hotspot_active() {
     nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "$CON_NAME"
 }
 
+# NetworkManager's shared mode runs a DHCP+DNS server (dnsmasq) on wlan0, but
+# ufw denies incoming by default and silently drops the client's DHCP request
+# — the phone then shows "IP configuration error" / "Failed to obtain IP
+# address". Open DHCP (67/udp) and DNS (53) plus the dashboard on the AP
+# interface only, so the normal network's rules are untouched.
+AP_IFACE="wlan0"
+firewall_open_ap() {
+    command -v ufw &>/dev/null || return 0
+    ufw status 2>/dev/null | grep -q "^Status: active" || return 0
+    info "Opening DHCP/DNS/dashboard on $AP_IFACE for hotspot clients..."
+    ufw allow in on "$AP_IFACE" to any port 67 proto udp >/dev/null 2>&1 || true
+    ufw allow in on "$AP_IFACE" to any port 53           >/dev/null 2>&1 || true
+    ufw allow in on "$AP_IFACE" to any port 8080 proto tcp >/dev/null 2>&1 || true
+    ufw reload >/dev/null 2>&1 || true
+}
+firewall_close_ap() {
+    command -v ufw &>/dev/null || return 0
+    ufw status 2>/dev/null | grep -q "^Status: active" || return 0
+    ufw delete allow in on "$AP_IFACE" to any port 67 proto udp   >/dev/null 2>&1 || true
+    ufw delete allow in on "$AP_IFACE" to any port 53             >/dev/null 2>&1 || true
+    ufw delete allow in on "$AP_IFACE" to any port 8080 proto tcp >/dev/null 2>&1 || true
+    ufw reload >/dev/null 2>&1 || true
+}
+
 case "$ACTION" in
     enable)
         [[ $EUID -eq 0 ]] || { error "run with sudo: sudo bash scripts/hotspot.sh enable"; exit 1; }
@@ -100,6 +124,7 @@ case "$ACTION" in
             ipv4.method shared ipv6.method disabled \
             wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS" >/dev/null
         nmcli connection up "$CON_NAME" >/dev/null
+        firewall_open_ap
 
         HOSTNAME_LABEL="${SURVIVE_HOTSPOT_SSID:-$SSID}"
         echo ""
@@ -122,6 +147,7 @@ case "$ACTION" in
             nmcli connection down "$CON_NAME" >/dev/null 2>&1 || true
         fi
         nmcli connection delete "$CON_NAME" >/dev/null 2>&1 || true
+        firewall_close_ap
         success "Hotspot disabled — rejoining known Wi-Fi networks (if any)"
         ;;
 
