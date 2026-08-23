@@ -51,6 +51,16 @@ _space_ok() {
     (( avail_kb * 1024 - need_bytes > SPACE_MARGIN_MB * 1024 * 1024 ))
 }
 
+# A real ZIM starts with the magic bytes 5A 49 4D 04 ("ZIM\x04"). A blocked or
+# redirected download can reach the exact expected byte count yet be an XML/HTML
+# error page — the size check alone (and mirrors without a .sha256 sidecar)
+# will not catch it, so validate the magic explicitly. Non-.zim files pass.
+_zim_magic_ok() {
+    local f="$1"
+    [[ "${f,,}" == *.zim ]] || return 0
+    [[ "$(head -c 4 "$f" 2>/dev/null | tr -d '\0')" == *ZIM* ]]
+}
+
 # Download a ZIM, then validate size and checksum BEFORE treating the download
 # as successful. A partial/corrupt file is removed so the next run re-fetches.
 # ZIM snapshots carry a build date (…_2026-02.zim) and Kiwix deletes old ones
@@ -104,6 +114,17 @@ download_zim() {
         # A file can be truncated yet have no .aria2 control file (crash,
         # disk-full). Only the mirror's content-length says whether it is
         # actually complete; wget -c resumes by size, no control file needed.
+        # A size-complete file that isn't a valid ZIM is corrupt (an error
+        # page padded to the right length, or a partial resumed over garbage).
+        # Delete it and fall through to a clean re-download rather than
+        # trusting the byte count.
+        if ! _zim_magic_ok "$existing"; then
+            warn "[$name] Existing file is not a valid ZIM (bad magic) -- deleting and re-downloading"
+            rm -f "$existing" "$existing.aria2" "$existing.aria2__temp"
+            existing=""
+        fi
+    fi
+    if [[ -n "$existing" ]]; then
         local remote_sz local_sz
         remote_sz=$(curl -sIL --max-time 30 "$url" 2>/dev/null \
                     | grep -i '^content-length' | tail -1 | tr -dc '0-9')
@@ -185,6 +206,16 @@ download_zim() {
         return 1
     fi
 
+    # Magic-byte gate: catches an error page saved (or resumed) at the right
+    # size on a mirror that ships no checksum. A ZIM that fails this can never
+    # be registered with Kiwix, so delete it rather than keep dead weight.
+    if ! _zim_magic_ok "$dest"; then
+        warn "[$name] Downloaded file is not a valid ZIM (bad magic) -- removing"
+        rm -f "$dest" "$dest.aria2" "$dest.aria2__temp"
+        mark_failed "$name" "invalid ZIM magic"
+        return 1
+    fi
+
     # Checksum validation: ZIM mirrors publish .sha256 sidecars. A missing
     # sidecar is logged as a warning (network or mirror issue), but a
     # MISMATCH deletes the file so the next run re-downloads cleanly.
@@ -192,9 +223,21 @@ download_zim() {
     local sha_file
     sha_file=$(mktemp)
     if ! wget -q -O "$sha_file" "$sha_url" 2>/dev/null || ! [[ -s "$sha_file" ]]; then
-        warn "[$name] No checksum sidecar at $sha_url -- size check only"
         rm -f "$sha_file"
-        success "[$name] Done: $filename (size OK, no checksum available)"
+        # A partial resumed without its aria2 control file can have internal
+        # zero-gaps that valid magic bytes won't reveal. With no checksum to
+        # catch that, the resumed result is untrustworthy: discard it so the
+        # next run downloads the whole file cleanly (aria2 manages its own
+        # piece integrity in a single session).
+        if [[ "$resumed" == "true" ]]; then
+            warn "[$name] Resumed a control-file-less partial and the mirror"
+            warn "[$name] has no checksum to verify it -- discarding for a clean re-download"
+            rm -f "$dest" "$dest.aria2" "$dest.aria2__temp"
+            mark_failed "$name" "unverifiable resume"
+            return 1
+        fi
+        warn "[$name] No checksum sidecar at $sha_url -- size + magic check only"
+        success "[$name] Done: $filename (magic OK, no checksum available)"
         return 0
     fi
     # Replace the path in the sidecar with our local filename so sha256sum
