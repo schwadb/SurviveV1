@@ -13,19 +13,22 @@ PORT_MAPS      = 3000
 PORT_OLLAMA    = 11434
 
 # ── Service registry ──────────────────────────────────────────────────────────
+# `unit` is the systemd unit name the dashboard's restart button targets; it
+# must appear in the /etc/sudoers.d/survive-dashboard allowlist written by
+# scripts/install_sudoers.sh. None = no restart button (managed elsewhere).
 SERVICES = {
     "kiwix":    {"name": "Wikipedia & Books", "port": PORT_KIWIX,
-                 "icon": "📚", "color": "#2980b9"},
+                 "icon": "📚", "color": "#2980b9", "unit": "kiwix"},
     "kolibri":  {"name": "Khan Academy",      "port": PORT_KOLIBRI,
-                 "icon": "🎓", "color": "#27ae60"},
+                 "icon": "🎓", "color": "#27ae60", "unit": "kolibri"},
     "calibre":  {"name": "E-book Library",    "port": PORT_CALIBRE,
-                 "icon": "📖", "color": "#8e44ad"},
+                 "icon": "📖", "color": "#8e44ad", "unit": "calibre-web"},
     "jellyfin": {"name": "Videos",            "port": PORT_JELLYFIN,
-                 "icon": "🎬", "color": "#e74c3c"},
+                 "icon": "🎬", "color": "#e74c3c", "unit": "jellyfin"},
     "maps":     {"name": "Offline Maps",      "port": PORT_MAPS,
-                 "icon": "🗺️", "color": "#f39c12"},
+                 "icon": "🗺️", "color": "#f39c12", "unit": "martin-tiles"},
     "ai":       {"name": "AI Assistant",      "port": PORT_OLLAMA,
-                 "icon": "🤖", "color": "#16a085"},
+                 "icon": "🤖", "color": "#16a085", "unit": "ollama"},
 }
 
 # ── Content budget ─────────────────────────────────────────────────────────────

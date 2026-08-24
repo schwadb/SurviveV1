@@ -206,6 +206,11 @@
           <div class="service-name">{{ svc.name }}</div>
           <div class="service-port">localhost:{{ svc.port }}</div>
         </div>
+        {% if is_admin and svc.unit %}
+          <button class="btn btn-secondary btn-sm" style="margin-right:8px;"
+                  data-restart="{{ name }}" onclick="restartService('{{ name }}')"
+                  title="Restart {{ svc.name }}">↻</button>
+        {% endif %}
         {% if svc.running %}
           <a href="http://localhost:{{ svc.port }}" target="_blank" data-service="{{ name }}"
              class="badge badge-green" style="text-decoration:none;">● UP</a>
@@ -478,6 +483,30 @@ function startUpdate() {
 
 if (document.getElementById('updateBtn')) {
   pollUpdate();  // restore button/log state on page load (admin view only)
+}
+
+// ── Per-service restart (admin) ─────────────────────────────────────────────
+function restartService(name) {
+  const btn = document.querySelector(`[data-restart="${name}"]`);
+  if (!btn || !confirm('Restart the ' + name + ' service?')) return;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '…';
+  fetch(`/api/service/${name}/restart`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+    .then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok && r.status !== 202) {
+        alert(d.error || ('Restart failed (HTTP ' + r.status + ')'));
+      }
+      // Give the unit a moment, then refresh badges.
+      setTimeout(() => refreshStatus(false), 3000);
+    })
+    .catch(() => alert('Could not reach the dashboard.'))
+    .finally(() => { btn.disabled = false; btn.textContent = original; });
 }
 </script>
 {% endblock %}

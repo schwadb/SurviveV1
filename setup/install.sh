@@ -534,6 +534,8 @@ main() {
     configure_avahi
     configure_chrony
     install_services
+    bash "$REPO_DIR/scripts/install_sudoers.sh" \
+        || warn "Sudoers install failed — service restart buttons will be inert"
 
     # Content services. These were previously commented out, which shipped a
     # dashboard advertising Kolibri, Calibre-Web and Jellyfin on a machine where

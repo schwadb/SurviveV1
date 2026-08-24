@@ -1401,6 +1401,55 @@ def api_update_start():
     return jsonify({"started": True, "pid": proc.pid}), 202
 
 
+@app.route("/api/service/<name>/restart", methods=["POST"])
+@csrf.exempt
+@limiter.limit("6 per minute")
+@_admin_required
+# Each early return is a distinct client-facing error contract (415/404/400/
+# 500); collapsing them would obscure which failure the caller hit.
+# pylint: disable=too-many-return-statements
+def api_service_restart(name):
+    """Restart one managed service via the sudoers-allowlisted systemctl.
+    Admin-only. The unit name is looked up from SERVICES (never taken from the
+    URL) so only known units can be targeted."""
+    if (request.content_type or "").split(";")[0].strip() != "application/json":
+        return jsonify({"error": "Content-Type must be application/json"}), 415
+    svc = SERVICES.get(name)
+    if not svc:
+        return jsonify({"error": "Unknown service"}), 404
+    unit = svc.get("unit")
+    if not unit:
+        return jsonify({"error": "This service has no restart control"}), 400
+    # The AI service may live on a remote host (SURVIVE_OLLAMA_HOST) we can't
+    # restart from here.
+    if name == "ai" and OLLAMA_IS_REMOTE:
+        return jsonify({"error": "AI runs on a remote host — restart it there"}), 400
+
+    cmd = ["sudo", "-n", "/usr/bin/systemctl", "restart", unit]
+    # Restarting the dashboard's own unit kills the worker handling this
+    # request, so detach it (same pattern as the updater) and return 202.
+    if unit == "survive-dashboard":
+        try:
+            subprocess.Popen(  # pylint: disable=consider-using-with
+                cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, start_new_session=True,
+            )
+        except OSError as exc:
+            return jsonify({"error": f"Could not restart: {exc}"}), 500
+        return jsonify({"restarting": unit, "detached": True}), 202
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True,
+                                timeout=30, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return jsonify({"error": f"Restart failed: {exc}"}), 500
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()[:200]
+        return jsonify({"error": f"systemctl restart {unit} failed: {detail}",
+                        "hint": "run scripts/install_sudoers.sh"}), 500
+    return jsonify({"restarted": unit}), 200
+
+
 def _read_throttle_state() -> dict:
     """Parse `vcgencmd get_throttled` (Pi firmware). Bits: 0 under-voltage
     now, 1 freq-capped now, 2 throttled now, 3 soft temp limit now; bits

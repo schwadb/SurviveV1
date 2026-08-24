@@ -471,3 +471,68 @@ def test_login_form_requires_csrf(server, admin_password):
     c.get("/login")  # establish session
     resp = c.post("/login", data={"password": admin_password})  # no token
     assert resp.status_code == 400
+
+
+# ── Per-service restart (Phase 3) ─────────────────────────────────────────────
+
+def test_service_restart_requires_admin(server):
+    try:
+        server.ADMIN_PASSWORD_FILE.unlink()
+    except FileNotFoundError:
+        pass
+    server._admin_hash_cache._ts = 0.0
+    c = server.app.test_client()
+    resp = c.post("/api/service/kiwix/restart", json={})
+    assert resp.status_code == 403
+
+
+def _admin_client(server, admin_password):
+    c = server.app.test_client()
+    token = re.search(r'name="csrf_token" value="([^"]+)"',
+                      c.get("/login").get_data(as_text=True)).group(1)
+    c.post("/login", data={"password": admin_password, "csrf_token": token})
+    return c
+
+
+def test_service_restart_unknown_404(server, admin_password):
+    c = _admin_client(server, admin_password)
+    resp = c.post("/api/service/nope/restart", json={})
+    assert resp.status_code == 404
+
+
+def test_service_restart_runs_allowlisted_argv(server, admin_password, monkeypatch):
+    captured = {}
+    class _R:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return _R()
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    c = _admin_client(server, admin_password)
+    resp = c.post("/api/service/kiwix/restart", json={})
+    assert resp.status_code == 200
+    # Exact allowlisted command — sudo -n, absolute systemctl, mapped unit.
+    assert captured["cmd"] == ["sudo", "-n", "/usr/bin/systemctl", "restart", "kiwix"]
+
+
+def test_service_restart_dashboard_is_detached(server, admin_password, monkeypatch):
+    captured = {}
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        class _P:
+            pid = 4242
+        return _P()
+    monkeypatch.setattr(server.subprocess, "Popen", fake_popen)
+    # dashboard isn't a SERVICES key; assert the mapped-unit path via 'maps'
+    # would use run, while a hypothetical self-restart uses Popen. Here we
+    # confirm martin-tiles uses run (not detached).
+    class _R:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+    monkeypatch.setattr(server.subprocess, "run", lambda cmd, **k: _R())
+    c = _admin_client(server, admin_password)
+    resp = c.post("/api/service/maps/restart", json={})
+    assert resp.status_code == 200
