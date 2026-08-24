@@ -155,6 +155,7 @@ main() {
     run_category kolibri       "${CONTENT_KOLIBRI:-Y}"      kolibri_content.sh
     run_category gaps          "Y"                          gaps_content.sh
     run_category mental_health "Y"                          mental_health.sh
+    run_category apps          "${CONTENT_APPS:-Y}"         app_depot.sh
 
     # Invalidate the dashboard's filename search index so it rebuilds with the
     # newly downloaded files on the next /search.

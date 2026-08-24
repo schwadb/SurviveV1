@@ -61,22 +61,55 @@ hotspot_active() {
 # address". Open DHCP (67/udp) and DNS (53) plus the dashboard on the AP
 # interface only, so the normal network's rules are untouched.
 AP_IFACE="wlan0"
+# Ports opened on the AP interface only: DHCP(67), DNS(53), dashboard(8080),
+# HTTP(80) for the captive portal, NTP(123) for offline time sync.
+AP_PORTS_UDP=(67 53 123)
+AP_PORTS_TCP=(53 80 8080)
 firewall_open_ap() {
     command -v ufw &>/dev/null || return 0
     ufw status 2>/dev/null | grep -q "^Status: active" || return 0
-    info "Opening DHCP/DNS/dashboard on $AP_IFACE for hotspot clients..."
-    ufw allow in on "$AP_IFACE" to any port 67 proto udp >/dev/null 2>&1 || true
-    ufw allow in on "$AP_IFACE" to any port 53           >/dev/null 2>&1 || true
-    ufw allow in on "$AP_IFACE" to any port 8080 proto tcp >/dev/null 2>&1 || true
+    info "Opening DHCP/DNS/HTTP/NTP/dashboard on $AP_IFACE for hotspot clients..."
+    local p
+    for p in "${AP_PORTS_UDP[@]}"; do
+        ufw allow in on "$AP_IFACE" to any port "$p" proto udp >/dev/null 2>&1 || true
+    done
+    for p in "${AP_PORTS_TCP[@]}"; do
+        ufw allow in on "$AP_IFACE" to any port "$p" proto tcp >/dev/null 2>&1 || true
+    done
     ufw reload >/dev/null 2>&1 || true
 }
 firewall_close_ap() {
     command -v ufw &>/dev/null || return 0
     ufw status 2>/dev/null | grep -q "^Status: active" || return 0
-    ufw delete allow in on "$AP_IFACE" to any port 67 proto udp   >/dev/null 2>&1 || true
-    ufw delete allow in on "$AP_IFACE" to any port 53             >/dev/null 2>&1 || true
-    ufw delete allow in on "$AP_IFACE" to any port 8080 proto tcp >/dev/null 2>&1 || true
+    local p
+    for p in "${AP_PORTS_UDP[@]}"; do
+        ufw delete allow in on "$AP_IFACE" to any port "$p" proto udp >/dev/null 2>&1 || true
+    done
+    for p in "${AP_PORTS_TCP[@]}"; do
+        ufw delete allow in on "$AP_IFACE" to any port "$p" proto tcp >/dev/null 2>&1 || true
+    done
     ufw reload >/dev/null 2>&1 || true
+}
+
+# Wildcard DNS + NTP option for the captive portal. Written into the
+# shared-mode dnsmasq drop-in dir (NOT dnsmasq.d/, which is only read in
+# client mode) BEFORE the connection comes up, so NM's freshly-spawned
+# dnsmasq picks it up. address=/#/10.42.0.1 answers EVERY hostname with the
+# Pi, so any OS connectivity probe lands on our nginx:80 -> dashboard and the
+# phone pops its captive-portal sign-in. Only AP clients are affected; the
+# Pi's own resolver is untouched.
+CAPTIVE_DNSMASQ="/etc/NetworkManager/dnsmasq-shared.d/80-survive-captive.conf"
+captive_portal_enable() {
+    mkdir -p "$(dirname "$CAPTIVE_DNSMASQ")"
+    cat > "$CAPTIVE_DNSMASQ" <<'EOF'
+# SurviveV1 captive portal: resolve all names to the Pi so client OS
+# connectivity checks trigger the sign-in page. Managed by scripts/hotspot.sh.
+address=/#/10.42.0.1
+dhcp-option=option:ntp-server,10.42.0.1
+EOF
+}
+captive_portal_disable() {
+    rm -f "$CAPTIVE_DNSMASQ"
 }
 
 case "$ACTION" in
@@ -115,6 +148,10 @@ case "$ACTION" in
 
         info "Creating access point '$SSID' on wlan0..."
         nmcli connection delete "$CON_NAME" 2>/dev/null || true
+        # Write the captive-portal DNS drop-in BEFORE bringing the connection
+        # up — NM spawns its shared-mode dnsmasq at that moment and reads the
+        # file once.
+        captive_portal_enable
         # band bg = 2.4 GHz: works in every regulatory domain, every phone
         # supports it, and it penetrates walls — the right disaster trade-off.
         # ipv4.method shared = NM runs DHCP+NAT; the Pi is always 10.42.0.1.
@@ -148,6 +185,7 @@ case "$ACTION" in
         fi
         nmcli connection delete "$CON_NAME" >/dev/null 2>&1 || true
         firewall_close_ap
+        captive_portal_disable
         success "Hotspot disabled — rejoining known Wi-Fi networks (if any)"
         ;;
 

@@ -8,6 +8,7 @@ Flask app serving the offline survival knowledge portal
 import os
 import json
 import logging
+import mimetypes
 import re
 import secrets
 import shutil
@@ -59,6 +60,10 @@ app.config.update(
     MAX_CONTENT_LENGTH=64 * 1024,  # 64 KB
 )
 
+# Without this, send_from_directory serves .apk as octet-stream and some
+# Android browsers rename the download to .zip, which breaks installation.
+mimetypes.add_type("application/vnd.android.package-archive", ".apk")
+
 # CSRF is enabled for HTML form POSTs. JSON APIs are exempted individually
 # and defended by a strict application/json Content-Type check instead --
 # browsers cannot send that cross-origin without a CORS preflight.
@@ -92,6 +97,9 @@ def _inject_globals():
         "storage_mounted": STORAGE_MOUNTED,
         "now": datetime.now(),
         "TIMEOUT_AI_CHAT": TIMEOUT_AI_CHAT,
+        # True when viewed inside a captive-portal mini-browser (the OS probe
+        # Host header), so base.html can nudge the user to a real browser.
+        "in_captive_browser": request.host.split(":")[0] in CAPTIVE_HOSTS,
     }
 
 
@@ -276,6 +284,7 @@ def _compute_content_stats() -> dict:
         "books": STORAGE_PATH / "books",
         "pdfs": STORAGE_PATH / "pdfs",
         "maps": STORAGE_PATH / "maps",
+        "apps": STORAGE_PATH / "apps",
     }
     for name, path in dirs.items():
         if path.exists():
@@ -824,6 +833,29 @@ def serve_file(filepath):
     return send_from_directory(str(full_path.parent), full_path.name)
 
 
+@app.route("/apps")
+def apps_page():
+    """List the sideloadable installers under $STORAGE/apps for hotspot guests."""
+    apps_root = STORAGE_PATH / "apps"
+    groups = {"android": [], "windows": []}
+    for platform, items in groups.items():
+        pdir = apps_root / platform
+        if not pdir.exists():
+            continue
+        for f in sorted(_safe_walk(pdir), key=lambda p: p.name):
+            try:
+                size_mb = round(f.stat().st_size / (1024 * 1024), 1)
+            except OSError:
+                size_mb = 0
+            items.append({
+                "name": f.name,
+                "path": str(f.relative_to(STORAGE_PATH)),
+                "size_mb": size_mb,
+            })
+    have_any = any(groups.values())
+    return render_template("apps.html", groups=groups, have_any=have_any)
+
+
 @app.route("/search")
 @limiter.limit("30 per minute")
 def search():
@@ -1002,6 +1034,56 @@ def ai_chat():
 def health():
     """Lightweight liveness probe for systemd ExecStartPost and external checks."""
     return jsonify({"status": "ok"}), 200
+
+
+# ── Captive portal ────────────────────────────────────────────────────────────
+# On the hotspot, dnsmasq resolves every hostname to 10.42.0.1, so an OS
+# connectivity probe reaches these routes. Answering them with anything OTHER
+# than the expected success response makes the phone open its captive-portal
+# sign-in window pointed at our dashboard. All are @limiter.exempt: phones poll
+# these aggressively and a 429 would break portal detection.
+CAPTIVE_REDIRECT = "http://10.42.0.1:8080/"
+
+# Hostnames the OS uses for its connectivity probe — used to show a hint banner
+# when the dashboard is being viewed inside the captive mini-browser.
+CAPTIVE_HOSTS = frozenset({
+    "connectivitycheck.gstatic.com", "clients3.google.com",
+    "www.google.com", "captive.apple.com", "www.apple.com",
+    "www.msftconnecttest.com", "www.msftncsi.com", "detectportal.firefox.com",
+})
+
+
+@app.route("/generate_204")
+@app.route("/gen_204")
+@limiter.exempt
+def captive_android():
+    """Android probes expect HTTP 204. Returning a 302 to the dashboard is what
+    makes Android raise the 'Sign in to network' notification."""
+    return redirect(CAPTIVE_REDIRECT, code=302)
+
+
+@app.route("/hotspot-detect.html")
+@app.route("/library/test/success.html")
+@limiter.exempt
+def captive_apple():
+    """Apple expects the literal body 'Success'. Anything else opens the
+    Captive Network Assistant showing our page."""
+    return (
+        '<!DOCTYPE html><html><head><meta http-equiv="refresh" '
+        f'content="0; url={CAPTIVE_REDIRECT}"></head><body>'
+        f'<a href="{CAPTIVE_REDIRECT}">Open SurviveV1</a></body></html>',
+        200, {"Content-Type": "text/html"},
+    )
+
+
+@app.route("/ncsi.txt")
+@app.route("/connecttest.txt")
+@app.route("/redirect")
+@limiter.exempt
+def captive_windows():
+    """Windows NCSI expects 'Microsoft Connect Test'/HTTP 200; a redirect
+    triggers its captive-portal flow."""
+    return redirect(CAPTIVE_REDIRECT, code=302)
 
 
 @app.route("/api/status")

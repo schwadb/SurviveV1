@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Offline Apps{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <div class="page-title">&#128241; Offline App Depot</div>
+  <div class="page-sub">
+    Install these directly to your phone or laptop while connected to the
+    SurviveV1 Wi-Fi &mdash; no internet needed.
+  </div>
+
+  {% if not have_any %}
+  <div class="card" style="margin-top:20px;">
+    <div class="card-title">No apps downloaded yet</div>
+    <p style="font-size:13px;color:var(--text-dim);">
+      Run this on the Pi to populate the depot:
+      <code style="background:var(--surface2);padding:2px 6px;border-radius:4px;">bash download/app_depot.sh --storage /mnt/survive</code>
+    </p>
+  </div>
+  {% endif %}
+
+  {% if groups.android %}
+  <div class="card" style="margin-top:20px;">
+    <div class="card-title">&#129302; Android</div>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">
+      Tap to download, then open the file to install. If Android blocks it,
+      allow &ldquo;Install unknown apps&rdquo; for your browser and retry.
+      Install <strong>Kiwix</strong> to read the offline library at
+      <code>http://10.42.0.1:8081</code>; install <strong>F-Droid</strong>
+      as an open app store for maps and more.
+    </p>
+    {% for app in groups.android %}
+    <div class="content-row" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:600;">{{ app.name }}</div>
+        <div style="font-size:12px;color:var(--text-dim);">{{ app.size_mb }} MB</div>
+      </div>
+      <a href="/serve/{{ app.path }}" class="btn btn-primary btn-sm" download>Download</a>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if groups.windows %}
+  <div class="card" style="margin-top:20px;">
+    <div class="card-title">&#128421; Windows</div>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">
+      Kiwix Desktop (unzip and run) reads the same offline library; VLC plays
+      the downloaded videos.
+    </p>
+    {% for app in groups.windows %}
+    <div class="content-row" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:600;">{{ app.name }}</div>
+        <div style="font-size:12px;color:var(--text-dim);">{{ app.size_mb }} MB</div>
+      </div>
+      <a href="/serve/{{ app.path }}" class="btn btn-primary btn-sm" download>Download</a>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

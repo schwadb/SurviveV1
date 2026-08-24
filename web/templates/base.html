@@ -281,6 +281,7 @@
       <a href="/" class="{{ 'active' if request.endpoint == 'index' }}">Home</a>
       <a href="/files" class="{{ 'active' if request.endpoint == 'browse_files' }}">Browse</a>
       <a href="/ai" class="{{ 'active' if request.endpoint == 'ai_page' }}">AI Assistant</a>
+      <a href="/apps" class="{{ 'active' if request.endpoint == 'apps_page' }}">Apps</a>
       <a href="/status" class="{{ 'active' if request.endpoint == 'status_page' }}">Status</a>
       <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KIWIX }}" target="_blank">Wikipedia</a>
       <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KOLIBRI }}" target="_blank">Education</a>
@@ -298,6 +299,11 @@
 {% if not storage_mounted %}
 <div style="background:#d29922;color:#0d1117;padding:8px 20px;text-align:center;font-size:13px;font-weight:600;position:sticky;top:56px;z-index:99;">
   &#9888; Storage drive not mounted &mdash; content may be missing. Connect drive and restart services.
+</div>
+{% endif %}
+{% if in_captive_browser %}
+<div style="background:#1f6feb;color:#fff;padding:8px 20px;text-align:center;font-size:13px;font-weight:600;position:sticky;top:56px;z-index:99;">
+  &#128241; You're in the Wi-Fi sign-in window. Open <a href="http://10.42.0.1:8080/" style="color:#fff;text-decoration:underline;">http://10.42.0.1:8080</a> in your normal browser for the full dashboard.
 </div>
 {% endif %}
 

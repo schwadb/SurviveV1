@@ -51,6 +51,7 @@ DOWNLOAD_CATEGORIES = [
     {"id": "kolibri",       "name": "Khan Academy (Kolibri)", "budget_gb": 200, "dir": "kolibri"},
     {"id": "gaps",          "name": "Expert Gap Content",  "budget_gb": 15,  "dir": "pdfs"},
     {"id": "mental_health", "name": "Mental Health",       "budget_gb": 5,   "dir": "pdfs"},
+    {"id": "apps",          "name": "Offline App Depot",   "budget_gb": 2,   "dir": "apps"},
 ]
 
 # ── Knowledge categories ───────────────────────────────────────────────────────

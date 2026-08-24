@@ -86,6 +86,13 @@ main() {
             || warn "mental_health finished with errors"
     fi
 
+    # Refresh offline app installers (tracks newest Kiwix/VLC releases)
+    if [[ "${CONTENT_APPS:-Y}" =~ [Yy] ]]; then
+        info "Refreshing offline app depot..."
+        bash "$REPO_DIR/download/app_depot.sh" --storage "$STORAGE_PATH" \
+            || warn "app_depot finished with errors"
+    fi
+
     # Re-register any new ZIM files
     if command -v kiwix-manage &>/dev/null; then
         info "Updating Kiwix library..."

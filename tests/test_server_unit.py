@@ -368,3 +368,37 @@ def test_check_all_services_ai_uses_ollama_alive(server, monkeypatch):
     result = server.check_all_services()
     assert called["ai"] is True
     assert result["ai"]["running"] is True
+
+
+# ── Captive portal + apps (Phase 1) ───────────────────────────────────────────
+
+def test_captive_android_redirects(client):
+    for path in ("/generate_204", "/gen_204"):
+        resp = client.get(path)
+        assert resp.status_code == 302, path
+        assert resp.headers["Location"] == "http://10.42.0.1:8080/"
+
+
+def test_captive_apple_non_success(client):
+    resp = client.get("/hotspot-detect.html")
+    assert resp.status_code == 200
+    # Must NOT be the literal "Success" Apple expects, or the CNA won't open.
+    assert b"Success" not in resp.data or b"10.42.0.1" in resp.data
+    assert b"10.42.0.1" in resp.data
+
+
+def test_captive_windows_redirects(client):
+    for path in ("/ncsi.txt", "/connecttest.txt", "/redirect"):
+        resp = client.get(path)
+        assert resp.status_code == 302, path
+
+
+def test_apps_page_empty_storage(client):
+    resp = client.get("/apps")
+    assert resp.status_code == 200
+
+
+def test_apk_mimetype_registered(server):
+    import mimetypes
+    typ, _ = mimetypes.guess_type("kiwix.apk")
+    assert typ == "application/vnd.android.package-archive"

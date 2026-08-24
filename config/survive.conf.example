@@ -23,6 +23,9 @@ CONTENT_IFIX="Y"
 # Curated extras (~7 GB): Kiwix post-disaster/medicine/water/food/knots
 # collections, Appropedia, Energypedia, PhET simulations, Wikiversity
 CONTENT_EXPANSION="Y"
+# Offline app installers (~1 GB): Kiwix Android/Desktop, F-Droid, VLC, so
+# guests joining the hotspot can install the reader apps with no internet.
+CONTENT_APPS="Y"
 
 # ── Video quality (480, 720, 1080) ─────────────────────────────────────────────
 VIDEO_QUALITY="720"

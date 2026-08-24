@@ -124,8 +124,22 @@ install_core_deps() {
         samba samba-common-bin \
         ntfs-3g exfatprogs \
         rclone \
+        chrony \
         fuse3
     success "Core dependencies installed"
+}
+
+# ── NTP time server for hotspot clients ───────────────────────────────────────
+configure_chrony() {
+    info "Configuring chrony to serve time on the hotspot subnet..."
+    if [[ -d /etc/chrony/conf.d ]] && [[ -f "$REPO_DIR/config/chrony-survive.conf" ]]; then
+        install -m 644 "$REPO_DIR/config/chrony-survive.conf" \
+            /etc/chrony/conf.d/survive.conf
+        systemctl restart chrony 2>/dev/null || systemctl restart chronyd 2>/dev/null || true
+        success "chrony serving time to 10.42.0.0/24 (grid-down safe)"
+    else
+        info "chrony conf.d not present -- skipping NTP server config"
+    fi
 }
 
 # ── Python virtual environment ────────────────────────────────────────────────
@@ -518,6 +532,7 @@ main() {
     configure_firewall
     configure_samba
     configure_avahi
+    configure_chrony
     install_services
 
     # Content services. These were previously commented out, which shipped a
