@@ -15,6 +15,13 @@ User=pi
 WorkingDirectory=/opt/survive/web
 Environment="PORT=8080"
 Environment="HOST=0.0.0.0"
+# Optional; written by generate_services.sh from whitelisted survive.conf
+# keys (SURVIVE_OLLAMA_HOST, SURVIVE_LIMITER_STORAGE, ...). The leading '-'
+# makes it non-fatal when absent (fresh installs, CI).
+EnvironmentFile=-/etc/default/survive
+# Selected survive.conf keys, exported by generate_services.sh. The leading
+# "-" makes it optional so the unit still starts on boxes that never ran the
+# generator (the app falls back to its
 # gunicorn replaces Flask's single-threaded dev server. 2 workers leaves
 # headroom for Kiwix + Ollama on the Pi 5 quad-core. --threads 4 (gthread
 # worker) is required so a long streaming /api/ai/chat request does not tie up

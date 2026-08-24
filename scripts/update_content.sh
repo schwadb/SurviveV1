@@ -30,10 +30,20 @@ main() {
     info "SurviveV1 Content Updater"
     check_internet
 
-    # Update git repo itself
+    # Update git repo itself — pull whatever branch this clone tracks, never
+    # a hardcoded one (the repo may live on main, a fork, or a test branch).
     info "Updating SurviveV1 scripts..."
-    git -C "$REPO_DIR" pull --rebase origin claude/offline-survival-repository-vqWs2 \
-        && success "Scripts updated" || warn "Git pull failed"
+    local local_branch
+    local_branch=$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")
+    if [[ "$local_branch" == "HEAD" ]]; then
+        warn "Repo is on a detached HEAD -- skipping self-update"
+    elif ! git -C "$REPO_DIR" diff --quiet 2>/dev/null; then
+        warn "Repo has local uncommitted changes -- skipping self-update"
+        warn "(a rebase over a dirty tree aborts mid-update; commit or stash first)"
+    else
+        git -C "$REPO_DIR" pull --rebase origin "$local_branch" \
+            && success "Scripts updated ($local_branch)" || warn "Git pull failed"
+    fi
 
     # Update yt-dlp
     info "Updating yt-dlp..."

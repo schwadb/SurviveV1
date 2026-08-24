@@ -1,0 +1,34 @@
+[Unit]
+Description=Jellyfin Media Server (SurviveV1 override)
+# The distro package ships its own unit; this template exists so
+# generate_services.sh can re-path the storage mount dependency when
+# SURVIVE_STORAGE_PATH changes. Jellyfin must never start before the
+# content SSD mounts, or it scans an empty library and "forgets" media.
+After=network.target local-fs.target
+Wants=local-fs.target
+RequiresMountsFor=/mnt/survive
+
+# Restart rate limiting belongs in [Unit]; systemd ignores these keys in
+# [Service] ("Unknown key ... ignoring"), so the limit never applied.
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+# Deliberately User=jellyfin, NOT the generate_services.sh sed target
+# (User=pi): the jellyfin system user owns /var/lib/jellyfin and the
+# package's state. Media library PATHS live inside Jellyfin's own DB —
+# re-pointing storage here only fixes the mount ordering; reconfigure
+# libraries in the Jellyfin web UI if the storage path moves.
+User=jellyfin
+Group=jellyfin
+ExecStart=/usr/bin/jellyfin
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=survive-jellyfin
+
+[Install]
+WantedBy=multi-user.target

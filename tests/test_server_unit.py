@@ -324,3 +324,47 @@ def test_update_state_reads_finish_marker(server, tmp_path, monkeypatch):
     assert state["exit_code"] == 2
     # the marker line itself is not shown in the log tail
     assert all("UPDATE_FINISHED" not in ln for ln in state["log_tail"])
+
+
+# ── Remote-Ollama env hook (Phase 0) ──────────────────────────────────────────
+
+def test_resolve_ollama_base_default(server):
+    assert server._resolve_ollama_base.__doc__  # exists
+    # default when env absent is localhost
+    import os
+    old = os.environ.pop("SURVIVE_OLLAMA_HOST", None)
+    try:
+        base = server._resolve_ollama_base()
+        assert base == f"http://localhost:{server.PORT_OLLAMA}"
+    finally:
+        if old is not None:
+            os.environ["SURVIVE_OLLAMA_HOST"] = old
+
+
+def test_resolve_ollama_base_valid_remote(server, monkeypatch):
+    monkeypatch.setenv("SURVIVE_OLLAMA_HOST", "http://192.168.1.50:11434/")
+    assert server._resolve_ollama_base() == "http://192.168.1.50:11434"
+
+
+def test_resolve_ollama_base_garbage_falls_back(server, monkeypatch):
+    monkeypatch.setenv("SURVIVE_OLLAMA_HOST", "not a url")
+    assert server._resolve_ollama_base() == f"http://localhost:{server.PORT_OLLAMA}"
+
+
+def test_ai_page_renders_when_ollama_down(server, client, monkeypatch):
+    # _ollama_alive False => page still renders, empty model list, no exception
+    monkeypatch.setattr(server, "_ollama_alive", lambda: False)
+    resp = client.get("/ai")
+    assert resp.status_code == 200
+
+
+def test_check_all_services_ai_uses_ollama_alive(server, monkeypatch):
+    called = {"ai": False}
+    def fake_alive():
+        called["ai"] = True
+        return True
+    monkeypatch.setattr(server, "_ollama_alive", fake_alive)
+    monkeypatch.setattr(server, "check_service", lambda port: False)
+    result = server.check_all_services()
+    assert called["ai"] is True
+    assert result["ai"]["running"] is True

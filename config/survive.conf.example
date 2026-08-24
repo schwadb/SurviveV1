@@ -30,6 +30,22 @@ VIDEO_QUALITY="720"
 # ── AI model preference ────────────────────────────────────────────────────────
 SURVIVE_AI_MODEL="survive"
 
+# Point the dashboard at a REMOTE Ollama server instead of the local one, so a
+# more powerful x86 mini-PC can do inference while the Pi stays the always-on
+# node. Leave blank to use the Pi's own Ollama. On the satellite box run Ollama
+# with OLLAMA_HOST=0.0.0.0 so it accepts LAN connections.
+#   e.g. SURVIVE_OLLAMA_HOST="http://192.168.1.50:11434"
+# Economical satellite tiers (Pi stays primary, powered only when needed):
+#   ~$150-220 used Dell OptiPlex/HP EliteDesk micro (32 GB) -> 7-9B @ 5-8 tok/s
+#   ~$500-800 Minisforum Ryzen 7840HS/8945HS + 780M       -> 8B @ 12-17 tok/s
+SURVIVE_OLLAMA_HOST=""
+
+# Rate-limit counter storage. Default (blank => memory://) counts per gunicorn
+# worker, so effective limits are ~2x with 2 workers. For exact limits install
+# a local redis (apt install redis-server; pip install 'limits[redis]') and set:
+#   SURVIVE_LIMITER_STORAGE="redis://127.0.0.1:6379"
+SURVIVE_LIMITER_STORAGE=""
+
 # ── Cloud sync ─────────────────────────────────────────────────────────────────
 # Remote name as configured in rclone (run: bash sync/setup_rclone.sh)
 SURVIVE_CLOUD_REMOTE="gdrive"

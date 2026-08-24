@@ -66,11 +66,15 @@ csrf = CSRFProtect(app)
 
 # Per-IP rate limiting; protects /api/ai/chat (which proxies to Ollama and
 # can pin the Pi's CPU) and /search (which walks the 800 GB storage tree).
+# storage_uri defaults to memory:// (per-gunicorn-worker counters, so
+# effective limits are ~2x with 2 workers — acceptable for a LAN appliance).
+# Set SURVIVE_LIMITER_STORAGE="redis://127.0.0.1:6379" (with a local redis and
+# `pip install limits[redis]`) to make limits exact across workers.
 limiter = Limiter(
     get_remote_address,
     app=app,
     default_limits=["120 per minute"],
-    storage_uri="memory://",
+    storage_uri=os.environ.get("SURVIVE_LIMITER_STORAGE", "memory://"),
 )
 
 
@@ -149,6 +153,28 @@ TIMEOUT_OLLAMA_LIST   = float(os.environ.get("SURVIVE_OLLAMA_LIST_TIMEOUT", "2")
 # only when the user picked the best model.
 TIMEOUT_AI_CHAT       = float(os.environ.get("SURVIVE_AI_CHAT_TIMEOUT", "300"))
 
+
+def _resolve_ollama_base() -> str:
+    """Base URL for the Ollama API. Defaults to the local server, but
+    SURVIVE_OLLAMA_HOST can point at a more powerful satellite box (an x86
+    mini-PC) so the always-on Pi offloads inference. Garbage falls back to
+    localhost with a log line rather than breaking startup."""
+    raw = os.environ.get("SURVIVE_OLLAMA_HOST", "").strip()
+    default = f"http://localhost:{PORT_OLLAMA}"
+    if not raw:
+        return default
+    if not re.match(r"^https?://[^/\s]+$", raw.rstrip("/")):
+        logging.getLogger(__name__).warning(
+            "SURVIVE_OLLAMA_HOST=%r is not a valid http(s)://host[:port] URL "
+            "-- falling back to %s", raw, default)
+        return default
+    return raw.rstrip("/")
+
+
+# Whether AI runs on a remote host (affects service-check method + restart UI).
+OLLAMA_BASE = _resolve_ollama_base()
+OLLAMA_IS_REMOTE = OLLAMA_BASE != f"http://localhost:{PORT_OLLAMA}"
+
 _CACHE_TTL = 60.0  # seconds — how long content-stat / recent-file caches are valid
 
 # Search is capped to avoid walking 800 GB to exhaustion with zero matches.
@@ -211,10 +237,30 @@ def check_service(svc_port: int) -> bool:
         return False
 
 
+def _ollama_alive() -> bool:
+    """Liveness of the Ollama server, local OR remote. A remote host cannot be
+    probed with a localhost TCP dial, so hit its HTTP API instead."""
+    if not OLLAMA_IS_REMOTE:
+        return check_service(PORT_OLLAMA)
+    try:
+        with urllib.request.urlopen(
+            f"{OLLAMA_BASE}/api/version", timeout=TIMEOUT_SERVICE_CHECK
+        ) as r:
+            return r.status == 200
+    except (OSError, urllib.error.URLError):
+        return False
+
+
 def check_all_services() -> dict:
-    """Check all services concurrently; wall-clock cost = one timeout period."""
+    """Check all services concurrently; wall-clock cost = one timeout period.
+    The 'ai' row uses _ollama_alive so a remote SURVIVE_OLLAMA_HOST is probed
+    over HTTP rather than a (always-failing) localhost dial."""
+    def _probe(name: str, svc: dict) -> bool:
+        if name == "ai":
+            return _ollama_alive()
+        return check_service(svc["port"])
     with ThreadPoolExecutor(max_workers=len(SERVICES)) as ex:
-        futures = {name: ex.submit(check_service, svc["port"]) for name, svc in SERVICES.items()}
+        futures = {name: ex.submit(_probe, name, svc) for name, svc in SERVICES.items()}
     return {
         name: {"running": future.result(), **SERVICES[name]}
         for name, future in futures.items()
@@ -815,12 +861,12 @@ def search():
 
 @app.route("/ai")
 def ai_page():
-    ai_running = check_service(PORT_OLLAMA)
+    ai_running = _ollama_alive()
     models = []
     if ai_running:
         try:
             with urllib.request.urlopen(
-                f"http://localhost:{PORT_OLLAMA}/api/tags", timeout=TIMEOUT_OLLAMA_LIST
+                f"{OLLAMA_BASE}/api/tags", timeout=TIMEOUT_OLLAMA_LIST
             ) as r:
                 data = json.loads(r.read())
                 models = [m["name"] for m in data.get("models", [])]
@@ -890,7 +936,7 @@ def ai_chat():
         "stream": True,
     }).encode()
     req = urllib.request.Request(
-        f"http://localhost:{PORT_OLLAMA}/api/chat",
+        f"{OLLAMA_BASE}/api/chat",
         data=payload,
         headers={"Content-Type": "application/json"},
     )
