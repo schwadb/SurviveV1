@@ -23,15 +23,17 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
+from functools import wraps
 from urllib.parse import quote
 from flask import (
-    Flask, render_template, jsonify, request,
+    Flask, render_template, jsonify, request, session,
     send_from_directory, redirect, url_for, abort,
     Response, stream_with_context
 )
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from werkzeug.security import check_password_hash
 
 from constants import (  # noqa: E402
     CATEGORIES,
@@ -100,6 +102,8 @@ def _inject_globals():
         # True when viewed inside a captive-portal mini-browser (the OS probe
         # Host header), so base.html can nudge the user to a real browser.
         "in_captive_browser": request.host.split(":")[0] in CAPTIVE_HOSTS,
+        "is_admin": is_admin(),
+        "admin_configured": admin_configured(),
     }
 
 
@@ -209,6 +213,55 @@ class _TTLCache:
 
 _content_stats_cache = _TTLCache(_CACHE_TTL)
 _recent_cache = _TTLCache(_CACHE_TTL)
+
+
+# ── Admin authentication (anonymous-guest model) ──────────────────────────────
+# Guests never log in: anonymous access is read-only. Auth exists ONLY to
+# elevate to admin (one password). Admin unlocks the Update button, service
+# restarts, and future write features. Fail CLOSED: with no password set, admin
+# endpoints are refused — never silently open.
+ADMIN_PASSWORD_FILE = Path(os.environ.get(
+    "SURVIVE_ADMIN_PASSWORD_FILE",
+    str(Path(__file__).parent.parent / "config" / ".admin_password"),
+))
+_admin_hash_cache = _TTLCache(5.0)  # re-read the file at most every 5 s
+
+
+def _admin_hash():
+    """Stored admin password hash, or None if no password is set."""
+    def _read():
+        try:
+            data = ADMIN_PASSWORD_FILE.read_text(encoding="utf-8").strip()
+            return data or None
+        except OSError:
+            return None
+    return _admin_hash_cache.get(_read)
+
+
+def admin_configured() -> bool:
+    return _admin_hash() is not None
+
+
+def is_admin() -> bool:
+    return bool(session.get("admin"))
+
+
+def _admin_required(func):
+    """Gate a route to admins. JSON 403 for /api/*, redirect to /login for pages.
+    Fails closed when no admin password has been configured."""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if not is_admin():
+            wants_json = request.path.startswith("/api/")
+            if not admin_configured():
+                msg = "No admin password set — run scripts/set_admin_password.py"
+                return (jsonify({"error": msg}), 403) if wants_json else \
+                    (render_template("error.html", code=403, message=msg), 403)
+            if wants_json:
+                return jsonify({"error": "Admin login required"}), 403
+            return redirect(url_for("login", next=request.path))
+        return func(*args, **kwargs)
+    return wrapper
 
 
 def _safe_walk(root: Path):
@@ -1036,6 +1089,42 @@ def health():
     return jsonify({"status": "ok"}), 200
 
 
+# ── Login / logout ────────────────────────────────────────────────────────────
+@app.route("/login", methods=["GET", "POST"])
+@limiter.limit("5 per minute", methods=["POST"])
+def login():
+    """Elevate an anonymous guest to admin. CSRF-protected form POST."""
+    if request.method == "GET":
+        if is_admin():
+            return redirect(url_for("index"))
+        return render_template("login.html", configured=admin_configured())
+
+    stored = _admin_hash()
+    password = request.form.get("password", "")
+    if not stored:
+        return render_template(
+            "login.html", configured=False,
+            error="No admin password is set on this device."), 403
+    if not check_password_hash(stored, password):
+        return render_template(
+            "login.html", configured=True,
+            error="Incorrect password."), 401
+    # Success — regenerate the session to prevent fixation, then mark admin.
+    session.clear()
+    session["admin"] = True
+    dest = request.args.get("next", "")
+    # Only allow same-site relative redirects.
+    if not dest.startswith("/") or dest.startswith("//"):
+        dest = url_for("index")
+    return redirect(dest)
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("index"))
+
+
 # ── Captive portal ────────────────────────────────────────────────────────────
 # On the hotspot, dnsmasq resolves every hostname to 10.42.0.1, so an OS
 # connectivity probe reaches these routes. Answering them with anything OTHER
@@ -1272,10 +1361,11 @@ def api_update_status():
 @app.route("/api/update/start", methods=["POST"])
 @csrf.exempt
 @limiter.limit("3 per minute")
+@_admin_required
 def api_update_start():
     """Kick off a safe content refresh (scripts/update_content.sh) in the
     background: new videos/books/PDFs, missing ZIMs, AI model updates —
-    never replacement builds of existing large ZIMs."""
+    never replacement builds of existing large ZIMs. Admin-only."""
     # Same CSRF defence as /api/ai/chat: cross-origin JSON needs a preflight.
     if (request.content_type or "").split(";")[0].strip() != "application/json":
         return jsonify({"error": "Content-Type must be application/json"}), 415

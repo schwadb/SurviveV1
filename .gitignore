@@ -15,6 +15,7 @@ env/
 
 # Secrets / generated keys
 config/.secret_key
+config/.admin_password
 config/*.secret
 .env
 *.env

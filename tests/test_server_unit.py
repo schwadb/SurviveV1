@@ -305,9 +305,15 @@ def test_update_status_idle(client):
     assert data["log_tail"] == []
 
 
-def test_update_start_requires_json(client):
-    resp = client.post("/api/update/start", data="x=1",
-                       content_type="application/x-www-form-urlencoded")
+def test_update_start_requires_json(server, admin_password):
+    # Admin auth is checked before the content-type; log in first so this
+    # exercises the 415 path rather than the 403 gate.
+    c = server.app.test_client()
+    token = re.search(r'name="csrf_token" value="([^"]+)"',
+                      c.get("/login").get_data(as_text=True)).group(1)
+    c.post("/login", data={"password": admin_password, "csrf_token": token})
+    resp = c.post("/api/update/start", data="x=1",
+                  content_type="application/x-www-form-urlencoded")
     assert resp.status_code == 415
 
 
@@ -402,3 +408,66 @@ def test_apk_mimetype_registered(server):
     import mimetypes
     typ, _ = mimetypes.guess_type("kiwix.apk")
     assert typ == "application/vnd.android.package-archive"
+
+
+# ── Admin auth (Phase 2) ──────────────────────────────────────────────────────
+
+def _csrf_token(html):
+    m = re.search(r'name="csrf_token" value="([^"]+)"', html)
+    return m.group(1) if m else None
+
+
+def test_update_start_403_when_no_admin_password(server):
+    # No password file => admin endpoints fail closed with 403.
+    try:
+        server.ADMIN_PASSWORD_FILE.unlink()
+    except FileNotFoundError:
+        pass
+    server._admin_hash_cache._ts = 0.0
+    c = server.app.test_client()
+    resp = c.post("/api/update/start", json={})
+    assert resp.status_code == 403
+    assert b"admin password" in resp.data.lower()
+
+
+def test_login_page_renders(server):
+    c = server.app.test_client()
+    assert c.get("/login").status_code == 200
+
+
+def test_login_wrong_password_401(server, admin_password):
+    c = server.app.test_client()
+    token = _csrf_token(c.get("/login").get_data(as_text=True))
+    resp = c.post("/login", data={"password": "wrong", "csrf_token": token})
+    assert resp.status_code == 401
+
+
+def test_login_right_password_unlocks_update(server, admin_password):
+    c = server.app.test_client()
+    token = _csrf_token(c.get("/login").get_data(as_text=True))
+    resp = c.post("/login", data={"password": admin_password, "csrf_token": token})
+    assert resp.status_code == 302  # redirected on success
+    # Same client now carries the admin session — update endpoint reachable.
+    resp2 = c.post("/api/update/start", json={})
+    # 409/503/202 are all "past the auth gate"; only 403 would mean still blocked.
+    assert resp2.status_code != 403
+
+
+def test_logout_revokes_admin(server, admin_password):
+    c = server.app.test_client()
+    token = _csrf_token(c.get("/login").get_data(as_text=True))
+    c.post("/login", data={"password": admin_password, "csrf_token": token})
+    # Fresh token under the post-login session (login regenerates it); the
+    # logout form on any page carries one.
+    lt = _csrf_token(c.get("/").get_data(as_text=True))
+    resp_out = c.post("/logout", data={"csrf_token": lt})
+    assert resp_out.status_code == 302
+    resp = c.post("/api/update/start", json={})
+    assert resp.status_code == 403
+
+
+def test_login_form_requires_csrf(server, admin_password):
+    c = server.app.test_client()
+    c.get("/login")  # establish session
+    resp = c.post("/login", data={"password": admin_password})  # no token
+    assert resp.status_code == 400

@@ -293,6 +293,17 @@
              value="{{ request.args.get('q', '') }}" autocomplete="off">
       <button type="submit">Search</button>
     </form>
+    {% if is_admin %}
+    <form method="POST" action="/logout" style="margin-left:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" title="Log out of admin"
+              style="background:none;border:1px solid var(--border);color:var(--text-dim);
+                     padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;">Admin ✓</button>
+    </form>
+    {% else %}
+    <a href="/login" title="Admin login" style="margin-left:8px;color:var(--text-dim);
+       border:1px solid var(--border);padding:6px 10px;border-radius:6px;font-size:12px;text-decoration:none;">&#128273;</a>
+    {% endif %}
   </div>
 </nav>
 

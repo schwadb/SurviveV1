@@ -532,6 +532,27 @@ run_installer() {
         bash "${REPO_DIR}/setup/install.sh"
 }
 
+# ── Admin password ─────────────────────────────────────────────────────────────
+setup_admin_password() {
+    header "Admin Password"
+    echo ""
+    info "Guests on your Wi-Fi browse everything WITHOUT logging in."
+    info "An admin password is only needed to update content and manage"
+    info "services from the dashboard. You can set it now or later with:"
+    info "  python3 ${REPO_DIR}/scripts/set_admin_password.py"
+    echo ""
+    ask "Set an admin password now? [Y/n]: "
+    read -r ans
+    if [[ "${ans:-y}" =~ ^[Yy]$ ]]; then
+        local py="/opt/survive/venv/bin/python3"
+        [[ -x "$py" ]] || py="python3"
+        "$py" "${REPO_DIR}/scripts/set_admin_password.py" \
+            || warn "Password not set — run set_admin_password.py later"
+    else
+        info "Skipped. The Update button stays locked until a password is set."
+    fi
+}
+
 # ── AI model setup ─────────────────────────────────────────────────────────────
 run_ai_setup() {
     header "AI Model Setup"
@@ -608,6 +629,7 @@ main() {
 
     run_preflight
     run_installer
+    setup_admin_password
 
     local ram_mb
     ram_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)

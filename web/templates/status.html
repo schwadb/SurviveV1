@@ -169,6 +169,7 @@
     </div>
     {% endif %}
     <div id="update" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
+      {% if is_admin %}
       <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
         <button id="updateBtn" class="btn btn-primary btn-sm" onclick="startUpdate()">
           🔄 Update All Content</button>
@@ -180,6 +181,12 @@
       <pre id="updateLog" style="display:none; margin-top:10px; max-height:220px; overflow:auto;
            background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius);
            padding:10px; font-family:var(--mono); font-size:11px; white-space:pre-wrap;"></pre>
+      {% else %}
+      <div style="font-size:12px; color:var(--text-dim);">
+        &#128273; <a href="/login" style="color:var(--accent);">Log in as admin</a>
+        to update content and manage services.
+      </div>
+      {% endif %}
     </div>
     <div style="margin-top:12px; font-size:12px; color:var(--text-dim);">
       Start: <code style="background:var(--surface2); padding:2px 6px; border-radius:4px;">bash download/download_all.sh</code>
@@ -414,6 +421,7 @@ function renderUpdate(st) {
   const btn = document.getElementById('updateBtn');
   const note = document.getElementById('updateNote');
   const log = document.getElementById('updateLog');
+  if (!btn) return;  // guest view — the Update button is admin-only
   if (st.running) {
     btn.disabled = true;
     btn.textContent = '⏳ Updating…';
@@ -468,6 +476,8 @@ function startUpdate() {
     .catch(() => { note.textContent = 'Could not reach the dashboard.'; });
 }
 
-pollUpdate();  // restore button/log state on page load (update may be mid-run)
+if (document.getElementById('updateBtn')) {
+  pollUpdate();  // restore button/log state on page load (admin view only)
+}
 </script>
 {% endblock %}
