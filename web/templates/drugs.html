@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Drug Reference{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">&#128138; Drug Reference</div>
+  <div class="page-sub">
+    Offline FDA drug labels — search by medication or by symptom.
+    Information only, not medical advice.
+  </div>
+
+  {% if index_missing %}
+  <div class="card" style="margin-top:20px;">
+    <div class="card-title">Drug reference not downloaded yet</div>
+    <p style="font-size:13px;color:var(--text-dim);">
+      On the Pi, run:
+      <code style="background:var(--surface2);padding:2px 6px;border-radius:4px;">bash download/drug_reference.sh --storage /mnt/survive</code>
+      (~1.8 GB download + index build).
+    </p>
+  </div>
+  {% else %}
+
+  <form method="get" action="/drugs" style="margin:20px 0;display:flex;gap:8px;flex-wrap:wrap;">
+    <input type="text" name="q" value="{{ query }}" placeholder="e.g. amoxicillin, or a symptom like nausea"
+           autofocus style="flex:1;min-width:220px;padding:10px 12px;background:var(--surface2);
+           border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;">
+    <select name="mode" style="padding:10px;background:var(--surface2);border:1px solid var(--border);
+            border-radius:var(--radius);color:var(--text);">
+      <option value="drug" {{ 'selected' if mode == 'drug' }}>By drug name</option>
+      <option value="symptom" {{ 'selected' if mode == 'symptom' }}>By symptom / use</option>
+    </select>
+    <button type="submit" class="btn btn-primary">Search</button>
+  </form>
+
+  {% if query %}
+    {% if results_list %}
+    <div class="card">
+      <div class="card-title">{{ results_list|length }} result(s)</div>
+      {% for d in results_list %}
+      <div class="content-row" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
+        <div style="flex:1;">
+          <div style="font-size:14px;font-weight:600;">
+            <a href="/drugs/{{ d.id }}" style="color:var(--accent);text-decoration:none;">
+              {{ d.brand_name or d.generic_name or 'Unknown' }}</a>
+          </div>
+          <div style="font-size:12px;color:var(--text-dim);">
+            {% if d.generic_name and d.brand_name %}{{ d.generic_name }} · {% endif %}
+            {{ d.purpose[:120] if d.purpose else (d.otc_or_rx or '') }}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p style="color:var(--text-dim);">No matches. Try a different spelling or switch search mode.</p>
+    {% endif %}
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

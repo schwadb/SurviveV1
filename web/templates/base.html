@@ -282,6 +282,7 @@
       <a href="/files" class="{{ 'active' if request.endpoint == 'browse_files' }}">Browse</a>
       <a href="/ai" class="{{ 'active' if request.endpoint == 'ai_page' }}">AI Assistant</a>
       <a href="/apps" class="{{ 'active' if request.endpoint == 'apps_page' }}">Apps</a>
+      <a href="/drugs" class="{{ 'active' if request.endpoint in ('drugs_page','drug_detail') }}">Drugs</a>
       <a href="/status" class="{{ 'active' if request.endpoint == 'status_page' }}">Status</a>
       <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KIWIX }}" target="_blank">Wikipedia</a>
       <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KOLIBRI }}" target="_blank">Education</a>

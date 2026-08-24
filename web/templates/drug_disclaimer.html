@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Drug Reference — Notice{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:640px;">
+  <div class="card" style="margin-top:32px;border-left:4px solid var(--danger);">
+    <div class="card-title">&#9877;&#65039; Important — Read Before Using</div>
+    <p style="font-size:14px;line-height:1.6;">
+      This drug reference is built from public
+      <strong>US FDA (openFDA) drug labels</strong> for offline information
+      only. It is <strong>NOT medical advice</strong>, not a substitute for a
+      doctor or pharmacist, and not a clinical interaction checker.
+    </p>
+    <ul style="font-size:13px;color:var(--text-dim);line-height:1.7;">
+      <li>Dosages and warnings are from manufacturer labels and may be
+          outdated or not apply to your situation.</li>
+      <li>In an emergency, seek professional medical help if at all possible.</li>
+      <li>Never start, stop, or combine medications based solely on this tool.</li>
+    </ul>
+    <form method="POST" action="/drugs/disclaimer" style="margin-top:16px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <button type="submit" class="btn btn-primary">I understand — continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

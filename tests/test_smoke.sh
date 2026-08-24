@@ -99,6 +99,7 @@ run_tests() {
     check_http "GET /ai"          "/ai"
     check_http "GET /files"       "/files"
     check_http "GET /apps"        "/apps"
+    check_http "GET /drugs (disclaimer gate)" "/drugs"
     check_http "GET /generate_204 (captive)" "/generate_204" "302"
     check_http "GET /hotspot-detect.html (captive)" "/hotspot-detect.html"
     check_http "GET /search"      "/search"

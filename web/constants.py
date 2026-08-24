@@ -55,6 +55,7 @@ DOWNLOAD_CATEGORIES = [
     {"id": "gaps",          "name": "Expert Gap Content",  "budget_gb": 15,  "dir": "pdfs"},
     {"id": "mental_health", "name": "Mental Health",       "budget_gb": 5,   "dir": "pdfs"},
     {"id": "apps",          "name": "Offline App Depot",   "budget_gb": 2,   "dir": "apps"},
+    {"id": "drugs",         "name": "Drug Reference",      "budget_gb": 3,   "dir": "drugs"},
 ]
 
 # ── Knowledge categories ───────────────────────────────────────────────────────

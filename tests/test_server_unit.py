@@ -536,3 +536,92 @@ def test_service_restart_dashboard_is_detached(server, admin_password, monkeypat
     c = _admin_client(server, admin_password)
     resp = c.post("/api/service/maps/restart", json={})
     assert resp.status_code == 200
+
+
+# ── Offline drug reference (Phase 4) ──────────────────────────────────────────
+
+def _build_drug_db(server):
+    """Build a 3-drug fixture drug index matching build_drug_index.py's schema."""
+    conn = sqlite3.connect(str(server.DRUG_INDEX_DB))
+    conn.executescript(
+        """
+        CREATE TABLE drugs (id INTEGER PRIMARY KEY, brand_name TEXT,
+            generic_name TEXT, active_ingredient TEXT, purpose TEXT,
+            indications TEXT, warnings TEXT, dosage TEXT, contraindications TEXT,
+            interactions TEXT, otc_or_rx TEXT, effective_time TEXT);
+        CREATE VIRTUAL TABLE drug_names USING fts5(brand_name, generic_name,
+            active_ingredient, content='drugs', content_rowid='id');
+        CREATE VIRTUAL TABLE drug_uses USING fts5(purpose, indications,
+            content='drugs', content_rowid='id');
+        """
+    )
+    rows = [
+        ("Amoxil", "amoxicillin", "amoxicillin", "antibiotic",
+         "bacterial infections", "may interact with warfarin", "500mg", "",
+         "warfarin", "HUMAN PRESCRIPTION DRUG", "20260101"),
+        ("Imodium", "loperamide", "loperamide", "anti-diarrheal",
+         "controls diarrhea", "do not use with fever", "2mg", "", "",
+         "HUMAN OTC DRUG", "20260101"),
+        ("Tylenol", "acetaminophen", "acetaminophen", "pain reliever",
+         "pain and fever", "liver warning", "650mg", "", "",
+         "HUMAN OTC DRUG", "20260101"),
+    ]
+    conn.executemany(
+        "INSERT INTO drugs (brand_name,generic_name,active_ingredient,purpose,"
+        "indications,warnings,dosage,contraindications,interactions,otc_or_rx,"
+        "effective_time) VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+    conn.execute("INSERT INTO drug_names(rowid,brand_name,generic_name,active_ingredient) "
+                 "SELECT id,brand_name,generic_name,active_ingredient FROM drugs")
+    conn.execute("INSERT INTO drug_uses(rowid,purpose,indications) "
+                 "SELECT id,purpose,indications FROM drugs")
+    conn.commit()
+    conn.close()
+
+
+def test_drug_index_missing_returns_none(server):
+    server.DRUG_INDEX_DB.unlink(missing_ok=True)
+    assert server._query_drug_index("amoxicillin") is None
+
+
+def test_drug_search_by_name_and_symptom(server):
+    _build_drug_db(server)
+    try:
+        by_drug = server._query_drug_index("amoxicillin", mode="drug")
+        assert by_drug and by_drug[0]["generic_name"] == "amoxicillin"
+        by_symptom = server._query_drug_index("diarrhea", mode="symptom")
+        assert by_symptom and by_symptom[0]["brand_name"] == "Imodium"
+    finally:
+        server.DRUG_INDEX_DB.unlink(missing_ok=True)
+
+
+def test_drug_disclaimer_gate(server):
+    _build_drug_db(server)
+    try:
+        c = server.app.test_client()
+        # Before accepting: page shows the disclaimer, not results.
+        html = c.get("/drugs?q=amoxicillin").get_data(as_text=True)
+        assert "not medical advice" in html.lower() or "medical advice" in html.lower()
+        # Accept, then search works.
+        token = _csrf_token(html) or _csrf_token(c.get("/drugs").get_data(as_text=True))
+        c.post("/drugs/disclaimer", data={"csrf_token": token, "next": "/drugs"})
+        resp = c.get("/drugs?q=amoxicillin")
+        assert resp.status_code == 200
+        assert b"Amoxil" in resp.data
+    finally:
+        server.DRUG_INDEX_DB.unlink(missing_ok=True)
+
+
+def test_drug_interactions_text_match(server):
+    _build_drug_db(server)
+    try:
+        c = server.app.test_client()
+        token = _csrf_token(c.get("/drugs").get_data(as_text=True))
+        c.post("/drugs/disclaimer", data={"csrf_token": token, "next": "/drugs"})
+        amox = server._query_drug_index("amoxicillin")[0]["id"]
+        # Amoxil's label mentions warfarin.
+        r = c.get(f"/api/drugs/interactions?a={amox}&b=warfarin").get_json()
+        assert r["a_label_mentions_b"] is True
+        r2 = c.get(f"/api/drugs/interactions?a={amox}&b=tylenol").get_json()
+        assert r2["a_label_mentions_b"] is False
+    finally:
+        server.DRUG_INDEX_DB.unlink(missing_ok=True)

@@ -37,7 +37,8 @@ jobs:
           pip install -q -r requirements.txt -r requirements-dev.txt
       - name: Pylint
         run: |
-          pylint web/server.py scripts/index_documents.py \
+          pylint web/server.py web/constants.py scripts/index_documents.py \
+            scripts/build_drug_index.py scripts/set_admin_password.py \
             --disable=C0114,C0115,C0116 \
             --disable=R0903,R0913,R0914,R0801 \
             --fail-under=7.0

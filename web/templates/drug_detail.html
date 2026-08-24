@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ drug.brand_name or drug.generic_name }}{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:820px;">
+  <a href="/drugs" style="font-size:13px;color:var(--text-dim);">&larr; Back to search</a>
+  <div class="page-title" style="margin-top:8px;">{{ drug.brand_name or drug.generic_name }}</div>
+  <div class="page-sub">
+    {% if drug.generic_name %}Generic: {{ drug.generic_name }} · {% endif %}
+    {{ drug.otc_or_rx or '' }}
+  </div>
+
+  {% set sections = [
+    ('Purpose', drug.purpose),
+    ('Active ingredient', drug.active_ingredient),
+    ('Uses / Indications', drug.indications),
+    ('Dosage & administration', drug.dosage),
+    ('Warnings', drug.warnings),
+    ('Contraindications', drug.contraindications),
+    ('Drug interactions', drug.interactions),
+  ] %}
+  {% for heading, body in sections %}
+    {% if body %}
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">{{ heading }}</div>
+      <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;">{{ body }}</div>
+    </div>
+    {% endif %}
+  {% endfor %}
+
+  <!-- Label-text interaction check -->
+  <div class="card" style="margin-top:16px;">
+    <div class="card-title">Check interaction with another drug</div>
+    <p style="font-size:12px;color:var(--text-dim);">
+      Searches this label's interaction/warning text for another drug's name,
+      and vice versa. This is a <strong>text match against FDA labels, not a
+      clinical interaction checker</strong>.
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <input type="text" id="otherDrug" placeholder="other drug name"
+             style="flex:1;min-width:180px;padding:8px 10px;background:var(--surface2);
+             border:1px solid var(--border);border-radius:var(--radius);color:var(--text);">
+      <button class="btn btn-secondary btn-sm" onclick="checkInteraction({{ drug.id }})">Check</button>
+    </div>
+    <div id="interactionResult" style="margin-top:10px;font-size:13px;"></div>
+  </div>
+
+  <p style="margin-top:20px;font-size:12px;color:var(--text-dim);">
+    Source: FDA (openFDA) drug label. Information only — not medical advice.
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function checkInteraction(aId) {
+  const b = document.getElementById('otherDrug').value.trim();
+  const out = document.getElementById('interactionResult');
+  if (!b) { out.textContent = 'Enter a drug name.'; return; }
+  out.textContent = 'Checking…';
+  fetch(`/api/drugs/interactions?a=${aId}&b=${encodeURIComponent(b)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { out.textContent = d.error; return; }
+      const flagged = d.a_label_mentions_b || d.b_label_mentions_a;
+      out.innerHTML =
+        (flagged
+          ? '<span style="color:var(--danger);font-weight:600;">⚠ One label mentions the other — read both Warnings/Interactions sections.</span>'
+          : '<span style="color:var(--text-dim);">No mention found in either label.</span>') +
+        '<div style="color:var(--text-dim);margin-top:6px;">' + d.note + '</div>';
+    })
+    .catch(() => { out.textContent = 'Check failed.'; });
+}
+</script>
+{% endblock %}

@@ -93,6 +93,13 @@ main() {
             || warn "app_depot finished with errors"
     fi
 
+    # Refresh the openFDA drug reference (skips already-downloaded partitions)
+    if [[ "${CONTENT_DRUGS:-Y}" =~ [Yy] ]]; then
+        info "Refreshing drug reference..."
+        bash "$REPO_DIR/download/drug_reference.sh" --storage "$STORAGE_PATH" \
+            || warn "drug_reference finished with errors"
+    fi
+
     # Re-register any new ZIM files
     if command -v kiwix-manage &>/dev/null; then
         info "Updating Kiwix library..."

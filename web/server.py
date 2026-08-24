@@ -338,6 +338,7 @@ def _compute_content_stats() -> dict:
         "pdfs": STORAGE_PATH / "pdfs",
         "maps": STORAGE_PATH / "maps",
         "apps": STORAGE_PATH / "apps",
+        "drugs": STORAGE_PATH / "drugs",
     }
     for name, path in dirs.items():
         if path.exists():
@@ -489,6 +490,21 @@ def _retrieve_context(query: str) -> list:
             "snippet": chunk["snippet"],
             "text": chunk["snippet"],
         })
+    # Medical questions are a top use case — add at most one drug-label hit so
+    # the AI can cite dosage/warnings from the offline FDA data.
+    drug_hits = _query_drug_index(query, mode="drug", limit=1) or []
+    for d in drug_hits[:1]:
+        name = d.get("brand_name") or d.get("generic_name") or "drug"
+        detail = _drug_by_id(d["id"]) or {}
+        excerpt = " ".join(str(detail.get(f, "")) for f in
+                           ("purpose", "indications", "dosage", "warnings"))[:1200]
+        if excerpt.strip():
+            articles.append({
+                "title": f"Drug label: {name}",
+                "url": f"/drugs/{d['id']}",
+                "snippet": excerpt[:300],
+                "text": excerpt,
+            })
     return articles
 
 
@@ -633,6 +649,64 @@ def _run_doc_query(fts: str, limit: int):
     finally:
         conn.close()
     return rows
+
+
+# ── Offline drug reference ────────────────────────────────────────────────────
+# Built offline by scripts/build_drug_index.py from openFDA labels. The server
+# only reads it; every query follows the _query_doc_index contract (None if
+# absent, [] on bad input, never raises).
+DRUG_INDEX_DB = STORAGE_PATH / ".drug_index.db"
+_DRUG_COLUMNS = ("id", "brand_name", "generic_name", "active_ingredient",
+                 "purpose", "indications", "warnings", "dosage",
+                 "contraindications", "interactions", "otc_or_rx",
+                 "effective_time")
+
+
+def _drug_connect():
+    conn = sqlite3.connect(str(DRUG_INDEX_DB), timeout=30)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _query_drug_index(query: str, mode: str = "drug", limit: int = 30):
+    """Search the drug index. mode='drug' searches names/ingredients,
+    mode='symptom' searches purpose/indications. Returns a list of summary
+    dicts, None if the index is absent, [] on empty/invalid queries."""
+    if not DRUG_INDEX_DB.exists():
+        return None
+    fts = _fts_sanitize(query)
+    if not fts:
+        return []
+    table = "drug_uses" if mode == "symptom" else "drug_names"
+    conn = _drug_connect()
+    try:
+        rows = conn.execute(
+            f"SELECT d.id, d.brand_name, d.generic_name, d.purpose, d.otc_or_rx "
+            f"FROM {table} t JOIN drugs d ON d.id = t.rowid "
+            f"WHERE {table} MATCH ? LIMIT ?", (fts, limit),
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc):
+            return None
+        logging.debug("drug index query failed: %s", exc)
+        return []
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
+
+
+def _drug_by_id(drug_id: int):
+    """Full label record for one drug id, or None."""
+    if not DRUG_INDEX_DB.exists():
+        return None
+    conn = _drug_connect()
+    try:
+        row = conn.execute("SELECT * FROM drugs WHERE id = ?", (drug_id,)).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        conn.close()
+    return dict(row) if row else None
 
 
 def _rebuild_search_index() -> int:
@@ -907,6 +981,91 @@ def apps_page():
             })
     have_any = any(groups.values())
     return render_template("apps.html", groups=groups, have_any=have_any)
+
+
+# ── Offline drug reference ────────────────────────────────────────────────────
+def _drug_disclaimer_ok() -> bool:
+    return bool(session.get("drug_disclaimer"))
+
+
+@app.route("/drugs/disclaimer", methods=["POST"])
+def drugs_accept_disclaimer():
+    """Record acceptance of the not-medical-advice notice in the session, so it
+    also gates the API and works inside the iOS captive mini-browser."""
+    session["drug_disclaimer"] = True
+    dest = request.form.get("next", "/drugs")
+    if not dest.startswith("/") or dest.startswith("//"):
+        dest = "/drugs"
+    return redirect(dest)
+
+
+@app.route("/drugs")
+def drugs_page():
+    """Search the offline drug reference by drug name or by symptom."""
+    if not _drug_disclaimer_ok():
+        return render_template("drug_disclaimer.html", next="/drugs")
+    query = request.args.get("q", "").strip()[:100]
+    mode = "symptom" if request.args.get("mode") == "symptom" else "drug"
+    results = _query_drug_index(query, mode=mode) if query else []
+    return render_template(
+        "drugs.html", query=query, mode=mode, results=results,
+        index_missing=(results is None),
+        results_list=(results or []),
+    )
+
+
+@app.route("/drugs/<int:drug_id>")
+def drug_detail(drug_id):
+    if not _drug_disclaimer_ok():
+        return render_template("drug_disclaimer.html", next=f"/drugs/{drug_id}")
+    drug = _drug_by_id(drug_id)
+    if drug is None:
+        return render_template("error.html", code=404, message="Drug not found"), 404
+    return render_template("drug_detail.html", drug=drug)
+
+
+@app.route("/api/drugs/interactions")
+def api_drug_interactions():
+    """Honest label-text interaction check: search drug A's interaction/warning
+    text for drug B's name and vice versa. This is a TEXT MATCH against FDA
+    labels, NOT a clinical interaction database — the UI says so plainly."""
+    if not _drug_disclaimer_ok():
+        return jsonify({"error": "Accept the disclaimer first"}), 403
+    try:
+        a_id = int(request.args.get("a", ""))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Missing drug id 'a'"}), 400
+    b_name = request.args.get("b", "").strip()[:100]
+    if not b_name:
+        return jsonify({"error": "Missing drug name 'b'"}), 400
+    drug_a = _drug_by_id(a_id)
+    if drug_a is None:
+        return jsonify({"error": "Drug not found"}), 404
+
+    b_lower = b_name.lower()
+    haystack = " ".join(str(drug_a.get(f, "")) for f in
+                        ("interactions", "warnings", "contraindications")).lower()
+    a_mentions_b = b_lower in haystack
+    # And the reverse: does any label for drug B mention drug A's generic?
+    b_mentions_a = False
+    a_generic = (drug_a.get("generic_name") or "").lower()
+    if a_generic:
+        b_hits = _query_drug_index(b_name, mode="drug", limit=5) or []
+        for hit in b_hits:
+            rec = _drug_by_id(hit["id"])
+            if rec and a_generic in " ".join(
+                    str(rec.get(f, "")) for f in
+                    ("interactions", "warnings", "contraindications")).lower():
+                b_mentions_a = True
+                break
+    return jsonify({
+        "a": {"id": a_id, "name": drug_a.get("brand_name") or drug_a.get("generic_name")},
+        "b": b_name,
+        "a_label_mentions_b": a_mentions_b,
+        "b_label_mentions_a": b_mentions_a,
+        "note": "Label-text match only — not a clinical interaction checker. "
+                "Consult a pharmacist or doctor.",
+    })
 
 
 @app.route("/search")
