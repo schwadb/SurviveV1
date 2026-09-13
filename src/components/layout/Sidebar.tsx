@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Satellite, Plane, Ship, Camera, Radio, Search, Settings, Database,
   Shield, Menu, X, Eye, Phone, MapPin, User, AlertTriangle, ChevronRight,
-  Zap, Star, Mail, Sun, Moon, Anchor, Bot, FileSearch, Network, Lock, Radar,
+  Zap, Star, Mail, Sun, Moon, Anchor, Bot, FileSearch, Network, Lock, Radar, Compass,
 } from 'lucide-react';
 import { useTheme } from '../../hooks/useLocalStorage';
 
@@ -10,6 +10,7 @@ const navGroups = [
   {
     title: 'TRACKING',
     items: [
+      { id: 'command', label: 'Command Center', icon: Compass, color: 'text-indigo-400' },
       { id: 'satellites', label: 'Satellites', icon: Satellite, color: 'text-indigo-400' },
       { id: 'aircraft', label: 'Aircraft', icon: Plane, color: 'text-blue-400' },
       { id: 'ships', label: 'Ships', icon: Ship, color: 'text-cyan-400' },

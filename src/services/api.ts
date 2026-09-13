@@ -286,7 +286,6 @@ export const geocodeAddress = async (address: string) => {
     withRetry(async () => {
       const resp = await axios.get('https://nominatim.openstreetmap.org/search', {
         params: { q: address, format: 'json', limit: 5, addressdetails: 1 },
-        headers: { 'User-Agent': 'WatcherV1-OSINT/1.0' },
         timeout: 10000,
       });
       return resp.data;
@@ -299,7 +298,6 @@ export const reverseGeocode = async (lat: number, lng: number) => {
     withRetry(async () => {
       const resp = await axios.get('https://nominatim.openstreetmap.org/reverse', {
         params: { lat, lon: lng, format: 'json', addressdetails: 1 },
-        headers: { 'User-Agent': 'WatcherV1-OSINT/1.0' },
         timeout: 10000,
       });
       return resp.data;
@@ -332,7 +330,7 @@ export const checkEmailBreach = async (email: string, apiKey: string): Promise<u
       const resp = await axios.get(
         `https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(email)}?truncateResponse=false`,
         {
-          headers: { 'hibp-api-key': apiKey, 'User-Agent': 'WatcherV1-OSINT/1.0' },
+          headers: { 'hibp-api-key': apiKey },
           timeout: 10000,
         }
       );

@@ -37,6 +37,9 @@ interface MapViewProps {
   geofences?: Geofence[];
   drawing?: boolean;
   onGeofenceDraw?: (ring: [number, number][]) => void;
+  // Programmatic camera control (tours / voice / share-links)
+  flyTo?: { lat: number; lng: number; zoom?: number; nonce: number } | null;
+  onCameraChange?: (c: { lat: number; lng: number; zoom: number }) => void;
 }
 
 const MapView: React.FC<MapViewProps> = ({
@@ -64,6 +67,8 @@ const MapView: React.FC<MapViewProps> = ({
   geofences = [],
   drawing = false,
   onGeofenceDraw,
+  flyTo = null,
+  onCameraChange,
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<import('leaflet').Map | null>(null);
@@ -76,6 +81,8 @@ const MapView: React.FC<MapViewProps> = ({
   const geoOverlayRef = useRef<import('leaflet').Layer[]>([]);
   const onGeofenceDrawRef = useRef(onGeofenceDraw);
   onGeofenceDrawRef.current = onGeofenceDraw;
+  const onCameraChangeRef = useRef(onCameraChange);
+  onCameraChangeRef.current = onCameraChange;
 
   // Initialize map once
   useEffect(() => {
@@ -117,6 +124,12 @@ const MapView: React.FC<MapViewProps> = ({
           onMapClick(e.latlng.lat, e.latlng.lng);
         });
       }
+
+      // Report camera changes (for tour recording + share-links + HUD)
+      map.on('moveend', () => {
+        const c = map.getCenter();
+        onCameraChangeRef.current?.({ lat: c.lat, lng: c.lng, zoom: map.getZoom() });
+      });
     });
 
     return () => {
@@ -506,6 +519,13 @@ const MapView: React.FC<MapViewProps> = ({
     });
     return () => cleanup();
   }, [drawing]);
+
+  // ── Programmatic camera fly-to (nonce-triggered so repeat coords re-fire) ────
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map || !flyTo) return;
+    map.flyTo([flyTo.lat, flyTo.lng], flyTo.zoom ?? map.getZoom(), { duration: 2 });
+  }, [flyTo?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div
