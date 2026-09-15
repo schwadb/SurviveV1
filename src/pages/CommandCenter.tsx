@@ -6,8 +6,9 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { MapFilter } from '../types';
-import { mockSatellites, mockAircraft, mockShips, mockCameras, mockFlockCameras } from '../data/mockData';
+import { mockCameras, mockFlockCameras } from '../data/mockData';
 import MapView, { type GeoJsonLayerSpec } from '../components/common/MapView';
+import { useLiveData } from '../hooks/useLiveData';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useKeyVault } from '../hooks/useKeyVault';
 import { geocodeAddress, perplexitySearch } from '../services/api';
@@ -56,6 +57,8 @@ const LAYER_KEYS: (keyof MapFilter)[] = ['satellites', 'aircraft', 'ships', 'cam
 const CommandCenter: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { getKey } = useKeyVault();
+  const { aircraft, satellites, ships, isLive } = useLiveData();
+  const anyLive = isLive.aircraft || isLive.satellites || isLive.ships;
 
   const [filter, setFilter] = useState<MapFilter>(ALL_ON);
   const [showQuakes, setShowQuakes] = useState(false);
@@ -105,13 +108,13 @@ const CommandCenter: React.FC = () => {
     const within = (lat: number, lng: number) => haversineKm(camera.lat, camera.lng, lat, lng) < 1500;
     const count = (arr: { lat: number; lng: number }[]) => arr.filter((x) => x.lat != null && within(x.lat, x.lng)).length;
     return {
-      aircraft: filter.aircraft ? count(mockAircraft) : 0,
-      ships: filter.ships ? count(mockShips) : 0,
+      aircraft: filter.aircraft ? count(aircraft) : 0,
+      ships: filter.ships ? count(ships) : 0,
       cameras: filter.cameras ? count(mockCameras) : 0,
       flock: filter.flockCameras ? count(mockFlockCameras) : 0,
-      satellites: filter.satellites ? mockSatellites.length : 0,
+      satellites: filter.satellites ? count(satellites) : 0,
     };
-  }, [camera, filter]);
+  }, [camera, filter, aircraft, ships, satellites]);
 
   useEffect(() => {
     const handle = setTimeout(async () => {
@@ -253,6 +256,21 @@ const CommandCenter: React.FC = () => {
               <button onClick={share} className="btn-secondary text-sm"><Share2 size={14} /> Share</button>
             </div>
 
+            {/* Live status */}
+            <div className="flex items-center gap-2 mb-2 text-xs">
+              {anyLive ? (
+                <span className="flex items-center gap-1.5 text-green-400">
+                  <span className="w-2 h-2 rounded-full bg-green-500 live-indicator" />
+                  Live: {[isLive.aircraft && 'aircraft', isLive.satellites && 'satellites', isLive.ships && 'ships'].filter(Boolean).join(' · ')}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-yellow-400">
+                  <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                  Sample data — enable live feeds in Settings
+                </span>
+              )}
+            </div>
+
             {/* Layer toggles */}
             <div className="flex flex-wrap gap-2 mb-3">
               {LAYER_KEYS.map((k) => (
@@ -268,9 +286,9 @@ const CommandCenter: React.FC = () => {
             </div>
 
             <MapView
-              satellites={filter.satellites ? mockSatellites : []}
-              aircraft={filter.aircraft ? mockAircraft : []}
-              ships={filter.ships ? mockShips : []}
+              satellites={filter.satellites ? satellites : []}
+              aircraft={filter.aircraft ? aircraft : []}
+              ships={filter.ships ? ships : []}
               cameras={filter.cameras ? mockCameras : []}
               flockCameras={filter.flockCameras ? mockFlockCameras : []}
               filter={filter}
