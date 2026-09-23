@@ -18,6 +18,7 @@ const EGRESS: { feature: string; host: string; sends: string; note?: string }[] 
   { feature: 'Phone lookup', host: 'apilayer.net', sends: 'Phone number + API key', note: 'key in URL' },
   { feature: 'AI research', host: 'api.perplexity.ai', sends: 'Your query + any tactical context' },
   { feature: 'Graph pivots · Live Recon', host: 'dns.google · internetdb.shodan.io · ipwho.is · archive.org · api.github.com', sends: 'The selector you pivot on' },
+  { feature: 'Command Center briefing', host: 'api.bigdatacloud.net · api.open-meteo.com', sends: 'The map view center (lat/lng)' },
   { feature: 'Pwned-password check', host: 'api.pwnedpasswords.com', sends: 'First 5 chars of SHA-1 only (k-anonymity)' },
   { feature: 'Map tiles', host: 'basemaps.cartocdn.com', sends: 'Tile coordinates (your view area)' },
 ];

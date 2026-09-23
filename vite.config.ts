@@ -2,6 +2,10 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// GitHub Pages serves a project site under /<repo>/, so the CI build sets
+// DEPLOY_TARGET=gh-pages to use that base. Local dev/build stay at root.
+const base = process.env.DEPLOY_TARGET === 'gh-pages' ? '/SurviveV1/' : '/'
+
 // Explicit egress allowlist — every host the app is allowed to reach. Injected
 // only into the production build so Vite's dev HMR (inline scripts/eval) is not
 // broken. script-src 'self' is the key XSS control; style needs 'unsafe-inline'
@@ -15,7 +19,8 @@ const CSP = [
     "https://api.perplexity.ai https://nominatim.openstreetmap.org https://apilayer.net " +
     "https://dns.google https://internetdb.shodan.io https://ipwho.is https://api.pwnedpasswords.com " +
     "https://archive.org https://web.archive.org https://api.github.com https://haveibeenpwned.com " +
-    "https://services.nvd.nist.gov https://earthquake.usgs.gov https://api.weather.gov https://gibs.earthdata.nasa.gov",
+    "https://services.nvd.nist.gov https://earthquake.usgs.gov https://api.weather.gov https://gibs.earthdata.nasa.gov " +
+    "https://api.bigdatacloud.net https://api.open-meteo.com https://gpsjam.org https://api.core.openaip.net",
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'none'",
@@ -33,6 +38,7 @@ function cspPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
+  base,
   plugins: [
     react(),
     cspPlugin(),
@@ -48,8 +54,8 @@ export default defineConfig({
         background_color: '#0a0e1a',
         display: 'standalone',
         orientation: 'any',
-        scope: '/',
-        start_url: '/',
+        scope: base,
+        start_url: base,
         icons: [
           {
             src: 'pwa-192x192.png',
