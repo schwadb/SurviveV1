@@ -198,7 +198,7 @@ class _TTLCache:
 
     def __init__(self, ttl: float) -> None:
         self._ttl = ttl
-        self._ts = 0.0
+        self._ts = float("-inf")
         self._data = None
         self._lock = threading.Lock()
 

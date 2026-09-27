@@ -147,7 +147,9 @@ bash scripts/status.sh
 
 ## AI Assistant
 
-With the Raspberry Pi AI Hat (Hailo-8L), you can run local LLMs to query your knowledge base:
+SurviveV1 runs a local LLM (via Ollama) to answer questions from your knowledge base, fully offline.
+
+> **Note:** the Hailo-8L AI Hat is a vision accelerator — it **cannot** run LLMs. AI chat inference runs on the Pi 5's CPU. Pick a model that fits your RAM: a 4 GB Pi handles up to ~3B parameters, an 8 GB Pi up to ~7B. (The Hailo-10H can run LLMs on its NPU via Hailo's own gen-ai packages — see `scripts/setup_hailo10.sh` — but Ollama itself stays CPU-only.)
 
 ```bash
 # Chat with local AI (searches your content)

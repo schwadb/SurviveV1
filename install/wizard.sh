@@ -240,7 +240,19 @@ choose_map_region() {
 # ── Screen: Grid-down hotspot (optional) ──────────────────────────────────────
 CHOSEN_HOTSPOT="n"
 CHOSEN_HOTSPOT_SSID="SurviveV1"
-CHOSEN_HOTSPOT_PASS="survive2026"
+
+# Random 12-char WPA password. Unambiguous alphabet (no 0/O, 1/l/I) so it is
+# easy to read off the screen and type on a phone. Reads a fixed-size chunk of
+# urandom (no SIGPIPE under pipefail) and retries in the unlikely case too few
+# bytes survive the filter.
+gen_hotspot_pass() {
+    local p=""
+    while (( ${#p} < 12 )); do
+        p+=$(head -c 64 /dev/urandom | tr -dc 'A-HJ-NP-Za-km-z2-9')
+    done
+    printf '%s' "${p:0:12}"
+}
+CHOSEN_HOTSPOT_PASS="$(gen_hotspot_pass)"
 
 choose_hotspot() {
     header "Grid-Down Wi-Fi Hotspot (optional)"
@@ -260,9 +272,9 @@ choose_hotspot() {
         read -r ssid
         CHOSEN_HOTSPOT_SSID="${ssid:-SurviveV1}"
         while true; do
-            ask "Hotspot password (8-63 chars) [survive2026]: "
+            ask "Hotspot password (8-63 chars) [Enter = random: ${CHOSEN_HOTSPOT_PASS}]: "
             read -r pass
-            pass="${pass:-survive2026}"
+            pass="${pass:-$CHOSEN_HOTSPOT_PASS}"
             if (( ${#pass} >= 8 && ${#pass} <= 63 )); then
                 CHOSEN_HOTSPOT_PASS="$pass"
                 break
@@ -583,6 +595,10 @@ show_success() {
     ok "Dashboard:    http://${CHOSEN_HOSTNAME}.local:8080"
     ok "By IP:        http://${ip}:8080"
     ok "AI Assistant: http://${CHOSEN_HOSTNAME}.local:8080/ai"
+    echo ""
+    ok "Hotspot Wi-Fi: ${CHOSEN_HOTSPOT_SSID}"
+    ok "Hotspot pass:  ${CHOSEN_HOTSPOT_PASS}"
+    echo -e "  ${DIM}Write this password down — it is also saved in ${REPO_DIR}/config/survive.conf${NC}"
     echo ""
     info "Next steps:"
     echo ""

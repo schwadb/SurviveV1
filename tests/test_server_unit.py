@@ -423,7 +423,7 @@ def test_update_start_403_when_no_admin_password(server):
         server.ADMIN_PASSWORD_FILE.unlink()
     except FileNotFoundError:
         pass
-    server._admin_hash_cache._ts = 0.0
+    server._admin_hash_cache._ts = float("-inf")
     c = server.app.test_client()
     resp = c.post("/api/update/start", json={})
     assert resp.status_code == 403
@@ -480,7 +480,7 @@ def test_service_restart_requires_admin(server):
         server.ADMIN_PASSWORD_FILE.unlink()
     except FileNotFoundError:
         pass
-    server._admin_hash_cache._ts = 0.0
+    server._admin_hash_cache._ts = float("-inf")
     c = server.app.test_client()
     resp = c.post("/api/service/kiwix/restart", json={})
     assert resp.status_code == 403

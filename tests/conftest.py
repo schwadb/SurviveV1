@@ -42,13 +42,13 @@ def admin_password(server):
     from werkzeug.security import generate_password_hash  # noqa: PLC0415
     pw = "test-admin-pw"
     server.ADMIN_PASSWORD_FILE.write_text(generate_password_hash(pw), encoding="utf-8")
-    server._admin_hash_cache._ts = 0.0  # bust the 5 s TTL cache
+    server._admin_hash_cache._ts = float("-inf")  # bust the 5 s TTL cache
     yield pw
     try:
         server.ADMIN_PASSWORD_FILE.unlink()
     except FileNotFoundError:
         pass
-    server._admin_hash_cache._ts = 0.0
+    server._admin_hash_cache._ts = float("-inf")
 
 
 @pytest.fixture(scope="session")

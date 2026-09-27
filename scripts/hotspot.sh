@@ -28,7 +28,16 @@ _ENV_SSID="${SURVIVE_HOTSPOT_SSID:-}"
 _ENV_PASS="${SURVIVE_HOTSPOT_PASS:-}"
 if [[ -f "$_CONF" ]]; then source "$_CONF"; fi
 SSID="${_ENV_SSID:-${SURVIVE_HOTSPOT_SSID:-SurviveV1}}"
-PASS="${_ENV_PASS:-${SURVIVE_HOTSPOT_PASS:-survive2026}}"
+PASS="${_ENV_PASS:-${SURVIVE_HOTSPOT_PASS:-}}"
+# No password configured (e.g. conf never written by the wizard): generate a
+# random 12-char one, same alphabet as install/wizard.sh, instead of shipping
+# a well-known default. It is printed in the "Hotspot ACTIVE" banner below.
+if [[ -z "$PASS" ]]; then
+    while (( ${#PASS} < 12 )); do
+        PASS+=$(head -c 64 /dev/urandom | tr -dc 'A-HJ-NP-Za-km-z2-9')
+    done
+    PASS="${PASS:0:12}"
+fi
 
 CON_NAME="survive-hotspot"
 ACTION="${1:-status}"

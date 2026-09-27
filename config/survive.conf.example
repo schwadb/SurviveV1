@@ -64,8 +64,10 @@ MAP_REGION="north-america"
 # ── Grid-down Wi-Fi hotspot ────────────────────────────────────────────────────
 # Used by scripts/hotspot.sh — the Pi broadcasts its own network so devices can
 # reach the knowledge base with no router. Password must be 8-63 characters.
+# The install wizard fills in a random password; if left empty, hotspot.sh
+# generates a random one each time it is enabled and prints it.
 SURVIVE_HOTSPOT_SSID="SurviveV1"
-SURVIVE_HOTSPOT_PASS="survive2026"
+SURVIVE_HOTSPOT_PASS=""
 
 # ── Skip AI Hat setup ──────────────────────────────────────────────────────────
 # Set to true if you don't have the Hailo AI Hat
