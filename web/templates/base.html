@@ -281,13 +281,16 @@
       <a href="/" class="{{ 'active' if request.endpoint == 'index' }}">Home</a>
       <a href="/files" class="{{ 'active' if request.endpoint == 'browse_files' }}">Browse</a>
       <a href="/ai" class="{{ 'active' if request.endpoint == 'ai_page' }}">AI Assistant</a>
+      <a href="/maps" class="{{ 'active' if request.endpoint == 'maps_page' }}">Maps</a>
+      <a href="/notes" class="{{ 'active' if request.endpoint in ('notes_page','note_view','note_new') }}">Notes</a>
+      <a href="/comms" class="{{ 'active' if request.endpoint and request.endpoint.startswith('comms') }}">Comms</a>
       <a href="/apps" class="{{ 'active' if request.endpoint == 'apps_page' }}">Apps</a>
       <a href="/drugs" class="{{ 'active' if request.endpoint in ('drugs_page','drug_detail') }}">Drugs</a>
+      <a href="/content" class="{{ 'active' if request.endpoint == 'content_page' }}">Library</a>
       <a href="/status" class="{{ 'active' if request.endpoint == 'status_page' }}">Status</a>
       <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KIWIX }}" target="_blank">Wikipedia</a>
       <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_KOLIBRI }}" target="_blank">Education</a>
       <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_JELLYFIN }}" target="_blank">Videos</a>
-      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_MAPS }}" target="_blank">Maps</a>
     </div>
     <form class="nav-search" action="/search" method="get">
       <input type="text" name="q" placeholder="Search knowledge base..."

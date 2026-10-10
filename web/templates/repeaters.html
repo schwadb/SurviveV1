@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Repeater Directory{% endblock %}
+
+{% block head %}
+<style>
+  .bar { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0; }
+  .bar input[type=search], .bar select { background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:9px 11px; font-size:13px; }
+  .bar input[type=search] { flex:1; min-width:200px; }
+  .rt { width:100%; border-collapse:collapse; font-size:13px; }
+  .rt th, .rt td { padding:7px 8px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+  .rt th { font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.4px; position:sticky; top:56px; background:var(--surface); }
+  .rt td.f { font-family:var(--mono); white-space:nowrap; color:var(--accent); }
+  .muted { font-size:12px; color:var(--text-dim); }
+  .files { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .files form { margin:0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">&#128250; Repeater Directory</div>
+  <div class="page-sub">Your imported repeater lists, searchable offline. Data courtesy of whoever exported it &mdash; usually you, from RepeaterBook or CHIRP.</div>
+
+  {% if message %}<div class="card" style="margin-top:12px;border-color:var(--accent2);"><span class="muted">{{ message }}</span></div>{% endif %}
+
+  <form class="bar" method="get" action="/comms/repeaters">
+    <input type="search" name="q" value="{{ query }}" placeholder="City, callsign, county, frequency&hellip;" autocomplete="off">
+    <select name="band">
+      <option value="">All bands</option>
+      {% for b in bands %}<option value="{{ b }}" {{ 'selected' if b == band }}>{{ b }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Search</button>
+  </form>
+
+  {% if rows %}
+  <div class="card" style="padding:0;overflow:auto;max-height:70vh;">
+    <table class="rt">
+      <thead><tr><th>Output</th><th>Input / offset</th><th>Tone</th><th>Call</th><th>Location</th><th>Mode</th><th>Notes</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="f">{{ r.frequency }}</td>
+          <td class="f">{{ r.duplex }}{{ r.offset }}</td>
+          <td>{{ r.tone }}</td>
+          <td>{{ r.name }}</td>
+          <td>{{ r.location }}{% if r.state %}, {{ r.state }}{% endif %}</td>
+          <td>{{ r.mode }}</td>
+          <td class="muted">{{ r.notes }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="muted" style="margin-top:6px;">{{ rows|length }} shown{% if total > rows|length %} of {{ total }} &mdash; narrow the search to see the rest{% endif %}.</div>
+  {% elif files %}
+  <div class="card"><span class="muted">No repeaters match. Try another spelling or clear the band filter.</span></div>
+  {% else %}
+  <div class="card">
+    <div class="card-title">No lists imported yet</div>
+    <p class="muted">
+      RepeaterBook's terms allow you to export data for your own use but forbid redistributing it, so SurviveV1 cannot ship a
+      directory. While online: log in to RepeaterBook, search your area, export as CSV (or export from CHIRP), then upload it
+      here or copy it into <code>comms/repeaters/</code> on the drive.
+    </p>
+  </div>
+  {% endif %}
+
+  <div class="card" style="margin-top:20px;">
+    <div class="card-title">Lists on this device</div>
+    <div class="files">
+      {% for f in files %}
+      <span class="badge badge-blue">{{ f }}</span>
+      {% if is_admin %}
+      <form method="post" action="/comms/repeaters/delete" onsubmit="return confirm('Remove {{ f }}?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="name" value="{{ f }}">
+        <button type="submit" class="btn btn-secondary btn-sm" style="color:var(--danger);">&times;</button>
+      </form>
+      {% endif %}
+      {% else %}<span class="muted">none</span>{% endfor %}
+    </div>
+    {% if is_admin %}
+    <form method="post" action="/comms/repeaters/upload" enctype="multipart/form-data" style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" name="file" accept=".csv,text/csv" required style="color:var(--text-dim);">
+      <button type="submit" class="btn btn-primary btn-sm">Upload CSV</button>
+    </form>
+    {% else %}
+    <div class="muted" style="margin-top:8px;">&#128273; <a href="/login?next=/comms/repeaters" style="color:var(--accent);">Log in as admin</a> to upload or remove lists.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

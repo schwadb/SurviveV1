@@ -28,12 +28,14 @@ from urllib.parse import quote
 from flask import (
     Flask, render_template, jsonify, request, session,
     send_from_directory, redirect, url_for, abort,
-    Response, stream_with_context
+    Response, stream_with_context, make_response
 )
+from flask.wrappers import Request
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import check_password_hash
+from werkzeug.utils import secure_filename
 
 from constants import (  # noqa: E402
     CATEGORIES,
@@ -46,7 +48,9 @@ from constants import (  # noqa: E402
     PORT_CALIBRE,
     PORT_JELLYFIN,
     PORT_MAPS,
+    PORT_MESHTASTIC,
 )
+import textutils  # noqa: E402  (pure helpers: markdown, pins, CSV)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,6 +65,32 @@ app.config.update(
     # would pin the Pi's memory before rate limiting or JSON parsing can reject them.
     MAX_CONTENT_LENGTH=64 * 1024,  # 64 KB
 )
+
+# A few routes legitimately take big bodies (file uploads, note text, pin
+# imports). Rather than lift the global 64 KB cap, the request class answers
+# a per-path limit; everything else keeps the tight default.
+_BODY_LIMITS = (
+    ("/shared/upload", 2 * 1024 ** 3),          # 2 GB — personal files
+    ("/comms/repeaters/upload", 20 * 1024 ** 2),  # 20 MB — CSV lists
+    ("/api/map/pins/import", 4 * 1024 ** 2),     # 4 MB — GPX/GeoJSON
+    ("/notes/save", 512 * 1024),                 # 512 KB — one note
+)
+
+
+class _SizedRequest(Request):
+    @property
+    def max_content_length(self):
+        for prefix, limit in _BODY_LIMITS:
+            if self.path.startswith(prefix):
+                return limit
+        return app.config["MAX_CONTENT_LENGTH"]
+
+    @max_content_length.setter
+    def max_content_length(self, _value):  # Werkzeug assigns this in __init__
+        pass
+
+
+app.request_class = _SizedRequest
 
 # Without this, send_from_directory serves .apk as octet-stream and some
 # Android browsers rename the download to .zip, which breaks installation.
@@ -95,6 +125,7 @@ def _inject_globals():
         "PORT_CALIBRE": PORT_CALIBRE,
         "PORT_JELLYFIN": PORT_JELLYFIN,
         "PORT_MAPS": PORT_MAPS,
+        "PORT_MESHTASTIC": PORT_MESHTASTIC,
         "PORT_OLLAMA": PORT_OLLAMA,
         "storage_mounted": STORAGE_MOUNTED,
         "now": datetime.now(),
@@ -148,7 +179,10 @@ def _configure_secret_key(flask_app) -> None:
 _configure_secret_key(app)
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-REPO_DIR = Path(__file__).parent.parent
+# The installed dashboard runs from a copy under /opt/survive, but the scripts
+# it launches (update, rescan, ZIM downloads) live in the git clone.
+# generate_services.sh exports SURVIVE_REPO_DIR; dev runs fall back to the tree.
+REPO_DIR = Path(os.environ.get("SURVIVE_REPO_DIR") or Path(__file__).parent.parent)
 DATA_DIR = Path(os.environ.get("SURVIVE_DATA_DIR", REPO_DIR / "data"))
 _configured_storage = Path(os.environ.get("SURVIVE_STORAGE_PATH", "/mnt/survive"))
 # Snapshot at startup — does not track live mount/unmount after the server starts.
@@ -339,6 +373,9 @@ def _compute_content_stats() -> dict:
         "maps": STORAGE_PATH / "maps",
         "apps": STORAGE_PATH / "apps",
         "drugs": STORAGE_PATH / "drugs",
+        "comms": STORAGE_PATH / "comms",
+        "notes": STORAGE_PATH / "notes",
+        "shared": STORAGE_PATH / "shared",
     }
     for name, path in dirs.items():
         if path.exists():
@@ -1075,6 +1112,7 @@ def search():
     results = []
     article_results = []
     doc_results = []
+    note_results = []
 
     if query and len(query) >= 2:
         indexed = _query_search_index(query)
@@ -1089,6 +1127,8 @@ def search():
         article_results = _kiwix_search(query, limit=5)
         # Third section: full-text hits inside local PDFs/EPUBs.
         doc_results = _query_doc_index(query) or []
+        # Fourth: the shared notebook.
+        note_results = _search_notes(query)
 
     meta = _index_meta()
     return render_template(
@@ -1097,6 +1137,7 @@ def search():
         results=results,
         article_results=article_results,
         doc_results=doc_results,
+        note_results=note_results,
         categories=CATEGORIES,
         index_count=meta["count"],
         index_built_at=meta["built_at"],
@@ -1239,6 +1280,915 @@ def ai_chat():
         mimetype="application/x-ndjson",
         headers={"X-Accel-Buffering": "no"},
     )
+
+
+# ── Shared helpers for the write features ─────────────────────────────────────
+def _require_json():
+    """Return an error response unless the request carries a JSON body.
+    Same CSRF defence as /api/ai/chat: browsers cannot send application/json
+    cross-origin without a CORS preflight."""
+    if (request.content_type or "").split(";")[0].strip() != "application/json":
+        return jsonify({"error": "Content-Type must be application/json"}), 415
+    return None
+
+
+def _free_bytes() -> int:
+    try:
+        return shutil.disk_usage(str(STORAGE_PATH)).free
+    except OSError:
+        return 0
+
+
+# Downloads and uploads must never fill the drive completely: Kiwix needs
+# scratch space and a full disk corrupts in-flight ZIMs.
+FREE_SPACE_MARGIN = 10 * 1024 ** 3
+
+
+def _launch_detached(script: Path, args: list, log_file: Path, pid_file: Path,
+                     marker: str) -> int:
+    """Run a repo script detached from gunicorn, appending its output and a
+    finish marker to log_file (state is reconstructed from disk because
+    workers share no memory). Returns the pid."""
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    log_file.write_text("")
+    cmd = ["bash", "-c",
+           'bash "$0" "${@:2}" >>"$1" 2>&1; echo "' + marker + '$?" >>"$1"',
+           str(script), str(log_file)] + [str(a) for a in args]
+    proc = subprocess.Popen(  # pylint: disable=consider-using-with
+        cmd, cwd=str(REPO_DIR),
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, start_new_session=True,
+    )
+    pid_file.write_text(str(proc.pid))
+    threading.Thread(target=proc.wait, daemon=True).start()
+    return proc.pid
+
+
+def _read_job_state(log_file: Path, pid_file: Path, marker: str, tail_lines: int = 20) -> dict:
+    """Generic running/exit_code/log_tail reconstruction from a job's log+pid."""
+    state = {"running": False, "exit_code": None, "log_tail": [], "started": None}
+    if not log_file.exists():
+        return state
+    pid = None
+    try:
+        pid = int(pid_file.read_text().strip())
+        state["started"] = datetime.fromtimestamp(pid_file.stat().st_mtime).isoformat()
+    except (OSError, ValueError):
+        pass
+    try:
+        size = log_file.stat().st_size
+        with open(log_file, "rb") as fh:
+            fh.seek(max(0, size - 8192))
+            tail = fh.read().decode("utf-8", errors="replace")
+        lines = [_ANSI_RE.sub("", ln).strip() for ln in tail.replace("\r", "\n").splitlines()
+                 if ln.strip()]
+    except OSError:
+        lines = []
+    for line in reversed(lines):
+        if line.startswith(marker):
+            try:
+                state["exit_code"] = int(line[len(marker):])
+            except ValueError:
+                state["exit_code"] = -1
+            break
+    if state["exit_code"] is None and pid and _pid_alive(pid):
+        state["running"] = True
+    state["log_tail"] = [ln for ln in lines[-tail_lines:] if not ln.startswith(marker)]
+    return state
+
+
+# ── Offline maps: viewer + saved pins ─────────────────────────────────────────
+MAPS_DIR = STORAGE_PATH / "maps"
+PINS_DB = STORAGE_PATH / ".map_pins.db"
+_pins_lock = threading.Lock()
+
+
+def _pins_connect():
+    conn = sqlite3.connect(str(PINS_DB), timeout=5)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS pins ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
+        "lat REAL NOT NULL, lon REAL NOT NULL, icon TEXT NOT NULL DEFAULT 'pin', "
+        "color TEXT NOT NULL DEFAULT '#3fb950', notes TEXT NOT NULL DEFAULT '', "
+        "hidden INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, updated TEXT NOT NULL)"
+    )
+    return conn
+
+
+def _pins_all() -> list:
+    try:
+        with _pins_connect() as conn:
+            rows = conn.execute("SELECT * FROM pins ORDER BY name COLLATE NOCASE").fetchall()
+        return [dict(r) for r in rows]
+    except sqlite3.Error as exc:
+        logging.warning("pins read failed: %s", exc)
+        return []
+
+
+def _pin_insert_many(pins: list) -> list:
+    """Insert cleaned pins; returns the stored rows."""
+    now = textutils.utc_now_iso()
+    stored = []
+    with _pins_lock, _pins_connect() as conn:
+        for pin in pins:
+            cur = conn.execute(
+                "INSERT INTO pins (name, lat, lon, icon, color, notes, hidden, created, updated)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                (pin["name"], pin["lat"], pin["lon"], pin["icon"], pin["color"],
+                 pin["notes"], pin["hidden"], now, now))
+            stored.append({**pin, "id": cur.lastrowid, "created": now, "updated": now})
+    return stored
+
+
+def _map_assets() -> dict:
+    """What the map page can draw: PMTiles basemaps/overlays under maps/pmtiles,
+    plus whether label fonts and POI sprites have been fetched."""
+    assets = {"basemaps": [], "overlays": [], "fonts_ok": False, "sprites_ok": False,
+              "park_maps": 0}
+    pm_dir = MAPS_DIR / "pmtiles"
+    if pm_dir.is_dir():
+        for f in sorted(pm_dir.glob("*.pmtiles"), key=lambda p: p.stat().st_size, reverse=True):
+            if f.name.endswith(".pmtiles.tmp"):
+                continue
+            entry = {"name": f.stem.replace("-", " ").replace("_", " "),
+                     "file": f.name, "url": f"/serve/maps/pmtiles/{quote(f.name)}",
+                     "size_mb": round(f.stat().st_size / 1024 ** 2, 1)}
+            if f.name.startswith("satellite"):
+                assets["overlays"].append(entry)
+            else:
+                assets["basemaps"].append(entry)
+    assets["fonts_ok"] = (MAPS_DIR / "fonts" / "Noto Sans Regular" / "0-255.pbf").exists()
+    assets["sprites_ok"] = (MAPS_DIR / "sprites" / "v4" / "light.json").exists()
+    parks = MAPS_DIR / "national_parks"
+    if parks.is_dir():
+        assets["park_maps"] = sum(1 for _ in _safe_walk(parks))
+    return assets
+
+
+def _relax_map_headers(resp):
+    """MapLibre runs its tile workers from blob: URLs and the page asks for the
+    phone's GPS, both of which the site-wide headers forbid. Set the relaxed
+    values here; _security_headers uses setdefault so these win."""
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self' 'unsafe-inline' blob:; "
+        "worker-src 'self' blob:; child-src blob:; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; connect-src 'self' blob:; font-src 'self'; "
+        "object-src 'none'; frame-ancestors 'none';")
+    resp.headers["Permissions-Policy"] = "geolocation=(self), microphone=(), camera=()"
+    return resp
+
+
+@app.route("/maps")
+def maps_page():
+    """Offline street map with saved pins (MapLibre + PMTiles, no tile server)."""
+    assets = _map_assets()
+    resp = make_response(render_template(
+        "maps.html", assets=assets, pins=_pins_all(),
+        icons=textutils.PIN_ICONS, colors=textutils.PIN_COLORS,
+        map_region=os.environ.get("MAP_REGION", ""),
+    ))
+    return _relax_map_headers(resp)
+
+
+@app.route("/api/map/assets")
+def api_map_assets():
+    return jsonify(_map_assets())
+
+
+@app.route("/api/map/pins", methods=["GET"])
+def api_pins_list():
+    return jsonify({"pins": _pins_all()})
+
+
+@app.route("/api/map/pins", methods=["POST"])
+@csrf.exempt
+@limiter.limit("60 per minute")
+def api_pins_create():
+    """Anyone on the LAN may save a pin — the map is a shared family tool."""
+    err = _require_json()
+    if err:
+        return err
+    try:
+        pin = textutils.clean_pin(request.get_json(silent=True) or {})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    try:
+        stored = _pin_insert_many([pin])[0]
+    except sqlite3.Error as exc:
+        return jsonify({"error": f"Could not save pin: {exc}"}), 500
+    return jsonify(stored), 201
+
+
+@app.route("/api/map/pins/<int:pin_id>", methods=["PUT", "DELETE"])
+@csrf.exempt
+@limiter.limit("60 per minute")
+def api_pin_modify(pin_id):
+    err = _require_json()
+    if err:
+        return err
+    try:
+        with _pins_lock, _pins_connect() as conn:
+            if request.method == "DELETE":
+                cur = conn.execute("DELETE FROM pins WHERE id = ?", (pin_id,))
+                if cur.rowcount == 0:
+                    return jsonify({"error": "No such pin"}), 404
+                return jsonify({"deleted": pin_id})
+            row = conn.execute("SELECT * FROM pins WHERE id = ?", (pin_id,)).fetchone()
+            if not row:
+                return jsonify({"error": "No such pin"}), 404
+            merged = {**dict(row), **(request.get_json(silent=True) or {})}
+            pin = textutils.clean_pin(merged)
+            now = textutils.utc_now_iso()
+            conn.execute(
+                "UPDATE pins SET name=?, lat=?, lon=?, icon=?, color=?, notes=?, hidden=?, "
+                "updated=? WHERE id=?",
+                (pin["name"], pin["lat"], pin["lon"], pin["icon"], pin["color"],
+                 pin["notes"], pin["hidden"], now, pin_id))
+            return jsonify({**pin, "id": pin_id, "created": row["created"], "updated": now})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except sqlite3.Error as exc:
+        return jsonify({"error": f"Could not update pin: {exc}"}), 500
+
+
+@app.route("/api/map/pins/export")
+def api_pins_export():
+    fmt = request.args.get("format", "geojson").lower()
+    pins = _pins_all()
+    stamp = datetime.now().strftime("%Y%m%d")
+    if fmt == "gpx":
+        body, mime, ext = textutils.pins_to_gpx(pins), "application/gpx+xml", "gpx"
+    else:
+        body, mime, ext = textutils.pins_to_geojson(pins), "application/geo+json", "geojson"
+    return Response(body, mimetype=mime, headers={
+        "Content-Disposition": f'attachment; filename="survive-pins-{stamp}.{ext}"'})
+
+
+@app.route("/api/map/pins/import", methods=["POST"])
+@csrf.exempt
+@limiter.limit("6 per minute")
+def api_pins_import():
+    """Merge pins from a GPX or GeoJSON document (text in the JSON body)."""
+    err = _require_json()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    try:
+        pins = textutils.parse_pins(str(data.get("text", "")))
+    except (ValueError, ET.ParseError) as exc:
+        return jsonify({"error": f"Could not read file: {exc}"}), 400
+    if not pins:
+        return jsonify({"error": "No waypoints found in that file"}), 400
+    try:
+        stored = _pin_insert_many(pins)
+    except sqlite3.Error as exc:
+        return jsonify({"error": f"Could not save pins: {exc}"}), 500
+    return jsonify({"imported": len(stored), "pins": stored}), 201
+
+
+
+# ── Library / content explorer: browse the Kiwix catalog, download, rescan ───
+KIWIX_CATALOG = "https://library.kiwix.org/catalog/v2"
+ZIM_DIR = STORAGE_PATH / "zim"
+KIWIX_LIBRARY_XML = STORAGE_PATH / ".kiwix_library.xml"
+DOWNLOAD_ZIM_SCRIPT = REPO_DIR / "scripts" / "download_zim.sh"
+RESCAN_SCRIPT = REPO_DIR / "scripts" / "rescan_library.sh"
+_ZIMDL_MARK = "ZIMDL_FINISHED exit="
+_RESCAN_MARK = "RESCAN_FINISHED exit="
+_ALLOWED_ZIM_HOSTS = ("download.kiwix.org", "lb.download.kiwix.org",
+                      "mirror.download.kiwix.org")
+_MAX_ZIM_JOBS = 2
+_catalog_cache: dict = {}
+_catalog_lock = threading.Lock()
+_CATALOG_TTL = 900.0  # the catalog changes daily at most; 15 min is plenty
+
+
+def _fetch_catalog(path: str) -> bytes:
+    """GET a catalog document; cached per path for _CATALOG_TTL seconds."""
+    now = time.monotonic()
+    with _catalog_lock:
+        hit = _catalog_cache.get(path)
+        if hit and now - hit[0] < _CATALOG_TTL:
+            return hit[1]
+    req = urllib.request.Request(KIWIX_CATALOG + path,
+                                 headers={"User-Agent": "SurviveV1 dashboard"})
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        data = resp.read()
+    with _catalog_lock:
+        if len(_catalog_cache) > 64:
+            _catalog_cache.clear()
+        _catalog_cache[path] = (now, data)
+    return data
+
+
+def _local_zims() -> list:
+    """ZIM files on the drive, with whether the Kiwix library knows them."""
+    registered = set()
+    try:
+        for book in ET.parse(str(KIWIX_LIBRARY_XML)).getroot().iter("book"):
+            path = book.get("path", "")
+            if path:
+                registered.add(Path(path).name)
+    except (OSError, ET.ParseError):
+        pass
+    items = []
+    if ZIM_DIR.is_dir():
+        for f in _safe_walk(ZIM_DIR):
+            if f.suffix.lower() != ".zim":
+                continue
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            partial = f.with_name(f.name + ".aria2").exists()
+            items.append({
+                "file": f.name,
+                "path": str(f.relative_to(STORAGE_PATH)),
+                "name": textutils.zim_name_prefix(f.name),
+                "size_gb": round(st.st_size / 1024 ** 3, 2),
+                "modified": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d"),
+                "registered": f.name in registered and not partial,
+                "partial": partial,
+            })
+    items.sort(key=lambda i: i["file"].lower())
+    return items
+
+
+def _zim_job_id(name: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]", "_", name)[:80] or "zim"
+
+
+def _zim_job_paths(job_id: str) -> tuple:
+    logs = STORAGE_PATH / ".logs"
+    return logs / f"zimdl_{job_id}.log", logs / f"zimdl_{job_id}.pid"
+
+
+def _content_jobs() -> dict:
+    """Every dashboard-started ZIM download plus the rescan job, from disk."""
+    jobs = []
+    logs = STORAGE_PATH / ".logs"
+    for log_file in sorted(logs.glob("zimdl_*.log")) if logs.is_dir() else []:
+        job_id = log_file.name[len("zimdl_"):-len(".log")]
+        state = _read_job_state(log_file, log_file.with_suffix(".pid"), _ZIMDL_MARK, 6)
+        progress = ""
+        for line in reversed(state["log_tail"]):
+            if "%" in line or "Downloading" in line:
+                progress = line[:160]
+                break
+        jobs.append({"id": job_id, "progress": progress, **state})
+    rescan = _read_job_state(logs / "rescan.log", logs / "rescan.pid", _RESCAN_MARK, 6)
+    running = sum(1 for j in jobs if j["running"])
+    return {"jobs": jobs, "rescan": rescan, "running": running}
+
+
+@app.route("/content")
+def content_page():
+    """Browse the Kiwix catalog, see what is on the drive, start downloads."""
+    return render_template(
+        "content.html", local=_local_zims(), jobs=_content_jobs(),
+        categories_list=textutils.KIWIX_CATEGORIES,
+        online=_compute_connectivity()["online"],
+    )
+
+
+@app.route("/api/content/catalog")
+@limiter.limit("30 per minute")
+def api_content_catalog():
+    lang = re.sub(r"[^a-z]", "", request.args.get("lang", "eng").lower())[:3]
+    query = request.args.get("q", "").strip()[:80]
+    cat_filter = request.args.get("category", "").strip()
+    try:
+        start = max(0, int(request.args.get("start", 0)))
+        count = min(100, max(1, int(request.args.get("count", 50))))
+    except ValueError:
+        start, count = 0, 50
+    params = {"start": start, "count": count}
+    if lang:
+        params["lang"] = lang
+    if query:
+        params["q"] = query
+    if cat_filter in textutils.KIWIX_CATEGORIES:
+        params["category"] = cat_filter
+    path = "/entries?" + "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
+    try:
+        data = textutils.parse_kiwix_catalog(_fetch_catalog(path))
+    except (OSError, ET.ParseError, ValueError) as exc:
+        logging.info("catalog fetch failed: %s", exc)
+        return jsonify({"error": "Could not reach library.kiwix.org — is the Pi online?"}), 503
+    installed = {z["name"]: z for z in _local_zims()}
+    jobs = {j["id"]: j for j in _content_jobs()["jobs"]}
+    for entry in data["entries"]:
+        local = installed.get(entry["name"])
+        job = jobs.get(_zim_job_id(entry["name"]))
+        if local and not local["partial"]:
+            entry["status"] = "installed"
+        elif job and job["running"]:
+            entry["status"] = "downloading"
+        elif local and local["partial"]:
+            entry["status"] = "partial"
+        else:
+            entry["status"] = "available"
+    data["start"] = start
+    data["count"] = count
+    return jsonify(data)
+
+
+@app.route("/api/content/languages")
+@limiter.limit("10 per minute")
+def api_content_languages():
+    try:
+        langs = textutils.parse_kiwix_languages(_fetch_catalog("/languages"))
+    except (OSError, ET.ParseError, ValueError):
+        return jsonify({"error": "Could not reach library.kiwix.org"}), 503
+    return jsonify({"languages": langs})
+
+
+@app.route("/api/content/local")
+def api_content_local():
+    return jsonify({"zims": _local_zims(), "free_gb": round(_free_bytes() / 1024 ** 3, 1)})
+
+
+@app.route("/api/content/jobs")
+def api_content_jobs():
+    return jsonify(_content_jobs())
+
+
+@app.route("/api/content/download", methods=["POST"])
+@csrf.exempt
+@limiter.limit("10 per minute")
+@_admin_required
+# Each early return is a distinct client-facing error contract.
+# pylint: disable=too-many-return-statements,too-many-branches
+def api_content_download():
+    """Start scripts/download_zim.sh for one catalog item. Admin-only."""
+    err = _require_json()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    url = str(data.get("url", "")).strip()
+    name = str(data.get("name", "")).strip()
+    zim_host = url.split("/")[2] if url.startswith("https://") and url.count("/") >= 3 else ""
+    if zim_host not in _ALLOWED_ZIM_HOSTS or not url.endswith(".zim") or ".." in url:
+        return jsonify({"error": "Only .zim downloads from download.kiwix.org are allowed"}), 400
+    if not name:
+        name = textutils.zim_name_prefix(url)
+    try:
+        size = int(data.get("size") or 0)
+    except (TypeError, ValueError):
+        size = 0
+    if size and _free_bytes() - size < FREE_SPACE_MARGIN:
+        need_gb = round((size + FREE_SPACE_MARGIN - _free_bytes()) / 1024 ** 3, 1)
+        return jsonify({"error": f"Not enough free space — {need_gb} GB short "
+                                 "(10 GB is always kept free)"}), 507
+    if not _compute_connectivity()["online"]:
+        return jsonify({"error": "No internet connection — connect the Pi first"}), 503
+    if not DOWNLOAD_ZIM_SCRIPT.exists():
+        return jsonify({"error": f"Script missing: {DOWNLOAD_ZIM_SCRIPT}"}), 500
+    jobs = _content_jobs()
+    if jobs["running"] >= _MAX_ZIM_JOBS:
+        return jsonify({"error": f"{_MAX_ZIM_JOBS} downloads already running — "
+                                 "wait for one to finish"}), 409
+    job_id = _zim_job_id(name)
+    log_file, pid_file = _zim_job_paths(job_id)
+    if _read_job_state(log_file, pid_file, _ZIMDL_MARK)["running"]:
+        return jsonify({"error": "That download is already running"}), 409
+    try:
+        pid = _launch_detached(DOWNLOAD_ZIM_SCRIPT, [url, "catalog"],
+                               log_file, pid_file, _ZIMDL_MARK)
+    except OSError as exc:
+        return jsonify({"error": f"Could not start download: {exc}"}), 500
+    return jsonify({"started": True, "job": job_id, "pid": pid}), 202
+
+
+@app.route("/api/content/rescan", methods=["POST"])
+@csrf.exempt
+@limiter.limit("3 per minute")
+@_admin_required
+def api_content_rescan():
+    """Rebuild the Kiwix library from the files on disk (sideloaded ZIMs)."""
+    err = _require_json()
+    if err:
+        return err
+    logs = STORAGE_PATH / ".logs"
+    log_file, pid_file = logs / "rescan.log", logs / "rescan.pid"
+    if _read_job_state(log_file, pid_file, _RESCAN_MARK)["running"]:
+        return jsonify({"error": "A rescan is already running"}), 409
+    if not RESCAN_SCRIPT.exists():
+        return jsonify({"error": f"Script missing: {RESCAN_SCRIPT}"}), 500
+    try:
+        pid = _launch_detached(RESCAN_SCRIPT, ["--storage", str(STORAGE_PATH)],
+                               log_file, pid_file, _RESCAN_MARK)
+    except OSError as exc:
+        return jsonify({"error": f"Could not start rescan: {exc}"}), 500
+    return jsonify({"started": True, "pid": pid}), 202
+
+
+
+# ── Notes: shared markdown notebook on the drive ─────────────────────────────
+NOTES_DIR = STORAGE_PATH / "notes"
+_NOTE_MAX_BYTES = 512 * 1024
+_NOTES_MAX = 5000
+
+
+def _note_path(slug: str):
+    """Path for a slug, or None if the slug is not well-formed."""
+    if not textutils.SLUG_PATTERN.match(slug or ""):
+        return None
+    return NOTES_DIR / f"{slug}.md"
+
+
+def _note_read(slug: str):
+    path = _note_path(slug)
+    if not path or not path.is_file():
+        return None
+    try:
+        body = path.read_text(encoding="utf-8", errors="replace")
+        st = path.stat()
+    except OSError:
+        return None
+    return {"slug": slug, "body": body, "title": textutils.first_heading(body) or slug,
+            "modified": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+            "size": st.st_size}
+
+
+def _list_notes(query: str = "") -> list:
+    """All notes, newest first; `query` filters on title/body (case-insensitive)."""
+    notes = []
+    if not NOTES_DIR.is_dir():
+        return notes
+    needle = query.strip().lower()
+    for path in NOTES_DIR.glob("*.md"):
+        slug = path.stem
+        if not textutils.SLUG_PATTERN.match(slug):
+            continue
+        try:
+            body = path.read_text(encoding="utf-8", errors="replace")
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if needle and needle not in body.lower() and needle not in slug:
+            continue
+        lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+        snippet = ""
+        if needle:
+            for ln in lines:
+                if needle in ln.lower():
+                    snippet = ln[:160]
+                    break
+        if not snippet:
+            snippet = " ".join(lines[1:3])[:160] if len(lines) > 1 else ""
+        notes.append({"slug": slug, "title": textutils.first_heading(body) or slug,
+                      "snippet": snippet, "mtime": mtime,
+                      "modified": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")})
+    notes.sort(key=lambda n: n["mtime"], reverse=True)
+    return notes
+
+
+def _unique_slug(base: str) -> str:
+    slug = base
+    n = 2
+    while (NOTES_DIR / f"{slug}.md").exists():
+        slug = f"{base[:74]}-{n}"
+        n += 1
+    return slug
+
+
+@app.route("/notes")
+def notes_page():
+    query = request.args.get("q", "").strip()[:100]
+    return render_template("notes.html", notes=_list_notes(query), query=query)
+
+
+@app.route("/notes/new")
+def note_new():
+    return render_template("note_edit.html", note=None, body="")
+
+
+@app.route("/notes/<slug>")
+def note_view(slug):
+    note = _note_read(slug)
+    if not note:
+        abort(404)
+    if request.args.get("edit"):
+        return render_template("note_edit.html", note=note, body=note["body"])
+    return render_template("note_view.html", note=note,
+                           rendered=textutils.render_markdown(note["body"]))
+
+
+@app.route("/notes/save", methods=["POST"])
+@limiter.limit("30 per minute")
+def note_save():
+    """Create or update a note. CSRF-protected HTML form; open to the LAN —
+    the notebook is a shared pad for whoever is on the hotspot."""
+    body = request.form.get("body", "").replace("\r\n", "\n")
+    if len(body.encode("utf-8")) > _NOTE_MAX_BYTES:
+        return render_template("error.html", code=413, message="Note too long (512 KB max)"), 413
+    if not body.strip():
+        return redirect(url_for("notes_page"))
+    slug = request.form.get("slug", "").strip()
+    try:
+        NOTES_DIR.mkdir(parents=True, exist_ok=True)
+        if slug:
+            path = _note_path(slug)
+            if not path:
+                abort(400)
+        else:
+            if sum(1 for _ in NOTES_DIR.glob("*.md")) >= _NOTES_MAX:
+                return render_template("error.html", code=507, message="Too many notes"), 507
+            slug = _unique_slug(textutils.slugify(textutils.first_heading(body)))
+            path = NOTES_DIR / f"{slug}.md"
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(body, encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:
+        logging.warning("note save failed: %s", exc)
+        return render_template("error.html", code=500, message="Could not save the note"), 500
+    return redirect(url_for("note_view", slug=slug))
+
+
+@app.route("/notes/<slug>/delete", methods=["POST"])
+@_admin_required
+def note_delete(slug):
+    path = _note_path(slug)
+    if not path or not path.is_file():
+        abort(404)
+    try:
+        path.unlink()
+    except OSError:
+        abort(500)
+    return redirect(url_for("notes_page"))
+
+
+def _search_notes(query: str, limit: int = 10) -> list:
+    return _list_notes(query)[:limit]
+
+
+# ── Shared files: drop zone for personal documents ───────────────────────────
+SHARED_DIR = STORAGE_PATH / "shared"
+_SHARED_MAX_FILES = 20000
+
+
+def _shared_listing() -> list:
+    items = []
+    if not SHARED_DIR.is_dir():
+        return items
+    for entry in SHARED_DIR.iterdir():
+        if entry.name.startswith("."):
+            continue
+        try:
+            st = entry.stat()
+        except OSError:
+            continue
+        items.append({
+            "name": entry.name, "is_dir": entry.is_dir(),
+            "size_mb": round(st.st_size / 1024 ** 2, 2) if entry.is_file() else None,
+            "modified": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+            "ext": entry.suffix.lower().lstrip(".") if entry.is_file() else "",
+        })
+    items.sort(key=lambda i: (not i["is_dir"], i["name"].lower()))
+    return items
+
+
+@app.route("/shared")
+def shared_page():
+    return render_template("shared.html", items=_shared_listing(),
+                           free_gb=round(_free_bytes() / 1024 ** 3, 1),
+                           message=request.args.get("m", "")[:200])
+
+
+@app.route("/shared/upload", methods=["POST"])
+@limiter.limit("20 per minute")
+def shared_upload():
+    """Multipart upload into $STORAGE/shared. Open to the LAN (CSRF form);
+    deletion is admin-only. Streams to disk, keeps the free-space margin."""
+    files = [f for f in request.files.getlist("files") if f and f.filename]
+    if not files:
+        return redirect(url_for("shared_page", m="Pick at least one file."))
+    declared = request.content_length or 0
+    if _free_bytes() - declared < FREE_SPACE_MARGIN:
+        return redirect(url_for("shared_page",
+                                m="Not enough free space (10 GB is always kept free)."))
+    try:
+        SHARED_DIR.mkdir(parents=True, exist_ok=True)
+        if sum(1 for _ in SHARED_DIR.iterdir()) + len(files) > _SHARED_MAX_FILES:
+            return redirect(url_for("shared_page", m="The shared folder is full."))
+        saved = []
+        for upload in files:
+            name = secure_filename(upload.filename)[:150]
+            if not name:
+                continue
+            dest = SHARED_DIR / name
+            stem, suffix = dest.stem, dest.suffix
+            n = 2
+            while dest.exists():
+                dest = SHARED_DIR / f"{stem}-{n}{suffix}"
+                n += 1
+            upload.save(str(dest))
+            saved.append(dest.name)
+    except OSError as exc:
+        logging.warning("upload failed: %s", exc)
+        return redirect(url_for("shared_page", m="Upload failed — is the drive full?"))
+    note = f"Saved {len(saved)} file(s)." if saved else "Nothing saved — bad filename?"
+    return redirect(url_for("shared_page", m=note))
+
+
+@app.route("/shared/delete", methods=["POST"])
+@_admin_required
+def shared_delete():
+    name = secure_filename(request.form.get("name", ""))
+    target = SHARED_DIR / name
+    if not name or not target.is_file():
+        abort(404)
+    try:
+        target.unlink()
+    except OSError:
+        abort(500)
+    return redirect(url_for("shared_page", m=f"Deleted {name}."))
+
+
+
+# ── Comms: Morse tool, Meshtastic web client, user-imported repeater lists ───
+COMMS_DIR = STORAGE_PATH / "comms"
+REPEATERS_DIR = COMMS_DIR / "repeaters"
+_repeaters_cache = _TTLCache(60.0)
+_BANDS = {
+    "6m": (50.0, 54.0), "2m": (144.0, 148.0), "1.25m": (222.0, 225.0),
+    "70cm": (420.0, 450.0), "gmrs": (462.0, 467.9), "other": None,
+}
+
+
+def _repeater_files() -> list:
+    if not REPEATERS_DIR.is_dir():
+        return []
+    return sorted(p for p in REPEATERS_DIR.glob("*.csv") if p.is_file())
+
+
+def _compute_repeaters() -> list:
+    rows = []
+    for path in _repeater_files():
+        try:
+            text = path.read_text(encoding="utf-8-sig", errors="replace")
+        except OSError:
+            continue
+        rows.extend(textutils.parse_repeater_csv(text, source=path.name))
+    return rows
+
+
+def _band_of(freq_text: str) -> str:
+    try:
+        freq = float(str(freq_text).split()[0])
+    except (ValueError, IndexError):
+        return "other"
+    for band, span in _BANDS.items():
+        if span and span[0] <= freq <= span[1]:
+            return band
+    return "other"
+
+
+@app.route("/comms")
+def comms_page():
+    mesh_installed = (COMMS_DIR / "meshtastic-web" / "index.html").exists()
+    return render_template(
+        "comms.html",
+        mesh_installed=mesh_installed,
+        mesh_running=check_service(PORT_MESHTASTIC) if mesh_installed else False,
+        repeater_count=len(_repeaters_cache.get(_compute_repeaters)),
+        repeater_files=[p.name for p in _repeater_files()],
+    )
+
+
+@app.route("/comms/morse")
+def comms_morse():
+    return render_template("morse.html")
+
+
+@app.route("/comms/repeaters")
+def comms_repeaters():
+    query = request.args.get("q", "").strip().lower()[:80]
+    band = request.args.get("band", "").strip().lower()
+    rows = _repeaters_cache.get(_compute_repeaters)
+    if query:
+        rows = [r for r in rows if query in " ".join(str(v) for v in r.values()).lower()]
+    if band in _BANDS:
+        rows = [r for r in rows if _band_of(r.get("frequency", "")) == band]
+    return render_template(
+        "repeaters.html", rows=rows[:500], total=len(rows), query=query, band=band,
+        bands=list(_BANDS), files=[p.name for p in _repeater_files()],
+        message=request.args.get("m", "")[:200],
+    )
+
+
+@app.route("/comms/repeaters/upload", methods=["POST"])
+@_admin_required
+def comms_repeaters_upload():
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return redirect(url_for("comms_repeaters", m="Pick a CSV file first."))
+    name = secure_filename(upload.filename)[:120]
+    if not name.lower().endswith(".csv"):
+        return redirect(url_for("comms_repeaters", m="Only .csv files are accepted."))
+    try:
+        REPEATERS_DIR.mkdir(parents=True, exist_ok=True)
+        upload.save(str(REPEATERS_DIR / name))
+    except OSError:
+        return redirect(url_for("comms_repeaters", m="Could not save the file."))
+    _repeaters_cache._ts = 0.0  # pylint: disable=protected-access
+    rows = textutils.parse_repeater_csv(
+        (REPEATERS_DIR / name).read_text(encoding="utf-8-sig", errors="replace"), source=name)
+    return redirect(url_for("comms_repeaters", m=f"Imported {name}: {len(rows)} repeaters."))
+
+
+@app.route("/comms/repeaters/delete", methods=["POST"])
+@_admin_required
+def comms_repeaters_delete():
+    name = secure_filename(request.form.get("name", ""))
+    target = REPEATERS_DIR / name
+    if not name or not target.is_file() or target.suffix.lower() != ".csv":
+        abort(404)
+    try:
+        target.unlink()
+    except OSError:
+        abort(500)
+    _repeaters_cache._ts = 0.0  # pylint: disable=protected-access
+    return redirect(url_for("comms_repeaters", m=f"Removed {name}."))
+
+
+
+# ── Nightly auto-update schedule (systemd timer) ─────────────────────────────
+UPDATE_TIMER = "survive-content-update.timer"
+
+
+def _timer_state() -> dict:
+    """Ask systemd about the nightly timer. No sudo needed to read."""
+    state = {"available": False, "enabled": False, "active": False,
+             "next_run": None, "last_run": None}
+    systemctl = shutil.which("systemctl")
+    if not systemctl:
+        return state
+    try:
+        out = subprocess.run(
+            [systemctl, "show", UPDATE_TIMER, "--no-pager",
+             "-p", "UnitFileState", "-p", "ActiveState",
+             "-p", "NextElapseUSecRealtime", "-p", "LastTriggerUSec"],
+            capture_output=True, text=True, timeout=4, check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return state
+    props = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    if not props or props.get("UnitFileState", "") in ("", "not-found"):
+        return state
+    state["available"] = True
+    state["enabled"] = props.get("UnitFileState") == "enabled"
+    state["active"] = props.get("ActiveState") == "active"
+    state["next_run"] = props.get("NextElapseUSecRealtime") or None
+    state["last_run"] = props.get("LastTriggerUSec") or None
+    if state["next_run"] in ("n/a", "0"):
+        state["next_run"] = None
+    if state["last_run"] in ("n/a", "0"):
+        state["last_run"] = None
+    return state
+
+
+def _schedule_info() -> dict:
+    info = _timer_state()
+    info["time"] = os.environ.get("SURVIVE_AUTO_UPDATE_TIME", "02:30")
+    try:
+        cap = int(os.environ.get("SURVIVE_AUTO_UPDATE_RATE_LIMIT", "2097152") or 0)
+    except ValueError:
+        cap = 0
+    info["rate_limit_kbps"] = cap // 1024 if cap else 0
+    return info
+
+
+@app.route("/api/update/schedule")
+def api_update_schedule():
+    return jsonify(_schedule_info())
+
+
+@app.route("/api/update/schedule", methods=["POST"])
+@csrf.exempt
+@limiter.limit("6 per minute")
+@_admin_required
+def api_update_schedule_set():
+    """Turn the nightly timer on or off via the sudoers-allowlisted commands."""
+    err = _require_json()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    enable = bool(data.get("enabled"))
+    verb = "enable" if enable else "disable"
+    cmd = ["sudo", "-n", "/usr/bin/systemctl", verb, "--now", UPDATE_TIMER]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return jsonify({"error": f"Could not run systemctl: {exc}"}), 500
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()[:200]
+        return jsonify({"error": "systemctl refused — run scripts/install_sudoers.sh on the Pi. "
+                                 + detail, "manual": " ".join(cmd[2:])}), 500
+    return jsonify(_schedule_info())
+
 
 
 @app.route("/health")

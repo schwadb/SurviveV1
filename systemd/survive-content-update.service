@@ -1,0 +1,22 @@
+[Unit]
+Description=SurviveV1 scheduled content update (started by the .timer)
+After=network-online.target local-fs.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/survive
+
+[Service]
+Type=oneshot
+User=pi
+EnvironmentFile=-/etc/default/survive
+WorkingDirectory=/home/pi/SurviveV1
+# Same log + finish marker the dashboard's Update button uses, so the Status
+# page shows the nightly run exactly like a manual one. --scheduled makes the
+# script exit quietly when offline, skip if a manual update is running, and
+# apply SURVIVE_AUTO_UPDATE_RATE_LIMIT.
+ExecStart=/bin/bash -c 'mkdir -p /mnt/survive/.logs; bash /home/pi/SurviveV1/scripts/update_content.sh --scheduled >>/mnt/survive/.logs/update_content.log 2>&1; echo "UPDATE_FINISHED exit=$?" >>/mnt/survive/.logs/update_content.log'
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=12h
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=survive-update

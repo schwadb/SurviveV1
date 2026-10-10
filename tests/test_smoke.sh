@@ -107,6 +107,15 @@ run_tests() {
     check_http "GET /category/medical"   "/category/medical"
     check_http "GET /category/maps"      "/category/maps"
     check_http "GET /category/bad-id redirects" "/category/nonexistent-category-xyz" "302"
+    check_http "GET /maps"        "/maps"
+    check_http "GET /content"     "/content"
+    check_http "GET /notes"       "/notes"
+    check_http "GET /notes/new"   "/notes/new"
+    check_http "GET /shared"      "/shared"
+    check_http "GET /comms"       "/comms"
+    check_http "GET /comms/morse" "/comms/morse"
+    check_http "GET /comms/repeaters" "/comms/repeaters"
+    check_http "GET /static/vendor/maplibre-gl.js" "/static/vendor/maplibre-gl.js"
 
     echo ""
     echo -e "${BLUE}── API tests ────────────────────────────────────────${NC}"
@@ -115,6 +124,11 @@ run_tests() {
     check_json "GET /api/connectivity" "/api/connectivity"
     check_json "GET /api/downloads" "/api/downloads"
     check_json "GET /api/system" "/api/system"
+    check_json "GET /api/map/pins" "/api/map/pins"
+    check_json "GET /api/map/assets" "/api/map/assets"
+    check_json "GET /api/content/jobs" "/api/content/jobs"
+    check_json "GET /api/content/local" "/api/content/local"
+    check_json "GET /api/update/schedule" "/api/update/schedule"
     if curl -sf "http://localhost:$PORT/api/system" | grep -q '"temperature_c"'; then
         pass "GET /api/system → contains temperature_c"
     else

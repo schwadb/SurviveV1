@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Library Manager{% endblock %}
+
+{% block head %}
+<style>
+  .cat-controls { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0; }
+  .cat-controls input, .cat-controls select {
+    background: var(--surface2); border:1px solid var(--border); color:var(--text);
+    border-radius: var(--radius); padding:9px 11px; font-size:13px;
+  }
+  .cat-controls input[type=search] { flex:1; min-width:200px; }
+  .cat-row { display:flex; gap:12px; align-items:flex-start; padding:10px 0; border-bottom:1px solid var(--border); }
+  .cat-row:last-child { border-bottom:none; }
+  .cat-main { flex:1; min-width:0; }
+  .cat-title { font-size:14px; font-weight:600; }
+  .cat-sum { font-size:12px; color:var(--text-dim); margin-top:2px; }
+  .cat-meta { font-size:11px; color:var(--text-dim); font-family:var(--mono); margin-top:4px; }
+  .cat-side { text-align:right; flex-shrink:0; min-width:110px; }
+  .cat-size { font-size:13px; font-weight:600; }
+  .zim-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .zim-table td, .zim-table th { padding:7px 6px; border-bottom:1px solid var(--border); text-align:left; }
+  .zim-table th { font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.4px; }
+  .zim-table td.num { text-align:right; font-family:var(--mono); white-space:nowrap; }
+  .job { padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .job:last-child { border-bottom:none; }
+  .job .prog { font-family:var(--mono); font-size:11px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .muted { font-size:12px; color:var(--text-dim); }
+  code.k { background:var(--surface2); padding:2px 6px; border-radius:4px; font-size:12px; }
+  @media (max-width: 760px) { .two-col { grid-template-columns: 1fr !important; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">&#128218; Library Manager</div>
+  <div class="page-sub">
+    Browse the Kiwix catalog in any language, download more offline content, and register
+    files copied onto the drive by hand.
+    {% if not is_admin %}&nbsp;&#128273; <a href="/login?next=/content" style="color:var(--accent);">Log in as admin</a> to start downloads.{% endif %}
+  </div>
+
+  {% if not online %}
+  <div class="card" style="margin-top:16px;border-color:var(--warning);">
+    <div class="card-title" style="color:var(--warning);">Offline</div>
+    <div class="muted">The catalog and downloads need internet. Everything already on the drive still works,
+      and the &ldquo;On this device&rdquo; list below is live.</div>
+  </div>
+  {% endif %}
+
+  <div class="card" style="margin-top:16px;">
+    <div class="card-title">Kiwix catalog</div>
+    <div class="cat-controls">
+      <input type="search" id="catQ" placeholder="Search titles (e.g. medicine, gardening, radio)&hellip;" autocomplete="off">
+      <select id="catLang" title="Content language"><option value="eng">English</option></select>
+      <select id="catCat" title="Category">
+        <option value="">All categories</option>
+        {% for c in categories_list %}<option value="{{ c }}">{{ c.replace('_',' ') }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-primary" id="catGo">Search</button>
+    </div>
+    <div class="muted" id="catMsg"></div>
+    <div id="catList"></div>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
+      <button class="btn btn-secondary btn-sm" id="catMore" style="display:none;">Load more</button>
+      <span class="muted" id="catCount"></span>
+    </div>
+  </div>
+
+  <div class="two-col" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:20px;">
+    <div class="card">
+      <div class="card-title">Downloads</div>
+      <div id="jobList"><div class="muted">No downloads started from this page yet.</div></div>
+      <div class="muted" style="margin-top:10px;">
+        Downloads keep going if you close this page. Free space:
+        <strong id="freeGb">&hellip;</strong> GB (10 GB always kept free).
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>On this device</span>
+        {% if is_admin %}
+        <button class="btn btn-secondary btn-sm" id="rescanBtn" title="Rebuild the Kiwix library from the files on disk">&#128260; Rescan library</button>
+        {% endif %}
+      </div>
+      <div class="muted" id="rescanMsg"></div>
+      <div style="max-height:420px;overflow:auto;">
+        <table class="zim-table" id="localTable">
+          <thead><tr><th>File</th><th class="num">Size</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for z in local %}
+            <tr>
+              <td style="word-break:break-all;">{{ z.file }}<div class="muted">{{ z.path.rsplit('/',1)[0] }} &middot; {{ z.modified }}</div></td>
+              <td class="num">{{ z.size_gb }} GB</td>
+              <td>{% if z.partial %}<span class="badge badge-yellow">PARTIAL</span>
+                  {% elif z.registered %}<span class="badge badge-green">LIVE</span>
+                  {% else %}<span class="badge badge-red">NOT REGISTERED</span>{% endif %}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="muted">No ZIM files on the drive yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="muted" style="margin-top:10px;">
+        <strong>Sideload:</strong> copy any <code class="k">.zim</code> file into
+        <code class="k">zim/sideload/</code> on the storage drive (USB stick, SSH, the Samba share),
+        then press Rescan. &ldquo;Not registered&rdquo; means Kiwix has not been told about it yet.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+  const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+  const ONLINE = {{ 'true' if online else 'false' }};
+  const q = document.getElementById('catQ'), lang = document.getElementById('catLang'),
+        cat = document.getElementById('catCat'), go = document.getElementById('catGo'),
+        list = document.getElementById('catList'), msg = document.getElementById('catMsg'),
+        more = document.getElementById('catMore'), count = document.getElementById('catCount');
+  let start = 0, total = 0, busy = false;
+  const fmtSize = b => b >= 1024 ** 3 ? (b / 1024 ** 3).toFixed(1) + ' GB' : b >= 1024 ** 2 ? Math.round(b / 1024 ** 2) + ' MB' : Math.round(b / 1024) + ' KB';
+  const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x !== undefined) e.textContent = x; return e; };
+
+  // Languages (cached server-side; fall back to English-only when offline).
+  fetch('/api/content/languages').then(r => r.json()).then(d => {
+    if (!d.languages) return;
+    lang.innerHTML = '';
+    d.languages.forEach(l => { const o = el('option', '', l.name + ' (' + l.count + ')'); o.value = l.code; if (l.code === 'eng') o.selected = true; lang.appendChild(o); });
+  }).catch(() => {});
+
+  function badge(status) {
+    const map = { installed: ['badge-green', 'ON DEVICE'], downloading: ['badge-yellow', 'DOWNLOADING'], partial: ['badge-yellow', 'PARTIAL'] };
+    if (!map[status]) return null;
+    const b = el('span', 'badge ' + map[status][0], map[status][1]); return b;
+  }
+
+  function row(e) {
+    const r = el('div', 'cat-row');
+    const main = el('div', 'cat-main');
+    main.appendChild(el('div', 'cat-title', e.title || e.name));
+    if (e.summary) main.appendChild(el('div', 'cat-sum', e.summary));
+    main.appendChild(el('div', 'cat-meta', [e.name, e.language, e.category, e.updated, e.articles ? e.articles + ' articles' : ''].filter(Boolean).join(' · ')));
+    r.appendChild(main);
+    const side = el('div', 'cat-side');
+    side.appendChild(el('div', 'cat-size', e.size ? fmtSize(e.size) : '?'));
+    const b = badge(e.status); if (b) { side.appendChild(el('div')); side.appendChild(b); }
+    if (IS_ADMIN && e.status === 'available' && e.url) {
+      const btn = el('button', 'btn btn-primary btn-sm', 'Download'); btn.style.marginTop = '6px';
+      btn.onclick = () => startDownload(e, btn);
+      side.appendChild(el('div')); side.appendChild(btn);
+    } else if (IS_ADMIN && e.status === 'partial' && e.url) {
+      const btn = el('button', 'btn btn-secondary btn-sm', 'Resume'); btn.style.marginTop = '6px';
+      btn.onclick = () => startDownload(e, btn);
+      side.appendChild(el('div')); side.appendChild(btn);
+    }
+    r.appendChild(side);
+    return r;
+  }
+
+  function load(reset) {
+    if (busy) return; busy = true;
+    if (reset) { start = 0; list.innerHTML = ''; }
+    msg.textContent = 'Loading catalog…';
+    const params = new URLSearchParams({ lang: lang.value, q: q.value.trim(), category: cat.value, start, count: 50 });
+    fetch('/api/content/catalog?' + params).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status); return d; })
+      .then(d => {
+        total = d.total; d.entries.forEach(e => list.appendChild(row(e)));
+        start += d.entries.length;
+        msg.textContent = d.entries.length ? '' : 'Nothing matched.';
+        count.textContent = 'Showing ' + Math.min(start, total) + ' of ' + total;
+        more.style.display = start < total ? '' : 'none';
+      })
+      .catch(e => { msg.textContent = e.message; })
+      .finally(() => { busy = false; });
+  }
+  go.addEventListener('click', () => load(true));
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') load(true); });
+  lang.addEventListener('change', () => load(true));
+  cat.addEventListener('change', () => load(true));
+  more.addEventListener('click', () => load(false));
+  if (ONLINE) load(true); else msg.textContent = 'Connect the Pi to the internet to browse the catalog.';
+
+  function startDownload(e, btn) {
+    const gb = e.size ? (e.size / 1024 ** 3).toFixed(1) : '?';
+    if (!confirm('Download "' + (e.title || e.name) + '" (' + gb + ' GB)?\n\nIt runs in the background and resumes if interrupted.')) return;
+    btn.disabled = true; btn.textContent = 'Starting…';
+    fetch('/api/content/download', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: e.url, name: e.name, size: e.size }) })
+      .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+        btn.textContent = 'Queued'; pollJobs(); })
+      .catch(err => { alert(err.message); btn.disabled = false; btn.textContent = 'Download'; });
+  }
+
+  // ── Jobs + local list ────────────────────────────────────────────────────
+  const jobList = document.getElementById('jobList');
+  const rescanMsg = document.getElementById('rescanMsg');
+  let timer = null;
+  function renderJobs(d) {
+    jobList.innerHTML = '';
+    if (!d.jobs.length) jobList.appendChild(el('div', 'muted', 'No downloads started from this page yet.'));
+    d.jobs.slice().reverse().forEach(j => {
+      const box = el('div', 'job');
+      const head = el('div'); head.appendChild(el('strong', '', j.id + ' '));
+      head.appendChild(el('span', 'badge ' + (j.running ? 'badge-yellow' : j.exit_code === 0 ? 'badge-green' : 'badge-red'),
+        j.running ? 'RUNNING' : j.exit_code === 0 ? 'DONE' : 'FAILED (' + j.exit_code + ')'));
+      box.appendChild(head);
+      if (j.progress) box.appendChild(el('div', 'prog', j.progress));
+      else if (j.log_tail && j.log_tail.length) box.appendChild(el('div', 'prog', j.log_tail[j.log_tail.length - 1]));
+      jobList.appendChild(box);
+    });
+    const r = d.rescan;
+    if (r && (r.running || r.exit_code !== null)) {
+      rescanMsg.textContent = r.running ? 'Rescanning… ' + (r.log_tail.slice(-1)[0] || '')
+        : (r.exit_code === 0 ? 'Rescan finished: ' : 'Rescan had problems: ') + (r.log_tail.slice(-2).join(' · ') || '');
+    }
+    const anyRunning = d.running > 0 || (r && r.running);
+    if (anyRunning && !timer) timer = setInterval(pollJobs, 4000);
+    if (!anyRunning && timer) { clearInterval(timer); timer = null; refreshLocal(); }
+  }
+  function pollJobs() { fetch('/api/content/jobs', { cache: 'no-store' }).then(r => r.json()).then(renderJobs).catch(() => {}); }
+  function refreshLocal() {
+    fetch('/api/content/local', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      document.getElementById('freeGb').textContent = d.free_gb;
+      const tb = document.querySelector('#localTable tbody'); tb.innerHTML = '';
+      if (!d.zims.length) { const tr = el('tr'); const td = el('td', 'muted', 'No ZIM files on the drive yet.'); td.colSpan = 3; tr.appendChild(td); tb.appendChild(tr); return; }
+      d.zims.forEach(z => {
+        const tr = el('tr'); const f = el('td', '', z.file); f.style.wordBreak = 'break-all';
+        f.appendChild(el('div', 'muted', z.path.split('/').slice(0, -1).join('/') + ' · ' + z.modified)); tr.appendChild(f);
+        tr.appendChild(el('td', 'num', z.size_gb + ' GB'));
+        const st = el('td'); st.appendChild(el('span', 'badge ' + (z.partial ? 'badge-yellow' : z.registered ? 'badge-green' : 'badge-red'),
+          z.partial ? 'PARTIAL' : z.registered ? 'LIVE' : 'NOT REGISTERED')); tr.appendChild(st);
+        tb.appendChild(tr);
+      });
+    }).catch(() => {});
+  }
+  pollJobs(); refreshLocal();
+
+  const rescanBtn = document.getElementById('rescanBtn');
+  if (rescanBtn) rescanBtn.addEventListener('click', () => {
+    rescanBtn.disabled = true; rescanMsg.textContent = 'Starting rescan…';
+    fetch('/api/content/rescan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status); pollJobs(); })
+      .catch(e => { rescanMsg.textContent = e.message; })
+      .finally(() => { setTimeout(() => { rescanBtn.disabled = false; }, 3000); });
+  });
+})();
+</script>
+{% endblock %}

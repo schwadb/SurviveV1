@@ -30,7 +30,7 @@ id "$SERVICE_USER" &>/dev/null || SERVICE_USER="pi"
 
 # Units the dashboard is allowed to restart. Keep in sync with the `unit`
 # fields in web/constants.py SERVICES, plus the dashboard's own unit.
-UNITS=(kiwix kolibri calibre-web jellyfin martin-tiles ollama survive-dashboard)
+UNITS=(kiwix kolibri calibre-web jellyfin martin-tiles ollama survive-dashboard survive-meshtastic)
 
 SYSTEMCTL="$(command -v systemctl || echo /usr/bin/systemctl)"
 
@@ -39,6 +39,9 @@ cmds=""
 for u in "${UNITS[@]}"; do
     cmds+="${cmds:+, }${SYSTEMCTL} restart ${u}"
 done
+# The Status page's nightly auto-update toggle flips exactly this timer.
+cmds+=", ${SYSTEMCTL} enable --now survive-content-update.timer"
+cmds+=", ${SYSTEMCTL} disable --now survive-content-update.timer"
 
 TMP=$(mktemp)
 trap 'rm -f "$TMP"' EXIT
@@ -52,7 +55,7 @@ DEST="/etc/sudoers.d/survive-dashboard"
 if visudo -cf "$TMP" >/dev/null 2>&1; then
     install -m 440 "$TMP" "$DEST"
     ok "Installed $DEST for user '$SERVICE_USER'"
-    info "Allowed: systemctl restart {${UNITS[*]}}"
+    info "Allowed: systemctl restart {${UNITS[*]}} + enable/disable survive-content-update.timer"
 else
     err "Generated sudoers file failed validation -- NOT installed."
     err "Restart buttons will fall back to showing the manual command."

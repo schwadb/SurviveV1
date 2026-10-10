@@ -156,7 +156,26 @@
     {% endfor %}
     {% endif %}
 
-    {% if not results and not article_results and not doc_results %}
+    {% if note_results %}
+    <div class="search-also" style="margin:18px 0 10px;">
+      In your notes &mdash; <strong style="color:var(--text);">{{ note_results|length }}</strong>
+    </div>
+    {% for n in note_results %}
+    <a href="/notes/{{ n.slug }}" class="result-card">
+      <div class="result-icon">&#128221;</div>
+      <div>
+        <div class="result-name">{{ n.title }}</div>
+        <div class="result-path">{{ n.snippet }}</div>
+      </div>
+      <div class="result-meta">
+        <div class="result-size">{{ n.modified }}</div>
+        <span class="badge badge-blue result-ext">NOTE</span>
+      </div>
+    </a>
+    {% endfor %}
+    {% endif %}
+
+    {% if not results and not article_results and not doc_results and not note_results %}
     <div style="text-align: center; padding: 40px 20px;">
       <div style="font-size: 48px; margin-bottom: 12px;">🔍</div>
       <div style="font-size: 15px; color: var(--text-dim);">

@@ -1,0 +1,16 @@
+[Unit]
+Description=Nightly SurviveV1 content update
+
+[Timer]
+# Local time; scripts/generate_services.sh rewrites this from
+# SURVIVE_AUTO_UPDATE_TIME in config/survive.conf.
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=20min
+# Do not "catch up" a missed run at boot: a grid-down box coming up has no
+# internet to spend, and a laptop-style wake would start a multi-GB download
+# at the worst moment.
+Persistent=false
+Unit=survive-content-update.service
+
+[Install]
+WantedBy=timers.target

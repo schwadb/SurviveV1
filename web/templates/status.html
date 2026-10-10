@@ -181,6 +181,11 @@
       <pre id="updateLog" style="display:none; margin-top:10px; max-height:220px; overflow:auto;
            background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius);
            padding:10px; font-family:var(--mono); font-size:11px; white-space:pre-wrap;"></pre>
+      <div id="schedule" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:12px;
+           padding-top:12px; border-top:1px solid var(--border);">
+        <button id="schedBtn" class="btn btn-secondary btn-sm" onclick="toggleSchedule()" disabled>&#9201; Nightly auto-update</button>
+        <span id="schedNote" style="font-size:12px; color:var(--text-dim);">Checking timer&hellip;</span>
+      </div>
       {% else %}
       <div style="font-size:12px; color:var(--text-dim);">
         &#128273; <a href="/login" style="color:var(--accent);">Log in as admin</a>
@@ -483,6 +488,47 @@ function startUpdate() {
 
 if (document.getElementById('updateBtn')) {
   pollUpdate();  // restore button/log state on page load (admin view only)
+  pollSchedule();
+}
+
+// ── Nightly auto-update timer (admin) ───────────────────────────────────────
+let schedEnabled = false;
+function renderSchedule(s) {
+  const btn = document.getElementById('schedBtn');
+  const note = document.getElementById('schedNote');
+  if (!btn) return;
+  if (!s.available) {
+    btn.disabled = true;
+    note.textContent = 'Timer not installed — run: sudo bash scripts/generate_services.sh';
+    return;
+  }
+  schedEnabled = !!s.enabled;
+  btn.disabled = false;
+  btn.textContent = schedEnabled ? '⏱ Nightly auto-update: ON' : '⏱ Nightly auto-update: OFF';
+  btn.className = 'btn btn-sm ' + (schedEnabled ? 'btn-primary' : 'btn-secondary');
+  const cap = s.rate_limit_kbps ? ', capped at ' + s.rate_limit_kbps + ' KB/s' : '';
+  note.textContent = schedEnabled
+    ? 'Runs at ' + s.time + cap + (s.next_run ? '. Next: ' + s.next_run : '') + (s.last_run ? '. Last: ' + s.last_run : '')
+    : 'Off. When on, gap-fill downloads run at ' + s.time + cap + ' and skip if offline.';
+}
+function pollSchedule() {
+  fetch('/api/update/schedule', { cache: 'no-store' }).then(r => r.json()).then(renderSchedule).catch(() => {});
+}
+function toggleSchedule() {
+  const btn = document.getElementById('schedBtn');
+  const note = document.getElementById('schedNote');
+  btn.disabled = true;
+  fetch('/api/update/schedule', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: !schedEnabled }),
+  })
+    .then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { note.textContent = d.error || ('Failed (HTTP ' + r.status + ')'); btn.disabled = false; return; }
+      renderSchedule(d);
+    })
+    .catch(() => { note.textContent = 'Could not reach the dashboard.'; btn.disabled = false; });
 }
 
 // ── Per-service restart (admin) ─────────────────────────────────────────────

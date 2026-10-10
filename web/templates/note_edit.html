@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit note' if note else 'New note' }}{% endblock %}
+
+{% block head %}
+<style>
+  .editor { width:100%; min-height:60vh; background:var(--surface2); border:1px solid var(--border); color:var(--text);
+    border-radius:var(--radius); padding:12px 14px; font-family:var(--mono); font-size:13px; line-height:1.5; resize:vertical; box-sizing:border-box; }
+  .editor:focus { outline:none; border-color:var(--accent); }
+  .help { font-size:12px; color:var(--text-dim); margin-top:8px; }
+  .help code { background:var(--surface); padding:1px 5px; border-radius:4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">{{ '&#9998; Edit note'|safe if note else '&#10010; New note'|safe }}</div>
+  <div class="page-sub">{% if note %}{{ note.title }}{% else %}Start with a <code># Title</code> line.{% endif %}</div>
+
+  <form method="post" action="/notes/save" style="margin-top:16px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if note %}<input type="hidden" name="slug" value="{{ note.slug }}">{% endif %}
+    <textarea class="editor" name="body" id="body" maxlength="500000" placeholder="# Title&#10;&#10;Write here. **bold**, *italic*, lists with -, tasks with - [ ], links with [text](url)." autofocus>{{ body }}</textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;">
+      <button type="submit" class="btn btn-primary">Save</button>
+      <a href="{{ '/notes/' + note.slug if note else '/notes' }}" class="btn btn-secondary">Cancel</a>
+      <span class="help" id="saveHint">Saves to the drive. Ctrl+S also saves.</span>
+    </div>
+  </form>
+  <div class="help">
+    Markdown subset: <code># Heading</code> <code>**bold**</code> <code>*italic*</code> <code>`code`</code>
+    <code>- list</code> <code>1. list</code> <code>- [ ] task</code> <code>&gt; quote</code> <code>---</code> fenced ``` code blocks.
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); document.querySelector('form').submit(); }
+  });
+  // Warn before leaving with unsaved changes.
+  const ta = document.getElementById('body'); const initial = ta.value; let submitting = false;
+  document.querySelector('form').addEventListener('submit', () => { submitting = true; });
+  window.addEventListener('beforeunload', e => { if (!submitting && ta.value !== initial) { e.preventDefault(); e.returnValue = ''; } });
+</script>
+{% endblock %}

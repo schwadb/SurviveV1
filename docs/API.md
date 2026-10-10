@@ -277,6 +277,62 @@ Returns HTML directory listing.
 
 ---
 
+## GET /api/update/schedule
+
+Nightly auto-update timer state. `available` is false until `generate_services.sh` has
+installed the timer. `next_run`/`last_run` are systemd's human-readable timestamps.
+
+```json
+{"available": true, "enabled": true, "active": true, "next_run": "Sat 2026-10-11 02:30:00 PDT",
+ "last_run": null, "time": "02:30", "rate_limit_kbps": 2048}
+```
+
+## POST /api/update/schedule
+
+Admin only, JSON body `{"enabled": true|false}`. Runs the allowlisted
+`systemctl enable|disable --now survive-content-update.timer` and returns the same
+shape as the GET. 500 with a `manual` command when the sudoers rule is missing.
+
+## Maps and pins
+
+| Endpoint | Method | Notes |
+|----------|--------|-------|
+| `/maps` | GET | Map page. Sets a per-route CSP (`blob:` workers) and `Permissions-Policy: geolocation=(self)`. |
+| `/api/map/assets` | GET | `{basemaps:[{name,file,url,size_mb}], overlays:[...], fonts_ok, sprites_ok, park_maps}` |
+| `/api/map/pins` | GET | `{pins:[{id,name,lat,lon,icon,color,notes,hidden,created,updated}]}` |
+| `/api/map/pins` | POST | JSON pin → 201 with the stored row. Open to the LAN; 60/min. `icon` must be one of `pin water fuel medical camp cache home food danger radio tools people`. |
+| `/api/map/pins/<id>` | PUT / DELETE | JSON body (partial update allowed). 404 when missing. |
+| `/api/map/pins/export?format=gpx\|geojson` | GET | File download of every pin. |
+| `/api/map/pins/import` | POST | `{"text": "<gpx or geojson>"}` (4 MB max) → `{imported, pins}`. |
+
+## Library manager
+
+| Endpoint | Method | Notes |
+|----------|--------|-------|
+| `/content` | GET | Page. |
+| `/api/content/catalog?lang=eng&q=&category=&start=0&count=50` | GET | Proxies `library.kiwix.org/catalog/v2/entries` (15-min cache). Each entry carries `status`: `installed`, `partial`, `downloading` or `available`. 503 when offline. |
+| `/api/content/languages` | GET | `{languages:[{code,name,count}]}` |
+| `/api/content/local` | GET | ZIM files on the drive with `registered` (known to Kiwix) and `partial` flags, plus `free_gb`. |
+| `/api/content/jobs` | GET | Dashboard-started downloads (`zimdl_*` logs) and the rescan job, each with `running`, `exit_code`, `progress`, `log_tail`. |
+| `/api/content/download` | POST | Admin, JSON `{url, name, size}`. Only `https://download.kiwix.org/...zim` (and the `lb.`/`mirror.` hosts). 507 when the file plus a 10 GB margin would not fit; 409 when two downloads already run. Starts `scripts/download_zim.sh` detached → 202. |
+| `/api/content/rescan` | POST | Admin. Starts `scripts/rescan_library.sh` detached → 202. |
+
+## Notes, shared files, comms
+
+These are HTML pages with CSRF-protected forms rather than JSON APIs.
+
+| Route | Method | Notes |
+|-------|--------|-------|
+| `/notes`, `/notes?q=` | GET | List / search. |
+| `/notes/new`, `/notes/<slug>`, `/notes/<slug>?edit=1` | GET | Editor, rendered view, editor. |
+| `/notes/save` | POST | Form `body` (+ `slug` to update). New notes get a slug from the first heading. 512 KB max. |
+| `/notes/<slug>/delete` | POST | Admin. |
+| `/shared` | GET | Listing of `$STORAGE/shared`. |
+| `/shared/upload` | POST | Multipart `files` (multiple). 2 GB per request, keeps 10 GB free, filenames pass through `secure_filename`. |
+| `/shared/delete` | POST | Admin, form `name`. |
+| `/comms`, `/comms/morse`, `/comms/repeaters?q=&band=` | GET | Pages. Bands: `6m 2m 1.25m 70cm gmrs other`. |
+| `/comms/repeaters/upload`, `/comms/repeaters/delete` | POST | Admin. CSV only (20 MB). |
+
 ## Service Ports
 
 | Service | Port | URL |
@@ -286,7 +342,8 @@ Returns HTML directory listing.
 | Kolibri (Khan Academy) | 8082 | http://survive.local:8082 |
 | Calibre-Web (E-books) | 8083 | http://survive.local:8083 |
 | Jellyfin (Videos) | 8096 | http://survive.local:8096 |
-| Martin (Maps) | 3000 | http://survive.local:3000 |
+| Martin (Maps, optional) | 3000 | http://survive.local:3000 |
+| Meshtastic Web | 8084 | http://survive.local:8084 |
 | Ollama (AI) | 11434 | http://survive.local:11434 |
 
 ---

@@ -77,6 +77,11 @@ bash scripts/start_services.sh   # start all services, health-checks dashboard
 bash scripts/stop_services.sh    # stop all
 bash scripts/status.sh           # show running/stopped state
 bash scripts/update_content.sh   # re-run download scripts for newer versions
+bash scripts/update_content.sh --scheduled   # what the nightly timer runs (quiet when offline)
+bash scripts/rescan_library.sh   # register ZIMs copied onto the drive by hand
+bash scripts/download_zim.sh <kiwix-url>     # one catalog item (dashboard uses this)
+bash download/comms.sh           # Meshtastic web client + repeater folder
+bash download/maps.sh --region us            # tiles + fonts + satellite overlay + national park PDFs
 ```
 
 ---
@@ -98,7 +103,12 @@ Key patterns:
 - **AI RAG + streaming:** `ai_chat()` first calls `_retrieve_context()` (Kiwix full-text search → article excerpts) and injects them into the system prompt via `_build_rag_prompt()`. The Ollama completion is streamed to the client as newline-delimited JSON (`{"sources":...}`, then `{"delta":...}`, then `{"done":...}`). Pre-stream errors keep real HTTP status codes; mid-stream failures become an `{"error":...}` line. Requires gunicorn `--threads` (a stream holds a worker) and nginx `proxy_buffering off` on `/api/ai/chat`.
 - **Search index:** `/search` queries a SQLite **FTS5** filename index (`$STORAGE/.search_index.db`) built by a background thread (`_index_refresher`, 6 h cadence, on-demand rebuild via `_trigger_index_build`). Falls back to `_search_walk()` until the index exists. Download scripts `rm` the DB on completion to force a rebuild. A second `/search` section shows in-article Kiwix hits via `_kiwix_search()`.
 - **Download progress:** `/api/downloads` (`_compute_download_status`) reads `.download_progress` (written by `download_all.sh`'s `run_category`), content sizes, and the `.logs` tail. Category ids in `constants.DOWNLOAD_CATEGORIES` **must** match the `run_category` names.
-- **One-click update:** `POST /api/update/start` launches `scripts/update_content.sh` detached (`start_new_session`); state is reconstructed from disk (`.logs/update_content.{log,pid}` + an `UPDATE_FINISHED exit=N` marker the bash wrapper appends) because gunicorn workers don't share memory. `GET /api/update/status` polls it; button UI lives in `status.html`. The refresh is gap-fill only — `download_zim` skips any title already owned (any build, any path) and enforces a 10 GB free-space margin; ZIM build upgrades stay manual (`kiwix_content.sh --update`).
+- **One-click update:** `POST /api/update/start` launches `scripts/update_content.sh` detached (`start_new_session`); state is reconstructed from disk (`.logs/update_content.{log,pid}` + an `UPDATE_FINISHED exit=N` marker the bash wrapper appends) because gunicorn workers don't share memory. `GET /api/update/status` polls it; button UI lives in `status.html`. The refresh is gap-fill only — `download_zim` skips any title already owned (any build, any path) and enforces a 10 GB free-space margin; ZIM build upgrades stay manual (`kiwix_content.sh --update`). The same log/marker convention is reused by `_launch_detached()`/`_read_job_state()` for ZIM downloads (`ZIMDL_FINISHED`) and library rescans (`RESCAN_FINISHED`).
+- **Nightly auto-update:** `systemd/survive-content-update.timer` runs `update_content.sh --scheduled` (skips when offline or when a manual update is running, caps bandwidth with `SURVIVE_AUTO_UPDATE_RATE_LIMIT`). `GET/POST /api/update/schedule` reads the timer with `systemctl show` and flips it with the two exact `enable/disable --now` commands allowlisted by `scripts/install_sudoers.sh`. `generate_services.sh` rewrites `OnCalendar` from `SURVIVE_AUTO_UPDATE_TIME` and exports `SURVIVE_REPO_DIR` so the installed dashboard (a copy under `/opt/survive`) can find the scripts in the clone.
+- **Maps page (`/maps`):** MapLibre + the PMTiles JS protocol read `maps/pmtiles/*.pmtiles` straight through `/serve/` with HTTP range requests, so no tile server is involved. Basemap style comes from the vendored `@protomaps/basemaps` (`web/static/vendor/`), glyphs/sprites from `maps/fonts` and `maps/sprites` (fetched by `maps.sh dl_map_assets`); text/icon layers are dropped when those are missing. Pins live in SQLite at `$STORAGE/.map_pins.db` via `/api/map/pins` (open to the LAN, JSON-only CSRF defence); GPX/GeoJSON conversion is in `web/textutils.py`. The route sets a relaxed CSP (`blob:` workers) and `Permissions-Policy: geolocation=(self)` — the site-wide headers use `setdefault`, so per-route values win.
+- **Library manager (`/content`):** `/api/content/catalog` proxies `library.kiwix.org/catalog/v2` (15-min cache, parsed by `textutils.parse_kiwix_catalog`) and marks entries installed by matching `zim_name_prefix()` against files on disk. Admin `POST /api/content/download` validates the host (`download.kiwix.org` only) and free space, then runs `scripts/download_zim.sh` detached (max 2 jobs). `scripts/rescan_library.sh` rebuilds `.kiwix_library.xml` from scratch (so deleted files drop out), clears the search index and restarts kiwix.
+- **Notes & shared files:** notes are `$STORAGE/notes/<slug>.md`, rendered by `textutils.render_markdown()` — a deliberately small subset that HTML-escapes everything first and only allows http(s)/relative links. Writes are open to the LAN (CSRF form), deletes are admin-only; `/search` includes a notes section. `/shared/upload` streams multipart files into `$STORAGE/shared/`. Per-route body limits (`_BODY_LIMITS`, via a `Request` subclass) lift the 64 KB global cap only for uploads, note saves and pin imports.
+- **Comms (`/comms`):** Morse tool is pure client-side JS; Meshtastic web client is a static build fetched by `download/comms.sh` and served by `survive-meshtastic.service` (python `http.server` on 8084 — the build uses absolute asset paths so it needs its own origin). Repeater lists are user-imported CSVs under `comms/repeaters/` (RepeaterBook's terms forbid bundling their data), parsed by `textutils.parse_repeater_csv`.
 
 Environment variables the server reads at startup (all have defaults):
 
@@ -110,6 +120,9 @@ Environment variables the server reads at startup (all have defaults):
 | `SURVIVE_SERVICE_CHECK_TIMEOUT` | `1` | TCP probe timeout (s) |
 | `SURVIVE_OLLAMA_LIST_TIMEOUT` | `2` | Ollama model-list fetch timeout (s) |
 | `SURVIVE_AI_CHAT_TIMEOUT` | `60` | AI chat completion timeout (s) |
+| `SURVIVE_REPO_DIR` | `web/..` | Where the scripts live (set by `generate_services.sh` for the `/opt/survive` copy) |
+| `SURVIVE_AUTO_UPDATE_TIME` | `02:30` | Shown on the Status page; the timer itself is generated from `survive.conf` |
+| `MAP_REGION` | `""` | Shown in the maps page's setup hint |
 
 ### Configuration (`config/survive.conf`)
 
@@ -136,6 +149,10 @@ All content under `$SURVIVE_STORAGE_PATH` (`/mnt/survive` by default):
 ├── maps/                 # Martin tile server files + martin_config.yaml
 ├── ai_models/ollama/     # Ollama model blobs (OLLAMA_MODELS env var)
 ├── kolibri/              # Kolibri app data (KOLIBRI_HOME env var)
+├── notes/                # Shared Markdown notes (dashboard /notes)
+├── shared/               # Personal file drop box (dashboard /shared)
+├── comms/                # meshtastic-web/ static client, repeaters/*.csv
+├── .map_pins.db          # Saved map pins (SQLite)
 ├── .kiwix_library.xml    # Kiwix library index (auto-generated)
 └── .logs/                # Per-script download logs and yt-dlp archives
 ```
@@ -166,4 +183,4 @@ All templates extend `base.html`. The nav bar in `base.html` uses `PORT_KIWIX`, 
 
 ### CI (`.github/workflows/test.yml`)
 
-Three jobs: `shellcheck` (all `*.sh`), `python` (pylint + smoke tests), `validate-configs` (nginx + YAML). ShellCheck excludes `SC1090`/`SC1091` — dynamic `source "$_CONF"` is intentional. Pylint threshold is 7.0 with docstring and naming rules disabled.
+Three jobs: `shellcheck` (all `*.sh`), `python` (pylint on `web/*.py` + `scripts/*.py`, pytest in `tests/`, smoke tests), `validate-configs` (nginx + YAML). ShellCheck excludes `SC1090`/`SC1091` — dynamic `source "$_CONF"` is intentional. Pylint threshold is 7.0 with docstring and naming rules disabled.

@@ -312,6 +312,124 @@ USGS_SCRIPT
     success "USGS topo helper at $USGS_DIR/download_topo.sh"
 }
 
+# ── Label fonts + POI sprites for the dashboard's map page ───────────────────
+# web/templates/maps.html renders the PMTiles basemaps in the browser with
+# MapLibre. Text labels need glyph files and POI icons need a sprite sheet;
+# both are published as static assets by the Protomaps project. ~40 MB total.
+MAP_ASSETS_BASE="https://protomaps.github.io/basemaps-assets"
+
+dl_map_assets() {
+    info "=== Map label fonts and sprites ==="
+    local font range lo hi dest failed=0
+    for font in "Noto Sans Regular" "Noto Sans Medium" "Noto Sans Italic"; do
+        dest="$MAP_DIR/fonts/$font"
+        mkdir -p "$dest"
+        if [[ -f "$dest/65280-65535.pbf" ]] && [[ -f "$dest/0-255.pbf" ]]; then
+            info "Font present: $font"
+            continue
+        fi
+        info "Fetching glyphs: $font (256 files)..."
+        for lo in $(seq 0 256 65280); do
+            hi=$((lo + 255))
+            range="${lo}-${hi}"
+            [[ -s "$dest/$range.pbf" ]] && continue
+            wget -q --timeout=30 --tries=2 -O "$dest/$range.pbf" \
+                "$MAP_ASSETS_BASE/fonts/${font// /%20}/$range.pbf" \
+                || { rm -f "$dest/$range.pbf"; failed=$((failed + 1)); }
+        done
+    done
+    local variant f
+    mkdir -p "$MAP_DIR/sprites/v4"
+    for variant in dark light dark@2x light@2x; do
+        for f in "$variant.json" "$variant.png"; do
+            [[ -s "$MAP_DIR/sprites/v4/$f" ]] && continue
+            wget -q --timeout=30 --tries=2 -O "$MAP_DIR/sprites/v4/$f" \
+                "$MAP_ASSETS_BASE/sprites/v4/$f" \
+                || { rm -f "$MAP_DIR/sprites/v4/$f"; failed=$((failed + 1)); }
+        done
+    done
+    if (( failed > 0 )); then
+        warn "$failed font/sprite files failed -- re-run to fill the gaps (labels may be missing)"
+    else
+        success "Fonts and sprites ready"
+    fi
+}
+
+# ── Satellite imagery (world, zoom 0-6) ──────────────────────────────────────
+# Internet-in-a-Box publishes a small world satellite layer (~25 MB) that the
+# map page offers as an overlay. Higher-zoom imagery is not freely
+# redistributable in bulk, so this stays a low-zoom context layer.
+dl_satellite() {
+    [[ "${CONTENT_SATELLITE:-Y}" =~ [Yy] ]] || return 0
+    info "=== Satellite overlay (world, z0-6) ==="
+    local dest="$MAP_DIR/pmtiles/satellite-world-z6.pmtiles"
+    [[ -s "$dest" ]] && { info "Satellite overlay present"; return 0; }
+    mkdir -p "$MAP_DIR/mbtiles" "$MAP_DIR/pmtiles"
+    local mb="$MAP_DIR/mbtiles/satellite_z0-z6_2020.mbtiles"
+    if [[ ! -s "$mb" ]]; then
+        wget -q --timeout=60 --tries=3 -c -O "$mb" \
+            "https://download.iiab.io/content/OSM/vector-tiles/satellite_z0-z6_2020.mbtiles" \
+            || { rm -f "$mb"; warn "Satellite download failed"; return 0; }
+    fi
+    if [[ "$(head -c 15 "$mb" 2>/dev/null)" != "SQLite format 3" ]]; then
+        warn "Satellite file is not a valid MBTiles archive -- removing"
+        rm -f "$mb"; return 0
+    fi
+    if command -v pmtiles &>/dev/null; then
+        pmtiles convert "$mb" "$dest" \
+            && success "Satellite overlay ready: $dest" \
+            || warn "pmtiles convert failed -- the overlay will stay off"
+    else
+        warn "pmtiles CLI missing -- satellite overlay needs it (re-run maps.sh)"
+    fi
+}
+
+# ── US national park maps (official NPS PDFs) ────────────────────────────────
+# NPMaps.com mirrors the public-domain National Park Service brochure, trail
+# and topo PDFs for every park. We fetch the 63 "National Park" units, one
+# page per park with a polite pause. ~2-3 GB in total.
+NPS_PARKS=(acadia american-samoa arches badlands big-bend biscayne black-canyon
+    bryce-canyon canyonlands capitol-reef carlsbad-caverns channel-islands congaree
+    crater-lake cuyahoga-valley death-valley denali dry-tortugas everglades
+    gates-of-the-arctic gateway-arch glacier glacier-bay grand-canyon grand-teton
+    great-basin great-sand-dunes great-smoky-mountains guadalupe-mountains haleakala
+    hawaii-volcanoes hot-springs indiana-dunes isle-royale joshua-tree katmai
+    kenai-fjords kings-canyon kobuk-valley lake-clark lassen-volcanic mammoth-cave
+    mesa-verde mount-rainier new-river-gorge north-cascades olympic petrified-forest
+    pinnacles redwood rocky-mountain saguaro sequoia shenandoah theodore-roosevelt
+    virgin-islands voyageurs white-sands wind-cave wrangell-st-elias yellowstone
+    yosemite zion)
+
+dl_nps_maps() {
+    [[ "${CONTENT_NPS_MAPS:-Y}" =~ [Yy] ]] || return 0
+    case "$REGION" in
+        north-america|us|us-northeast|world) ;;
+        *) info "Skipping US national park maps (region: $REGION)"; return 0 ;;
+    esac
+    info "=== US national park maps (${#NPS_PARKS[@]} parks) ==="
+    local park dir page urls url name got=0 missed=0
+    for park in "${NPS_PARKS[@]}"; do
+        dir="$MAP_DIR/national_parks/$park"
+        mkdir -p "$dir"
+        page=$(curl -sL --max-time 40 -A "SurviveV1 offline map fetcher" \
+               "https://npmaps.com/$park/" 2>/dev/null) || page=""
+        urls=$(grep -oE 'https://npmaps\.com/wp-content/uploads/[^"]+\.pdf' <<< "$page" | sort -u)
+        if [[ -z "$urls" ]]; then
+            warn "  $park: no maps found (page unreachable?)"
+            missed=$((missed + 1)); sleep 1; continue
+        fi
+        while IFS= read -r url; do
+            name=$(basename "$url")
+            [[ -s "$dir/$name" ]] && continue
+            wget -q --timeout=60 --tries=2 -O "$dir/$name" "$url" \
+                && got=$((got + 1)) || rm -f "$dir/$name"
+        done <<< "$urls"
+        info "  $park: $(find "$dir" -name '*.pdf' | wc -l) PDFs"
+        sleep 1   # be a polite guest on a volunteer-run site
+    done
+    success "National park maps: $got new PDFs ($missed parks skipped)"
+}
+
 # ── Install Organic Maps for offline navigation ───────────────────────────────
 setup_organic_maps_data() {
     info "=== Organic Maps data setup ==="
@@ -350,13 +468,16 @@ main() {
     install_map_server
     dl_osm_pbf
     dl_mbtiles
+    dl_map_assets
+    dl_satellite
     setup_tile_server
     dl_usgs_topo
+    dl_nps_maps
     setup_organic_maps_data
 
     success "Map setup complete"
     info "Map data: $MAP_DIR"
-    info "Tile server: http://localhost:3000 (after starting services)"
+    info "Map page: http://localhost:8080/maps (no tile server needed)"
     du -sh "$MAP_DIR" 2>/dev/null || true
 }
 

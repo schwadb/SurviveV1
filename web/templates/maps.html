@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+{% block title %}Offline Maps{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/vendor/maplibre-gl.css">
+<style>
+  .map-wrap { display:flex; height: calc(100vh - 56px); min-height: 480px; }
+  .map-panel {
+    width: 340px; flex-shrink:0; background: var(--surface); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .map-panel-head { padding: 12px 14px; border-bottom:1px solid var(--border); }
+  .map-panel-head .title { font-size:16px; font-weight:700; }
+  .map-panel-head .sub { font-size:12px; color:var(--text-dim); margin-top:2px; }
+  .map-tools { display:flex; flex-wrap:wrap; gap:6px; padding:10px 14px; border-bottom:1px solid var(--border); }
+  .map-tools .btn { font-size:12px; padding:5px 9px; }
+  .map-tools .btn.active { outline:2px solid var(--accent); }
+  .pin-filter { display:flex; gap:6px; padding:10px 14px 6px; align-items:center; }
+  .pin-filter input, .pin-filter select {
+    background: var(--surface2); border:1px solid var(--border); color:var(--text);
+    border-radius:6px; padding:6px 8px; font-size:12px; min-width:0;
+  }
+  .pin-filter input { flex:1; }
+  .pin-list { flex:1; overflow-y:auto; padding: 0 8px 12px; }
+  .pin-row {
+    display:flex; align-items:center; gap:10px; padding:8px 6px; border-bottom:1px solid var(--border);
+    cursor:pointer; border-radius:6px;
+  }
+  .pin-row:hover { background: var(--surface2); }
+  .pin-row.hidden-pin { opacity:0.45; }
+  .pin-dot {
+    width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:15px; flex-shrink:0; border:2px solid rgba(0,0,0,0.35);
+  }
+  .pin-row .pin-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pin-row .pin-meta { font-size:11px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pin-row .pin-text { flex:1; min-width:0; }
+  .pin-row input[type=checkbox] { accent-color: var(--accent); }
+  .map-note { font-size:12px; color:var(--text-dim); padding:8px 14px; border-top:1px solid var(--border); }
+  .map-msg { font-size:12px; padding:6px 14px; color:var(--warning); min-height:18px; }
+  #map { flex:1; position:relative; background:#0d1117; }
+  #map .empty-map {
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .maplibregl-popup-content { background: var(--surface); color: var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:12px 14px; font-family:var(--font); min-width:240px; }
+  .maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--surface); }
+  .maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: var(--surface); }
+  .maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--surface); }
+  .maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--surface); }
+  .maplibregl-popup-close-button { color: var(--text-dim); font-size:18px; }
+  .pin-form label { display:block; font-size:11px; color:var(--text-dim); margin:8px 0 3px; text-transform:uppercase; letter-spacing:.3px; }
+  .pin-form input, .pin-form select, .pin-form textarea {
+    width:100%; background: var(--surface2); border:1px solid var(--border); color:var(--text);
+    border-radius:6px; padding:6px 8px; font-size:13px; font-family:var(--font); box-sizing:border-box;
+  }
+  .pin-form textarea { min-height:60px; resize:vertical; }
+  .swatches { display:flex; gap:6px; flex-wrap:wrap; }
+  .swatch { width:22px; height:22px; border-radius:50%; cursor:pointer; border:2px solid transparent; }
+  .swatch.sel { border-color:#fff; }
+  .pin-form .row { display:flex; gap:6px; margin-top:10px; }
+  .pin-view .name { font-size:15px; font-weight:700; }
+  .pin-view .coords { font-family:var(--mono); font-size:11px; color:var(--text-dim); margin:2px 0 6px; }
+  .pin-view .notes { font-size:13px; white-space:pre-wrap; max-height:160px; overflow:auto; }
+  .marker-pin {
+    width:30px; height:30px; border-radius:50% 50% 50% 0; transform: rotate(-45deg);
+    border:2px solid rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5); cursor:pointer;
+  }
+  .marker-pin span { transform: rotate(45deg); font-size:15px; line-height:1; }
+  .marker-me { width:16px; height:16px; border-radius:50%; background:#58a6ff; border:3px solid #fff;
+    box-shadow:0 0 0 6px rgba(88,166,255,0.3); }
+  .panel-toggle { display:none; position:absolute; top:10px; left:10px; z-index:5; }
+  @media (max-width: 760px) {
+    .map-wrap { flex-direction:column; }
+    .map-panel { width:100%; max-height:45vh; border-right:none; border-bottom:1px solid var(--border); }
+    .map-panel.collapsed { display:none; }
+    .panel-toggle { display:block; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="map-wrap">
+  <div class="map-panel" id="mapPanel">
+    <div class="map-panel-head">
+      <div class="title">&#128506; Offline Maps</div>
+      <div class="sub">
+        {% if assets.basemaps %}
+          {{ assets.basemaps|length }} basemap{{ 's' if assets.basemaps|length != 1 }} on this device
+          {% if not assets.fonts_ok %}&middot; <span style="color:var(--warning)">labels off (fonts not downloaded)</span>{% endif %}
+        {% else %}
+          No map tiles downloaded yet
+        {% endif %}
+      </div>
+    </div>
+    <div class="map-tools">
+      <button class="btn btn-primary" id="addPinBtn" title="Then click the map where the pin goes">&#128205; Add pin</button>
+      <button class="btn btn-secondary" id="locateBtn" title="Centre on this device's GPS position">&#127919; My location</button>
+      <button class="btn btn-secondary" id="importBtn" title="Merge pins from a GPX or GeoJSON file">&#11015; Import</button>
+      <input type="file" id="importFile" accept=".gpx,.geojson,.json,application/gpx+xml,application/geo+json,application/json" style="display:none">
+      <a class="btn btn-secondary" href="/api/map/pins/export?format=gpx" download>&#11014; GPX</a>
+      <a class="btn btn-secondary" href="/api/map/pins/export?format=geojson" download>&#11014; GeoJSON</a>
+      {% if assets.overlays %}
+      <button class="btn btn-secondary" id="satBtn" title="Low-zoom satellite imagery overlay">&#127757; Satellite</button>
+      {% endif %}
+    </div>
+    <div class="map-msg" id="mapMsg"></div>
+    <div class="pin-filter">
+      <input type="search" id="pinSearch" placeholder="Search pins&hellip;" autocomplete="off">
+      <select id="pinSort" title="Sort">
+        <option value="name">Name</option>
+        <option value="icon">Type</option>
+        <option value="updated">Recent</option>
+      </select>
+      <label style="font-size:11px;color:var(--text-dim);white-space:nowrap;">
+        <input type="checkbox" id="showHidden"> hidden
+      </label>
+    </div>
+    <div class="pin-list" id="pinList"></div>
+    <div class="map-note">
+      {% if assets.park_maps %}
+      &#127966; <a href="/files?path=maps/national_parks" style="color:var(--accent2)">{{ assets.park_maps }} national park map PDFs</a> &middot;
+      {% endif %}
+      Pins are saved on this device and shared with everyone on the network.
+      Tick a pin to hide it from the map.
+    </div>
+  </div>
+  <div id="map">
+    <button class="btn btn-secondary btn-sm panel-toggle" id="panelToggle">&#9776; Pins</button>
+    {% if not assets.basemaps %}
+    <div class="empty-map">
+      <div class="card" style="max-width:520px;">
+        <div class="card-title">No offline map tiles yet</div>
+        <p style="font-size:13px;color:var(--text-dim);">
+          Run the map downloader on the Pi while it has internet. It fetches a world overview,
+          street-level tiles for your region, label fonts, and the national park maps:
+        </p>
+        <code style="display:block;background:var(--surface2);padding:8px 10px;border-radius:6px;font-size:12px;">bash download/maps.sh --storage /mnt/survive --region {{ map_region or 'north-america' }}</code>
+        <p style="font-size:12px;color:var(--text-dim);margin-top:10px;">
+          Tiles land in <code>maps/pmtiles/</code>. You can also copy any <code>.pmtiles</code> file there by hand.
+        </p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/vendor/maplibre-gl.js"></script>
+<script src="/static/vendor/pmtiles.js"></script>
+<script src="/static/vendor/protomaps-basemaps.js"></script>
+<script>
+(function () {
+  'use strict';
+  const ASSETS = {{ assets|tojson }};
+  let PINS = {{ pins|tojson }};
+  const ICONS = {{ icons|tojson }};
+  const COLORS = {{ colors|tojson }};
+  const EMOJI = { pin:'📍', water:'💧', fuel:'⛽', medical:'🏥', camp:'⛺', cache:'📦', home:'🏠',
+                  food:'🌾', danger:'⚠️', radio:'📡', tools:'🔧', people:'👥' };
+  const msg = document.getElementById('mapMsg');
+  const say = (t, warn) => { msg.textContent = t || ''; msg.style.color = warn ? 'var(--danger)' : 'var(--warning)'; };
+
+  // ── Map setup (PMTiles over HTTP range requests; no tile server needed) ──
+  const protocol = new pmtiles.Protocol();
+  maplibregl.addProtocol('pmtiles', protocol.tile);
+  const flavor = basemaps.namedFlavor('dark');
+  const style = { version: 8, sources: {}, layers: [],
+    glyphs: location.origin + '/serve/maps/fonts/{fontstack}/{range}.pbf' };
+  if (ASSETS.sprites_ok) style.sprite = location.origin + '/serve/maps/sprites/v4/dark';
+  // Smallest (world overview) first so region tiles draw on top of it.
+  const bases = ASSETS.basemaps.slice().reverse();
+  bases.forEach((b, i) => {
+    const src = 'base' + i;
+    style.sources[src] = { type: 'vector', url: 'pmtiles://' + location.origin + b.url,
+                           attribution: '© OpenStreetMap contributors · Protomaps' };
+    let layers = basemaps.layers(src, flavor, { lang: 'en' });
+    if (!ASSETS.fonts_ok) layers = layers.filter(l => !(l.layout && l.layout['text-field']));
+    if (!ASSETS.sprites_ok) layers = layers.filter(l => !(l.layout && l.layout['icon-image']));
+    layers.forEach(l => { l.id = src + '_' + l.id; style.layers.push(l); });
+  });
+  if (!bases.length) style.layers.push({ id: 'bg', type: 'background', paint: { 'background-color': '#0d1117' } });
+
+  let view = null;
+  try { view = JSON.parse(localStorage.getItem('survive.mapview') || 'null'); } catch (e) { view = null; }
+  const map = new maplibregl.Map({
+    container: 'map', style, attributionControl: { compact: true },
+    center: (view && view.c) || [-98, 39], zoom: (view && view.z) || 3, maxZoom: 18,
+  });
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
+  map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-left');
+  map.on('moveend', () => {
+    try { localStorage.setItem('survive.mapview', JSON.stringify({ c: map.getCenter().toArray(), z: map.getZoom() })); } catch (e) {}
+  });
+  map.on('error', e => { if (e && e.error && /pbf|glyph/i.test(String(e.error.message || ''))) return; });
+
+  // First visit: fit to the biggest basemap's bounds (the region extract).
+  if (!view && ASSETS.basemaps.length) {
+    new pmtiles.PMTiles(location.origin + ASSETS.basemaps[0].url).getHeader().then(h => {
+      if (h.minLon < h.maxLon) map.fitBounds([[h.minLon, h.minLat], [h.maxLon, h.maxLat]], { padding: 20, duration: 0 });
+    }).catch(() => {});
+  }
+
+  // Satellite overlay (raster PMTiles).
+  const satBtn = document.getElementById('satBtn');
+  if (satBtn && ASSETS.overlays.length) {
+    let on = false;
+    map.on('load', () => {
+      map.addSource('sat', { type: 'raster', url: 'pmtiles://' + location.origin + ASSETS.overlays[0].url, tileSize: 256 });
+      map.addLayer({ id: 'sat', type: 'raster', source: 'sat', layout: { visibility: 'none' },
+                     paint: { 'raster-opacity': 0.85 } }, style.layers.length ? style.layers[0].id : undefined);
+    });
+    satBtn.addEventListener('click', () => {
+      on = !on; satBtn.classList.toggle('active', on);
+      if (map.getLayer('sat')) map.setLayoutProperty('sat', 'visibility', on ? 'visible' : 'none');
+    });
+  }
+
+  // ── Pins ────────────────────────────────────────────────────────────────
+  const markers = new Map();
+  let popup = null;
+
+  function markerEl(pin) {
+    const el = document.createElement('div');
+    el.className = 'marker-pin';
+    el.style.background = pin.color;
+    const s = document.createElement('span'); s.textContent = EMOJI[pin.icon] || EMOJI.pin;
+    el.appendChild(s);
+    el.title = pin.name;
+    return el;
+  }
+
+  function drawMarkers() {
+    markers.forEach(m => m.remove()); markers.clear();
+    PINS.filter(p => !p.hidden).forEach(p => {
+      const m = new maplibregl.Marker({ element: markerEl(p), anchor: 'bottom', offset: [6, 0] })
+        .setLngLat([p.lon, p.lat]).addTo(map);
+      m.getElement().addEventListener('click', ev => { ev.stopPropagation(); openView(p); });
+      markers.set(p.id, m);
+    });
+  }
+
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+
+  function openView(pin) {
+    closePopup();
+    const box = el('div', 'pin-view');
+    const head = el('div'); const dot = el('span'); dot.textContent = (EMOJI[pin.icon] || EMOJI.pin) + ' ';
+    head.appendChild(dot); head.appendChild(el('span', 'name', pin.name)); box.appendChild(head);
+    box.appendChild(el('div', 'coords', pin.lat.toFixed(5) + ', ' + pin.lon.toFixed(5)));
+    if (pin.notes) box.appendChild(el('div', 'notes', pin.notes));
+    const row = el('div', 'row'); row.style.display = 'flex'; row.style.gap = '6px'; row.style.marginTop = '10px';
+    const edit = el('button', 'btn btn-secondary btn-sm', 'Edit'); edit.onclick = () => openForm(pin, [pin.lon, pin.lat]);
+    const del = el('button', 'btn btn-secondary btn-sm', 'Delete'); del.style.color = 'var(--danger)';
+    del.onclick = () => { if (confirm('Delete pin "' + pin.name + '"?')) removePin(pin.id); };
+    row.appendChild(edit); row.appendChild(del); box.appendChild(row);
+    popup = new maplibregl.Popup({ offset: [0, -30], maxWidth: '320px' }).setLngLat([pin.lon, pin.lat]).setDOMContent(box).addTo(map);
+  }
+
+  function openForm(pin, lngLat) {
+    closePopup();
+    const f = el('div', 'pin-form');
+    const name = el('input'); name.placeholder = 'Name (e.g. Spring, Fuel cache)'; name.value = pin ? pin.name : ''; name.maxLength = 120;
+    f.appendChild(el('label', '', 'Name')); f.appendChild(name);
+    const icon = el('select'); ICONS.forEach(i => { const o = el('option', '', (EMOJI[i] || '') + ' ' + i); o.value = i; if (pin && pin.icon === i) o.selected = true; icon.appendChild(o); });
+    f.appendChild(el('label', '', 'Type')); f.appendChild(icon);
+    let color = pin ? pin.color : COLORS[0];
+    const sw = el('div', 'swatches');
+    COLORS.forEach(c => { const s = el('div', 'swatch' + (c === color ? ' sel' : '')); s.style.background = c;
+      s.onclick = () => { color = c; sw.querySelectorAll('.swatch').forEach(x => x.classList.remove('sel')); s.classList.add('sel'); }; sw.appendChild(s); });
+    f.appendChild(el('label', '', 'Colour')); f.appendChild(sw);
+    const notes = el('textarea'); notes.placeholder = 'Notes'; notes.value = pin ? (pin.notes || '') : ''; notes.maxLength = 4000;
+    f.appendChild(el('label', '', 'Notes')); f.appendChild(notes);
+    f.appendChild(el('div', 'coords', 'at ' + lngLat[1].toFixed(5) + ', ' + lngLat[0].toFixed(5)));
+    const row = el('div', 'row');
+    const save = el('button', 'btn btn-primary btn-sm', pin ? 'Save' : 'Add pin');
+    const cancel = el('button', 'btn btn-secondary btn-sm', 'Cancel'); cancel.onclick = closePopup;
+    save.onclick = () => {
+      const body = { name: name.value, icon: icon.value, color, notes: notes.value, lat: lngLat[1], lon: lngLat[0] };
+      save.disabled = true;
+      const req = pin ? fetch('/api/map/pins/' + pin.id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+                      : fetch('/api/map/pins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      req.then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        if (pin) PINS = PINS.map(p => p.id === pin.id ? d : p); else PINS.push(d);
+        closePopup(); refresh(); say(pin ? 'Pin updated.' : 'Pin saved.'); })
+        .catch(e => { say('Could not save: ' + e.message, true); save.disabled = false; });
+    };
+    row.appendChild(save); row.appendChild(cancel); f.appendChild(row);
+    popup = new maplibregl.Popup({ offset: [0, -10], maxWidth: '320px', closeOnClick: false }).setLngLat(lngLat).setDOMContent(f).addTo(map);
+    setTimeout(() => name.focus(), 50);
+  }
+
+  function closePopup() { if (popup) { popup.remove(); popup = null; } }
+
+  function removePin(id) {
+    fetch('/api/map/pins/' + id, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); PINS = PINS.filter(p => p.id !== id); closePopup(); refresh(); say('Pin deleted.'); })
+      .catch(e => say('Could not delete: ' + e.message, true));
+  }
+
+  function setHidden(pin, hidden) {
+    fetch('/api/map/pins/' + pin.id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hidden }) })
+      .then(r => r.json()).then(d => { if (d && d.id) { PINS = PINS.map(p => p.id === d.id ? d : p); refresh(); } })
+      .catch(() => say('Could not update pin.', true));
+  }
+
+  // ── Side panel list ─────────────────────────────────────────────────────
+  const list = document.getElementById('pinList');
+  const search = document.getElementById('pinSearch');
+  const sort = document.getElementById('pinSort');
+  const showHidden = document.getElementById('showHidden');
+
+  function renderList() {
+    list.innerHTML = '';
+    const q = search.value.trim().toLowerCase();
+    let rows = PINS.filter(p => showHidden.checked || !p.hidden);
+    if (q) rows = rows.filter(p => (p.name + ' ' + (p.notes || '') + ' ' + p.icon).toLowerCase().includes(q));
+    const key = sort.value;
+    rows.sort((a, b) => key === 'updated' ? String(b.updated).localeCompare(String(a.updated))
+                       : key === 'icon' ? (a.icon.localeCompare(b.icon) || a.name.localeCompare(b.name))
+                       : a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    if (!rows.length) { list.appendChild(el('div', 'map-note', PINS.length ? 'No pins match.' : 'No pins yet — click "Add pin", then click the map.')); return; }
+    rows.forEach(p => {
+      const row = el('div', 'pin-row' + (p.hidden ? ' hidden-pin' : ''));
+      const dot = el('div', 'pin-dot', EMOJI[p.icon] || EMOJI.pin); dot.style.background = p.color;
+      const text = el('div', 'pin-text'); text.appendChild(el('div', 'pin-name', p.name));
+      text.appendChild(el('div', 'pin-meta', p.icon + ' · ' + p.lat.toFixed(4) + ', ' + p.lon.toFixed(4) + (p.notes ? ' · ' + p.notes.split('\n')[0] : '')));
+      const cb = el('input'); cb.type = 'checkbox'; cb.checked = !!p.hidden; cb.title = 'Hide from map';
+      cb.addEventListener('click', ev => { ev.stopPropagation(); setHidden(p, cb.checked); });
+      row.appendChild(dot); row.appendChild(text); row.appendChild(cb);
+      row.addEventListener('click', () => { map.flyTo({ center: [p.lon, p.lat], zoom: Math.max(map.getZoom(), 13) }); if (!p.hidden) openView(p); });
+      list.appendChild(row);
+    });
+  }
+  function refresh() { drawMarkers(); renderList(); }
+  [search, sort, showHidden].forEach(x => x.addEventListener('input', renderList));
+
+  // ── Add-pin mode ────────────────────────────────────────────────────────
+  const addBtn = document.getElementById('addPinBtn');
+  let adding = false;
+  addBtn.addEventListener('click', () => {
+    adding = !adding; addBtn.classList.toggle('active', adding);
+    map.getCanvas().style.cursor = adding ? 'crosshair' : '';
+    say(adding ? 'Click the map where the pin goes.' : '');
+  });
+  map.on('click', e => {
+    if (!adding) { return; }
+    adding = false; addBtn.classList.remove('active'); map.getCanvas().style.cursor = ''; say('');
+    openForm(null, [e.lngLat.lng, e.lngLat.lat]);
+  });
+
+  // ── My location ─────────────────────────────────────────────────────────
+  let meMarker = null;
+  document.getElementById('locateBtn').addEventListener('click', () => {
+    if (!navigator.geolocation) { say('This browser has no location support.', true); return; }
+    if (!window.isSecureContext) { say('Browsers only share GPS over HTTPS (or on localhost). Enable TLS with scripts/setup_tls.sh.', true); return; }
+    say('Finding your position…');
+    navigator.geolocation.getCurrentPosition(pos => {
+      const ll = [pos.coords.longitude, pos.coords.latitude];
+      if (!meMarker) { const e = el('div', 'marker-me'); meMarker = new maplibregl.Marker({ element: e }).setLngLat(ll).addTo(map); }
+      else meMarker.setLngLat(ll);
+      map.flyTo({ center: ll, zoom: Math.max(map.getZoom(), 14) });
+      say('You are at ' + ll[1].toFixed(5) + ', ' + ll[0].toFixed(5) + ' (±' + Math.round(pos.coords.accuracy) + ' m)');
+    }, err => say('Location unavailable: ' + err.message, true), { enableHighAccuracy: true, timeout: 15000 });
+  });
+
+  // ── Import ──────────────────────────────────────────────────────────────
+  const fileInput = document.getElementById('importFile');
+  document.getElementById('importBtn').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files[0]; if (!f) return;
+    if (f.size > 4 * 1024 * 1024) { say('File too large (4 MB max).', true); return; }
+    f.text().then(text => fetch('/api/map/pins/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) }))
+      .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        PINS = PINS.concat(d.pins); refresh(); say('Imported ' + d.imported + ' pin(s).'); })
+      .catch(e => say('Import failed: ' + e.message, true))
+      .finally(() => { fileInput.value = ''; });
+  });
+
+  // ── Mobile panel toggle ─────────────────────────────────────────────────
+  const panel = document.getElementById('mapPanel');
+  document.getElementById('panelToggle').addEventListener('click', () => { panel.classList.toggle('collapsed'); map.resize(); });
+
+  refresh();
+})();
+</script>
+{% endblock %}

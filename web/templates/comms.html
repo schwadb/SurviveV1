@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Comms{% endblock %}
+
+{% block head %}
+<style>
+  .tool-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:16px; margin-top:16px; }
+  .tool { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px; display:flex; flex-direction:column; gap:8px; }
+  .tool .t { font-size:15px; font-weight:700; }
+  .tool .d { font-size:13px; color:var(--text-dim); flex:1; }
+  .freq { width:100%; border-collapse:collapse; font-size:13px; }
+  .freq td, .freq th { padding:6px 8px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+  .freq th { font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.4px; }
+  .freq td.f { font-family:var(--mono); white-space:nowrap; color:var(--accent); }
+  .muted { font-size:12px; color:var(--text-dim); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">&#128225; Comms</div>
+  <div class="page-sub">Radio and mesh tools that work with no infrastructure, plus the frequencies worth memorising.</div>
+
+  <div class="tool-grid">
+    <div class="tool">
+      <div class="t">&#8226;&#8212; Morse code tool</div>
+      <div class="d">Type to hear and see Morse, tap a key to decode, or translate dots and dashes you copied by ear. Works on any phone with a speaker or a torch.</div>
+      <a href="/comms/morse" class="btn btn-primary btn-sm">Open</a>
+    </div>
+    <div class="tool">
+      <div class="t">&#128246; Meshtastic web client</div>
+      <div class="d">
+        Configure and message LoRa mesh radios from the browser. Connect over Wi-Fi/HTTP to a node on this network;
+        Bluetooth and USB serial need an HTTPS page.
+        {% if not mesh_installed %}<br><span style="color:var(--warning);">Not downloaded yet</span> &mdash; run
+        <code>bash download/comms.sh</code> on the Pi.{% elif not mesh_running %}<br><span style="color:var(--warning);">Installed but not running</span> &mdash; restart it from the Status page.{% endif %}
+      </div>
+      {% if mesh_installed and mesh_running %}
+      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_MESHTASTIC }}/" target="_blank" class="btn btn-primary btn-sm">Open (port {{ PORT_MESHTASTIC }})</a>
+      {% else %}
+      <a href="/status" class="btn btn-secondary btn-sm">Status page</a>
+      {% endif %}
+    </div>
+    <div class="tool">
+      <div class="t">&#128250; Repeater directory</div>
+      <div class="d">Your own imported repeater lists (CHIRP or RepeaterBook CSV exports), searchable offline by city, callsign or band.
+        {% if repeater_count %}<br><strong style="color:var(--text);">{{ repeater_count }}</strong> repeaters from {{ repeater_files|length }} file(s).{% else %}<br>No lists imported yet.{% endif %}</div>
+      <a href="/comms/repeaters" class="btn btn-primary btn-sm">Open</a>
+    </div>
+    <div class="tool">
+      <div class="t">&#128218; Reading</div>
+      <div class="d">Ham radio Stack Exchange, licence study guides, antenna building and emergency net procedures are in the library.</div>
+      <a href="/search?q=radio" class="btn btn-secondary btn-sm">Search the library</a>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px;">
+    <div class="card-title">Emergency and calling frequencies (North America)</div>
+    <table class="freq">
+      <thead><tr><th>Service</th><th>Frequency</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Ham 2 m calling</td><td class="f">146.520 MHz FM</td><td>National simplex calling frequency. Licence required to transmit; anyone may listen.</td></tr>
+        <tr><td>Ham 70 cm calling</td><td class="f">446.000 MHz FM</td><td>National simplex calling frequency.</td></tr>
+        <tr><td>Ham 6 m / 1.25 m calling</td><td class="f">52.525 / 223.500 MHz</td><td>Less crowded simplex calling frequencies.</td></tr>
+        <tr><td>FRS / GMRS ch 1&ndash;7</td><td class="f">462.5625&ndash;462.7125 MHz</td><td>Ch 1 462.5625, 2 .5875, 3 .6125, 4 .6375, 5 .6625, 6 .6875, 7 .7125. Shared, 2 W FRS / 5 W GMRS.</td></tr>
+        <tr><td>FRS ch 8&ndash;14</td><td class="f">467.5625&ndash;467.7125 MHz</td><td>0.5 W only. Ch 8 467.5625 then +0.025 per channel.</td></tr>
+        <tr><td>FRS / GMRS ch 15&ndash;22</td><td class="f">462.550&ndash;462.725 MHz</td><td>Ch 15 462.550, 16 .575, 17 .600, 18 .625, 19 .650, 20 .675, 21 .700, 22 .725. GMRS repeater outputs; inputs +5 MHz.</td></tr>
+        <tr><td>GMRS emergency convention</td><td class="f">Ch 20 (462.675) PL 141.3</td><td>Widely monitored travel/emergency channel.</td></tr>
+        <tr><td>MURS</td><td class="f">151.820 / 151.880 / 151.940 / 154.570 / 154.600 MHz</td><td>Licence-free VHF, 2 W.</td></tr>
+        <tr><td>CB</td><td class="f">Ch 9 27.065 / Ch 19 27.185 MHz</td><td>Ch 9 emergency, Ch 19 highway. AM, no licence.</td></tr>
+        <tr><td>Marine VHF</td><td class="f">Ch 16 156.800 MHz</td><td>International distress, safety and calling. Ch 9 156.450 secondary calling.</td></tr>
+        <tr><td>NOAA weather radio</td><td class="f">162.400 .425 .450 .475 .500 .525 .550 MHz</td><td>Continuous forecasts and alerts; receive-only.</td></tr>
+        <tr><td>Aviation emergency</td><td class="f">121.500 MHz AM</td><td>International aeronautical distress; 243.000 MHz military.</td></tr>
+        <tr><td>Meshtastic (US)</td><td class="f">906&ndash;928 MHz LoRa</td><td>Default LongFast preset, channel slot 20 (906.875 MHz). Licence-free.</td></tr>
+        <tr><td>Ham HF emergency nets</td><td class="f">3.985 / 7.265 / 14.300 MHz</td><td>Regional and maritime mobile nets; check the ARRL net directory in the library.</td></tr>
+      </tbody>
+    </table>
+    <div class="muted" style="margin-top:8px;">
+      In a genuine emergency, any station may use any means available to attract attention and get help
+      (FCC 97.403 / 97.405). Learn the frequencies before you need them.
+    </div>
+  </div>
+</div>
+{% endblock %}

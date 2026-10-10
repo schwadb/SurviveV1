@@ -15,7 +15,11 @@ A self-hosted, offline-first knowledge base for post-apocalyptic or grid-down su
 | **Survival Videos** | YouTube playlists downloaded via yt-dlp |
 | **Maps** | OpenStreetMap offline tiles (region-selectable) |
 | **Books/PDFs** | Military manuals, homesteading, permaculture, engineering |
-| **AI Assistant** | Local LLM (Ollama) powered by Raspberry Pi AI Hat |
+| **AI Assistant** | Local LLM (Ollama) with retrieval over the offline library (CPU; the Hailo-8L hat does not accelerate LLMs) |
+| **Maps & Pins** | In-browser street maps (no tile server), saved pins with notes, GPX/GeoJSON import/export, satellite overlay, official national park map PDFs |
+| **Library Manager** | Browse the Kiwix catalog in any language, download ZIMs from the dashboard, register sideloaded files |
+| **Notes & Shared Files** | Shared Markdown notebook and a drop box for your own documents, both stored on the drive |
+| **Comms** | Morse encoder/decoder, Meshtastic web client, searchable imported repeater lists, emergency frequency reference |
 
 ---
 
@@ -77,7 +81,7 @@ SurviveV1/
 ├── setup/          # Install scripts for all dependencies
 ├── download/       # Content scrapers (Kiwix, yt-dlp, wget)
 ├── web/            # Flask dashboard served at :8080
-├── ai/             # Ollama + local LLM setup for AI Hat
+├── ai/             # Ollama + local LLM setup (CPU inference)
 ├── sync/           # rclone cloud sync (Google Drive, Dropbox, S3)
 ├── scripts/        # start/stop/status/update helpers
 ├── systemd/        # Systemd service unit files
@@ -98,7 +102,25 @@ SurviveV1/
 | Jellyfin | 8096 | Video player for downloaded videos |
 | Calibre-Web | 8083 | Ebook reader (PDFs, EPUBs) |
 | Ollama AI | 11434 | Local LLM API |
+| Meshtastic Web | 8084 | LoRa mesh radio client (after `download/comms.sh`) |
 | Nginx | 80 | Reverse proxy (optional) |
+
+### Dashboard pages
+
+| Page | What it does |
+|------|--------------|
+| `/maps` | Offline street map with saved pins (icon, colour, notes, hide), search, GPX/GeoJSON import and export, GPS locate over HTTPS, satellite overlay |
+| `/content` | Library manager: Kiwix catalog by language and category, one-click ZIM downloads (admin), downloads list, "Rescan library" for sideloaded files |
+| `/notes` | Shared Markdown notes (anyone can write, admin deletes); searchable from the main search box |
+| `/shared` | Upload and download personal files (2 GB per upload, 10 GB always kept free) |
+| `/comms` | Morse tool, Meshtastic web client link, repeater directory from your own CSV exports, calling/emergency frequencies |
+| `/status` | Services, downloads, one-click update, and the nightly auto-update switch |
+
+### Nightly auto-update
+
+Set `SURVIVE_AUTO_UPDATE="true"` (time and bandwidth cap next to it) in `config/survive.conf`,
+re-run `sudo bash scripts/generate_services.sh`, or flip the switch on the Status page. The
+timer runs the gap-fill updater at low priority and does nothing when the Pi is offline.
 
 ### Grid-down access (no router needed)
 

@@ -452,8 +452,10 @@ install_services() {
     # user so services actually start on non-'pi' systems.
     local svc_user="${SUDO_USER:-pi}"
     id "$svc_user" &>/dev/null || svc_user="pi"
-    for unit in "$REPO_DIR"/systemd/*.service; do
-        sed "s/^User=pi$/User=${svc_user}/" "$unit" \
+    for unit in "$REPO_DIR"/systemd/*.service "$REPO_DIR"/systemd/*.timer; do
+        [[ -f "$unit" ]] || continue
+        sed -e "s/^User=pi$/User=${svc_user}/" \
+            -e "s|/home/pi/SurviveV1|${REPO_DIR}|g" "$unit" \
             > "/etc/systemd/system/$(basename "$unit")"
     done
     info "Services will run as user: ${svc_user}"
@@ -465,6 +467,8 @@ install_services() {
     systemctl enable calibre-web.service 2>/dev/null || true
     systemctl enable ollama.service 2>/dev/null || true
     systemctl enable martin-tiles.service 2>/dev/null || true
+    # Stays inactive (ConditionPathExists) until download/comms.sh has run.
+    systemctl enable survive-meshtastic.service 2>/dev/null || true
     success "Systemd services installed"
 }
 

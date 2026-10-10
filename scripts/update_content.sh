@@ -12,6 +12,15 @@ if [[ ! -f "$_CONF" ]]; then echo "[WARN] Config not found at $_CONF -- using de
 
 STORAGE_PATH="${SURVIVE_STORAGE_PATH:-/mnt/survive}"
 
+# --scheduled: started by survive-content-update.timer overnight. Differences
+# from a manual run: exit 0 quietly when offline, never overlap a manual
+# update, run at low priority, and cap bandwidth with
+# SURVIVE_AUTO_UPDATE_RATE_LIMIT (bytes/s) instead of SURVIVE_BANDWIDTH_LIMIT.
+SCHEDULED=false
+for arg in "$@"; do
+    [[ "$arg" == "--scheduled" ]] && SCHEDULED=true
+done
+
 BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[UPDATE]${NC} $*"; }
 success() { echo -e "${GREEN}[UPDATE]${NC} $*"; }
@@ -19,16 +28,39 @@ warn()    { echo -e "${YELLOW}[UPDATE]${NC} $*"; }
 
 # Check internet
 check_internet() {
-    ping -c 1 -W 3 8.8.8.8 &>/dev/null || {
+    ping -c 1 -W 3 8.8.8.8 &>/dev/null || curl -sfI --max-time 8 https://download.kiwix.org >/dev/null 2>&1 || {
+        if [[ "$SCHEDULED" == "true" ]]; then
+            info "Scheduled update: no internet tonight -- skipping"
+            exit 0
+        fi
         warn "No internet connection. Connect to internet to update content."
         exit 1
     }
     success "Internet connection available"
 }
 
+setup_scheduled_run() {
+    [[ "$SCHEDULED" == "true" ]] || return 0
+    local pid_file="$STORAGE_PATH/.logs/update_content.pid" old
+    mkdir -p "$STORAGE_PATH/.logs"
+    if old=$(cat "$pid_file" 2>/dev/null) && [[ -n "$old" ]] && kill -0 "$old" 2>/dev/null \
+       && [[ "$old" != "$$" ]]; then
+        info "Scheduled update: another update (pid $old) is still running -- skipping"
+        exit 0
+    fi
+    echo "$$" > "$pid_file"   # lets the dashboard show the run as in progress
+    renice -n 15 -p $$ >/dev/null 2>&1 || true
+    if [[ -n "${SURVIVE_AUTO_UPDATE_RATE_LIMIT:-}" ]] && [[ "${SURVIVE_AUTO_UPDATE_RATE_LIMIT}" != "0" ]]; then
+        export SURVIVE_BANDWIDTH_LIMIT="$SURVIVE_AUTO_UPDATE_RATE_LIMIT"
+        info "Scheduled update: bandwidth capped at $(( SURVIVE_AUTO_UPDATE_RATE_LIMIT / 1024 )) KB/s"
+    fi
+    info "Scheduled update started $(date '+%Y-%m-%d %H:%M')"
+}
+
 main() {
     info "SurviveV1 Content Updater"
     check_internet
+    setup_scheduled_run
 
     # Update git repo itself — pull whatever branch this clone tracks, never
     # a hardcoded one (the repo may live on main, a fork, or a test branch).
@@ -91,6 +123,13 @@ main() {
         info "Refreshing offline app depot..."
         bash "$REPO_DIR/download/app_depot.sh" --storage "$STORAGE_PATH" \
             || warn "app_depot finished with errors"
+    fi
+
+    # Refresh the Meshtastic web client (skips when already current)
+    if [[ "${CONTENT_MESHTASTIC:-Y}" =~ [Yy] ]]; then
+        info "Refreshing comms tools..."
+        bash "$REPO_DIR/download/comms.sh" --storage "$STORAGE_PATH" \
+            || warn "comms finished with errors"
     fi
 
     # Refresh the openFDA drug reference (skips already-downloaded partitions)

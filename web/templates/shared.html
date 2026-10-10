@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Shared Files{% endblock %}
+
+{% block head %}
+<style>
+  .drop { border:2px dashed var(--border); border-radius:var(--radius); padding:20px; text-align:center; background:var(--surface); transition:border-color .15s; }
+  .drop.over { border-color: var(--accent); background: var(--surface2); }
+  .drop input[type=file] { display:block; margin:10px auto; color:var(--text-dim); }
+  .file-row { display:flex; gap:12px; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .file-row:last-child { border-bottom:none; }
+  .file-row .name { flex:1; min-width:0; word-break:break-all; }
+  .file-row .meta { font-size:11px; color:var(--text-dim); font-family:var(--mono); white-space:nowrap; }
+  .muted { font-size:12px; color:var(--text-dim); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">&#128194; Shared Files</div>
+  <div class="page-sub">
+    A drop box on the storage drive for your own documents: scanned papers, photos of the
+    pantry, PDFs you bought, phone backups. Anyone on the network can add files and download
+    them; deleting needs the admin login.
+  </div>
+
+  {% if message %}
+  <div class="card" style="margin-top:16px;border-color:var(--accent2);"><span class="muted">{{ message }}</span></div>
+  {% endif %}
+
+  <form class="drop" id="drop" method="post" action="/shared/upload" enctype="multipart/form-data" style="margin-top:16px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="font-size:14px;font-weight:600;">Drop files here or choose them</div>
+    <input type="file" name="files" id="files" multiple>
+    <button type="submit" class="btn btn-primary" id="uploadBtn">Upload</button>
+    <div class="muted" style="margin-top:8px;">Up to 2 GB per upload &middot; {{ free_gb }} GB free (10 GB is always kept free)</div>
+  </form>
+
+  <div class="card" style="margin-top:20px;">
+    <div class="card-title">Files ({{ items|length }})</div>
+    {% for it in items %}
+    <div class="file-row">
+      <div style="font-size:20px;">{% if it.is_dir %}&#128193;{% elif it.ext in ('jpg','jpeg','png','gif','webp') %}&#128444;{% elif it.ext == 'pdf' %}&#128196;{% else %}&#128462;{% endif %}</div>
+      <div class="name">
+        {% if it.is_dir %}
+          <a href="/files?path=shared/{{ it.name|urlencode }}" style="color:var(--accent2);">{{ it.name }}/</a>
+        {% else %}
+          <a href="/serve/shared/{{ it.name|urlencode }}" style="color:var(--text);">{{ it.name }}</a>
+        {% endif %}
+      </div>
+      <div class="meta">{% if it.size_mb is not none %}{{ it.size_mb }} MB &middot; {% endif %}{{ it.modified }}</div>
+      {% if not it.is_dir %}
+        <a href="/serve/shared/{{ it.name|urlencode }}" class="btn btn-secondary btn-sm" download>Download</a>
+        {% if is_admin %}
+        <form method="post" action="/shared/delete" onsubmit="return confirm('Delete {{ it.name }}?');" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="name" value="{{ it.name }}">
+          <button type="submit" class="btn btn-secondary btn-sm" style="color:var(--danger);">Delete</button>
+        </form>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="muted">Nothing here yet. Files also appear in <code>shared/</code> on the drive and in the Samba share.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const drop = document.getElementById('drop'), input = document.getElementById('files'), btn = document.getElementById('uploadBtn');
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) { input.files = e.dataTransfer.files; } });
+  drop.addEventListener('submit', () => { btn.disabled = true; btn.textContent = 'Uploading… (large files take a while)'; });
+</script>
+{% endblock %}

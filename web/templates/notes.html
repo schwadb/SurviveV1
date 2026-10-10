@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Notes{% endblock %}
+
+{% block head %}
+<style>
+  .note-row { display:flex; gap:12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--border); text-decoration:none; color:var(--text); }
+  .note-row:last-child { border-bottom:none; }
+  .note-row:hover { background: var(--surface2); text-decoration:none; }
+  .note-title { font-size:14px; font-weight:600; }
+  .note-snip { font-size:12px; color:var(--text-dim); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .note-date { font-size:11px; color:var(--text-dim); font-family:var(--mono); white-space:nowrap; }
+  .notes-bar { display:flex; gap:8px; margin:16px 0; flex-wrap:wrap; }
+  .notes-bar input { flex:1; min-width:200px; background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:9px 11px; font-size:13px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">&#128221; Notes</div>
+  <div class="page-sub">
+    A shared notebook stored on the drive. Journal, inventories, plans, instructions for
+    the household &mdash; anyone on the network can write; deleting needs the admin login.
+  </div>
+
+  <form class="notes-bar" method="get" action="/notes">
+    <input type="search" name="q" value="{{ query }}" placeholder="Search notes&hellip;" autocomplete="off">
+    <button type="submit" class="btn btn-secondary">Search</button>
+    <a href="/notes/new" class="btn btn-primary">&#10010; New note</a>
+    <a href="/shared" class="btn btn-secondary" title="Upload and download your own files">&#128194; Shared files</a>
+  </form>
+
+  <div class="card">
+    {% if notes %}
+      {% for n in notes %}
+      <a href="/notes/{{ n.slug }}" class="note-row">
+        <div style="flex:1;min-width:0;">
+          <div class="note-title">{{ n.title }}</div>
+          {% if n.snippet %}<div class="note-snip">{{ n.snippet }}</div>{% endif %}
+        </div>
+        <div class="note-date">{{ n.modified }}</div>
+      </a>
+      {% endfor %}
+    {% elif query %}
+      <p style="font-size:13px;color:var(--text-dim);">No notes match &ldquo;{{ query }}&rdquo;.</p>
+    {% else %}
+      <p style="font-size:13px;color:var(--text-dim);">
+        No notes yet. Notes are plain Markdown files in <code>notes/</code> on the storage drive,
+        so they also show up in the Samba share and survive a reinstall.
+      </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

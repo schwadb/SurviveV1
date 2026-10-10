@@ -469,6 +469,14 @@ CONTENT_MAPS="${CHOSEN_MAP_REGION_FLAG:-Y}"
 CONTENT_PDFS="Y"
 CONTENT_AI_MODELS="Y"
 CONTENT_IFIX="Y"
+CONTENT_MESHTASTIC="Y"
+CONTENT_NPS_MAPS="Y"
+CONTENT_SATELLITE="Y"
+
+# ── Nightly automatic content update (see config/survive.conf.example) ────────
+SURVIVE_AUTO_UPDATE="false"
+SURVIVE_AUTO_UPDATE_TIME="02:30"
+SURVIVE_AUTO_UPDATE_RATE_LIMIT="2097152"
 
 # ── Video quality (480, 720, 1080) ─────────────────────────────────────────────
 VIDEO_QUALITY="720"

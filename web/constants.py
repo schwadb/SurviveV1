@@ -10,6 +10,7 @@ PORT_KOLIBRI   = 8082
 PORT_CALIBRE   = 8083
 PORT_JELLYFIN  = 8096
 PORT_MAPS      = 3000
+PORT_MESHTASTIC = 8084
 PORT_OLLAMA    = 11434
 
 # ── Service registry ──────────────────────────────────────────────────────────
@@ -29,6 +30,8 @@ SERVICES = {
                  "icon": "🗺️", "color": "#f39c12", "unit": "martin-tiles"},
     "ai":       {"name": "AI Assistant",      "port": PORT_OLLAMA,
                  "icon": "🤖", "color": "#16a085", "unit": "ollama"},
+    "meshtastic": {"name": "Meshtastic Web",  "port": PORT_MESHTASTIC,
+                 "icon": "📡", "color": "#67ea94", "unit": "survive-meshtastic"},
 }
 
 # ── Content budget ─────────────────────────────────────────────────────────────
@@ -56,6 +59,7 @@ DOWNLOAD_CATEGORIES = [
     {"id": "mental_health", "name": "Mental Health",       "budget_gb": 5,   "dir": "pdfs"},
     {"id": "apps",          "name": "Offline App Depot",   "budget_gb": 2,   "dir": "apps"},
     {"id": "drugs",         "name": "Drug Reference",      "budget_gb": 3,   "dir": "drugs"},
+    {"id": "comms",         "name": "Comms Tools",         "budget_gb": 1,   "dir": "comms"},
 ]
 
 # ── Knowledge categories ───────────────────────────────────────────────────────

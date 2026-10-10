@@ -29,6 +29,12 @@ CONTENT_APPS="Y"
 # Offline drug reference (~1.8 GB): openFDA drug labels, searchable by drug
 # name or symptom, with a label-text interaction check.
 CONTENT_DRUGS="Y"
+# Meshtastic web client (~10 MB) served on :8084 for LoRa mesh radios.
+CONTENT_MESHTASTIC="Y"
+# Official US national park map PDFs (~2-3 GB; North American regions only).
+CONTENT_NPS_MAPS="Y"
+# World satellite overlay for the map page, zoom 0-6 (~25 MB).
+CONTENT_SATELLITE="Y"
 
 # ── Video quality (480, 720, 1080) ─────────────────────────────────────────────
 VIDEO_QUALITY="720"
@@ -70,6 +76,17 @@ SURVIVE_HOTSPOT_PASS="survive2026"
 # ── Skip AI Hat setup ──────────────────────────────────────────────────────────
 # Set to true if you don't have the Hailo AI Hat
 SKIP_AI_HAT="false"
+
+# ── Nightly automatic content update ──────────────────────────────────────────
+# When true, systemd runs scripts/update_content.sh --scheduled every night at
+# SURVIVE_AUTO_UPDATE_TIME (local, HH:MM). It fills gaps only (new videos,
+# books, missing ZIMs, the Meshtastic client, model updates) and skips silently
+# when the Pi is offline. The Status page has an on/off switch for the same
+# timer. Re-run `sudo bash scripts/generate_services.sh` after changing the
+# time or the cap. Cap is bytes/s (2097152 = 2 MB/s); 0 = unlimited.
+SURVIVE_AUTO_UPDATE="false"
+SURVIVE_AUTO_UPDATE_TIME="02:30"
+SURVIVE_AUTO_UPDATE_RATE_LIMIT="2097152"
 
 # ── Bandwidth limiting ─────────────────────────────────────────────────────────
 # Limit download speed to avoid saturating your internet connection
