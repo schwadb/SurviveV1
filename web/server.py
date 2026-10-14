@@ -232,9 +232,14 @@ class _TTLCache:
 
     def __init__(self, ttl: float) -> None:
         self._ttl = ttl
-        self._ts = 0.0
+        self._ts = float("-inf")
         self._data = None
         self._lock = threading.Lock()
+
+    def invalidate(self):
+        """Force the next get() to recompute."""
+        with self._lock:
+            self._ts = float("-inf")
 
     def get(self, compute):
         """Return cached value, calling compute() to refresh if TTL has expired."""
@@ -2053,7 +2058,7 @@ def comms_page():
         "comms.html",
         mesh_installed=mesh_installed,
         mesh_running=check_service(PORT_MESHTASTIC) if mesh_installed else False,
-        repeater_count=len(_repeaters_cache.get(_compute_repeaters)),
+        repeater_count=len(_repeaters_cache.get(_compute_repeaters) or []),
         repeater_files=[p.name for p in _repeater_files()],
     )
 
@@ -2093,7 +2098,7 @@ def comms_repeaters_upload():
         upload.save(str(REPEATERS_DIR / name))
     except OSError:
         return redirect(url_for("comms_repeaters", m="Could not save the file."))
-    _repeaters_cache._ts = 0.0  # pylint: disable=protected-access
+    _repeaters_cache.invalidate()
     rows = textutils.parse_repeater_csv(
         (REPEATERS_DIR / name).read_text(encoding="utf-8-sig", errors="replace"), source=name)
     return redirect(url_for("comms_repeaters", m=f"Imported {name}: {len(rows)} repeaters."))
@@ -2110,7 +2115,7 @@ def comms_repeaters_delete():
         target.unlink()
     except OSError:
         abort(500)
-    _repeaters_cache._ts = 0.0  # pylint: disable=protected-access
+    _repeaters_cache.invalidate()
     return redirect(url_for("comms_repeaters", m=f"Removed {name}."))
 
 
@@ -2298,7 +2303,7 @@ def api_status():
 
 @app.route("/api/recent")
 def api_recent():
-    return jsonify(get_recent_downloads())
+    return jsonify(get_recent_downloads() or [])
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -2341,7 +2346,7 @@ def _compute_download_status() -> dict:
     except OSError:
         pass
 
-    stats = get_content_stats()  # cached; no extra walk
+    stats = get_content_stats() or {}  # cached; no extra walk
     cats = []
     for cat in DOWNLOAD_CATEGORIES:
         size_gb = stats.get(cat["dir"], {}).get("size_gb", 0)
