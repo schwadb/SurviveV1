@@ -46,7 +46,7 @@ dl_meshtastic_web() {
     # Resolve the release tag so we can skip the download when up to date.
     local final tag
     final=$(curl -sIL --max-time 30 -o /dev/null -w '%{url_effective}' "$MESH_URL" 2>/dev/null || true)
-    tag=$(grep -oE 'download/v?[0-9][^/]*' <<< "$final" | head -1 | sed 's|download/||')
+    tag=$(grep -oE 'download/v?[0-9][^/]*' <<< "$final" | head -1 | sed 's|download/||' || true)
     if [[ -n "$tag" ]] && [[ -f "$MESH_DIR/VERSION" ]] && [[ "$(cat "$MESH_DIR/VERSION")" == "$tag" ]] \
        && [[ -f "$MESH_DIR/index.html" ]]; then
         info "Meshtastic web $tag already installed"

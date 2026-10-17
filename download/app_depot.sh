@@ -79,7 +79,7 @@ dl_app() {  # dl_app <name> <url> <dest-file>
 resolve_latest() {  # resolve_latest <listing-url> <regex>
     local listing_url="$1" regex="$2" listing latest
     listing=$(curl -sSL --max-time 30 -A "$SURVIVE_UA" "$listing_url" 2>/dev/null) || return 1
-    latest=$(grep -oE "$regex" <<< "$listing" | sort -V | tail -1)
+    latest=$(grep -oE "$regex" <<< "$listing" | sort -V | tail -1 || true)
     [[ -n "$latest" ]] || return 1
     echo "${listing_url%/}/$latest"
 }

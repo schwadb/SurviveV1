@@ -56,7 +56,7 @@ _zim_magic_ok() {
 prefix="${FILENAME%_*.zim}"
 existing=$(find "$ZIM_DIR" -type f -name "${prefix}_*.zim" ! -name "*.aria2" 2>/dev/null | head -1 || true)
 if [[ -n "$existing" ]] && [[ ! -f "$existing.aria2" ]] && _zim_magic_ok "$existing"; then
-    remote_sz=$(curl -sIL --max-time 30 "$URL" 2>/dev/null | grep -i '^content-length' | tail -1 | tr -dc '0-9')
+    remote_sz=$(curl -sIL --max-time 30 "$URL" 2>/dev/null | grep -i '^content-length' | tail -1 | tr -dc '0-9' || true)
     local_sz=$(stat -c %s "$existing" 2>/dev/null || echo 0)
     if [[ "$existing" == "$DEST" ]] && { [[ -z "$remote_sz" ]] || (( local_sz >= remote_sz )); }; then
         success "Already downloaded: $existing"
@@ -69,7 +69,13 @@ if [[ -n "$existing" ]] && [[ ! -f "$existing.aria2" ]] && _zim_magic_ok "$exist
     fi
 fi
 
-remote_sz=$(curl -sIL --max-time 30 "$URL" 2>/dev/null | grep -i '^content-length' | tail -1 | tr -dc '0-9')
+# Under `set -e -o pipefail` a grep with no match would abort the script, so
+# an unreachable mirror must fall through to the "size unknown" path instead.
+remote_sz=$(curl -sIL --max-time 30 "$URL" 2>/dev/null | grep -i '^content-length' | tail -1 | tr -dc '0-9' || true)
+if ! curl -sIL --max-time 30 -o /dev/null "$URL" 2>/dev/null; then
+    error "Cannot reach $URL -- is the Pi online?"
+    exit 5
+fi
 local_sz=0
 [[ -f "$DEST" ]] && local_sz=$(stat -c %s "$DEST" 2>/dev/null || echo 0)
 if [[ -n "$remote_sz" ]]; then
@@ -87,10 +93,12 @@ BW_ARGS=()
 if command -v aria2c &>/dev/null; then
     [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--max-overall-download-limit="${SURVIVE_BANDWIDTH_LIMIT}")
     aria2c -c -x 4 -s 4 --file-allocation=none --summary-interval=15 --console-log-level=warn \
-        --max-tries=5 --retry-wait=10 "${BW_ARGS[@]}" -d "$DEST_DIR" -o "$FILENAME" "$URL"
+        --max-tries=5 --retry-wait=10 "${BW_ARGS[@]}" -d "$DEST_DIR" -o "$FILENAME" "$URL" \
+        || { error "Download failed -- re-run to resume"; exit 5; }
 else
     [[ "${SURVIVE_BANDWIDTH_LIMIT:-0}" != "0" ]] && BW_ARGS=(--limit-rate="${SURVIVE_BANDWIDTH_LIMIT}")
-    wget -c --progress=dot:giga --tries=5 --timeout=60 "${BW_ARGS[@]}" -O "$DEST" "$URL"
+    wget -c --progress=dot:giga --tries=5 --timeout=60 "${BW_ARGS[@]}" -O "$DEST" "$URL" \
+        || { error "Download failed -- re-run to resume"; exit 5; }
 fi
 
 if ! _zim_magic_ok "$DEST"; then

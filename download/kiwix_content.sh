@@ -127,7 +127,7 @@ download_zim() {
     if [[ -n "$existing" ]]; then
         local remote_sz local_sz
         remote_sz=$(curl -sIL --max-time 30 "$url" 2>/dev/null \
-                    | grep -i '^content-length' | tail -1 | tr -dc '0-9')
+                    | grep -i '^content-length' | tail -1 | tr -dc '0-9' || true)
         local_sz=$(stat -c %s "$existing" 2>/dev/null || echo 0)
         if [[ -z "$remote_sz" ]] || (( local_sz >= remote_sz )); then
             success "[$name] Already downloaded: $existing"
@@ -169,7 +169,7 @@ download_zim() {
     if [[ "$resumed" != "true" ]]; then
         local new_sz
         new_sz=$(curl -sIL --max-time 30 "$url" 2>/dev/null \
-                 | grep -i '^content-length' | tail -1 | tr -dc '0-9')
+                 | grep -i '^content-length' | tail -1 | tr -dc '0-9' || true)
         if [[ -n "$new_sz" ]] && ! _space_ok "$new_sz"; then
             warn "[$name] Not enough free space ($(( new_sz / 1024 / 1024 )) MB needed) -- skipping"
             mark_failed "$name" "insufficient disk space"

@@ -413,7 +413,7 @@ dl_nps_maps() {
         mkdir -p "$dir"
         page=$(curl -sL --max-time 40 -A "SurviveV1 offline map fetcher" \
                "https://npmaps.com/$park/" 2>/dev/null) || page=""
-        urls=$(grep -oE 'https://npmaps\.com/wp-content/uploads/[^"]+\.pdf' <<< "$page" | sort -u)
+        urls=$(grep -oE 'https://npmaps\.com/wp-content/uploads/[^"]+\.pdf' <<< "$page" | sort -u || true)
         if [[ -z "$urls" ]]; then
             warn "  $park: no maps found (page unreachable?)"
             missed=$((missed + 1)); sleep 1; continue

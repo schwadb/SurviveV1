@@ -104,6 +104,8 @@ print_budget() {
     [[ "${CONTENT_MAPS:-Y}" =~ [Yy] ]]            && printf "%-40s %10s\n" "OpenStreetMap World" "~70 GB"
     [[ "${CONTENT_PDFS:-Y}" =~ [Yy] ]]            && printf "%-40s %10s\n" "PDFs + Manuals" "~20 GB"
     [[ "${CONTENT_AI_MODELS:-Y}" =~ [Yy] ]]       && printf "%-40s %10s\n" "AI Models (Ollama)" "~50 GB"
+    [[ "${CONTENT_NPS_MAPS:-Y}" =~ [Yy] ]]        && printf "%-40s %10s\n" "National park maps + satellite" "~3 GB"
+    [[ "${CONTENT_MESHTASTIC:-Y}" =~ [Yy] ]]      && printf "%-40s %10s\n" "Comms tools (Meshtastic web)" "<1 GB"
     printf "%-40s %10s\n" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" "━━━━━━━━━"
     printf "%-40s %10s\n" "Total (approx)" "~800 GB"
     echo ""

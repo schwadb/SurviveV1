@@ -1408,12 +1408,16 @@ def _map_assets() -> dict:
               "park_maps": 0}
     pm_dir = MAPS_DIR / "pmtiles"
     if pm_dir.is_dir():
-        for f in sorted(pm_dir.glob("*.pmtiles"), key=lambda p: p.stat().st_size, reverse=True):
-            if f.name.endswith(".pmtiles.tmp"):
+        sized = []
+        for f in pm_dir.glob("*.pmtiles"):
+            try:
+                sized.append((f.stat().st_size, f))
+            except OSError:  # vanished mid-listing (download in progress)
                 continue
+        for size, f in sorted(sized, key=lambda t: t[0], reverse=True):
             entry = {"name": f.stem.replace("-", " ").replace("_", " "),
                      "file": f.name, "url": f"/serve/maps/pmtiles/{quote(f.name)}",
-                     "size_mb": round(f.stat().st_size / 1024 ** 2, 1)}
+                     "size_mb": round(size / 1024 ** 2, 1)}
             if f.name.startswith("satellite"):
                 assets["overlays"].append(entry)
             else:
