@@ -78,6 +78,29 @@ _fetch_with_fallback() {  # _fetch_with_fallback <url> <dest-file> <name>
     return 1
 }
 
+# WHO moved its repository (IRIS) to DSpace 7 in 2024: the old
+# apps.who.int/iris/bitstream/... links now return the web app's HTML shell
+# instead of the PDF. Resolve handle -> item -> ORIGINAL bundle -> first PDF
+# bitstream through the public REST API; fall back to the old URL (and its
+# Wayback copy) if the API is unreachable.
+who_pdf_url() {  # who_pdf_url <handle e.g. 10665/44615> <fallback-url>
+    local handle="$1" fallback="$2" api="https://iris.who.int/server/api" item bundle bs
+    item=$(curl -sL --max-time 30 -A "$SURVIVE_UA" "$api/pid/find?id=hdl:$handle" 2>/dev/null \
+           | grep -oE '"uuid" *: *"[0-9a-f-]{36}"' | head -1 | grep -oE '[0-9a-f-]{36}' || true)
+    [[ -n "$item" ]] || { echo "$fallback"; return 0; }
+    bundle=$(curl -sL --max-time 30 -A "$SURVIVE_UA" "$api/core/items/$item/bundles" 2>/dev/null \
+             | tr -d '\n ' | grep -oE '"uuid":"[0-9a-f-]{36}","name":"ORIGINAL"' | grep -oE '[0-9a-f-]{36}' || true)
+    [[ -n "$bundle" ]] || { echo "$fallback"; return 0; }
+    bs=$(curl -sL --max-time 30 -A "$SURVIVE_UA" "$api/core/bundles/$bundle/bitstreams" 2>/dev/null \
+         | tr -d '\n ' | grep -oE '"uuid":"[0-9a-f-]{36}","name":"[^"]+\.pdf"' | head -1 | grep -oE '^"uuid":"[0-9a-f-]{36}' | grep -oE '[0-9a-f-]{36}' || true)
+    [[ -n "$bs" ]] || { echo "$fallback"; return 0; }
+    echo "$api/core/bitstreams/$bs/content"
+}
+
+dl_who() {  # dl_who <name> <handle> <old-url> <dest-dir> <filename>
+    dl_file "$1" "$(who_pdf_url "$2" "$3")" "$4" "$5"
+}
+
 dl_file() {
     local name="$1" url="$2" dest="$3"
     local filename="${4:-$(basename "$url" | tr '?&=' '_')}"
@@ -136,11 +159,11 @@ dl_channel() {
 dl_pfa() {
     info "=== Psychological First Aid (PFA) ==="
 
-    dl_file "WHO Psychological First Aid Field Guide" \
+    dl_who "WHO Psychological First Aid Field Guide" "10665/44615" \
         "https://apps.who.int/iris/bitstream/handle/10665/44615/9789241548205_eng.pdf" \
         "$PDF_DIR" "WHO_PFA_Field_Guide.pdf"
 
-    dl_file "WHO PFA Facilitator Manual" \
+    dl_who "WHO PFA Facilitator Manual" "10665/44427" \
         "https://apps.who.int/iris/bitstream/handle/10665/44427/9789241548809_eng.pdf" \
         "$PDF_DIR" "WHO_PFA_Facilitator_Manual.pdf"
 
@@ -175,7 +198,7 @@ dl_resilience() {
     info "=== Resilience & Community Care ==="
 
     dl_file "Sphere Standards — Protection & MHPSS" \
-        "https://spherestandards.org/wp-content/uploads/Sphere-Handbook-2018-EN.pdf" \
+        "https://sphere-standards-media.s3.eu-central-1.amazonaws.com/app/uploads/2026/07/02150526/Sphere-Handbook-2018-EN.pdf" \
         "$PDF_DIR" "Sphere_Handbook_MHPSS.pdf"
 
     dl_file "Building Community Resilience Toolkit (CDC)" \

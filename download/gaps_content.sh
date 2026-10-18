@@ -84,6 +84,29 @@ _fetch_with_fallback() {  # _fetch_with_fallback <url> <dest-file> <name>
     return 1
 }
 
+# WHO moved its repository (IRIS) to DSpace 7 in 2024: the old
+# apps.who.int/iris/bitstream/... links now return the web app's HTML shell
+# instead of the PDF. Resolve handle -> item -> ORIGINAL bundle -> first PDF
+# bitstream through the public REST API; fall back to the old URL (and its
+# Wayback copy) if the API is unreachable.
+who_pdf_url() {  # who_pdf_url <handle e.g. 10665/44615> <fallback-url>
+    local handle="$1" fallback="$2" api="https://iris.who.int/server/api" item bundle bs
+    item=$(curl -sL --max-time 30 -A "$SURVIVE_UA" "$api/pid/find?id=hdl:$handle" 2>/dev/null \
+           | grep -oE '"uuid" *: *"[0-9a-f-]{36}"' | head -1 | grep -oE '[0-9a-f-]{36}' || true)
+    [[ -n "$item" ]] || { echo "$fallback"; return 0; }
+    bundle=$(curl -sL --max-time 30 -A "$SURVIVE_UA" "$api/core/items/$item/bundles" 2>/dev/null \
+             | tr -d '\n ' | grep -oE '"uuid":"[0-9a-f-]{36}","name":"ORIGINAL"' | grep -oE '[0-9a-f-]{36}' || true)
+    [[ -n "$bundle" ]] || { echo "$fallback"; return 0; }
+    bs=$(curl -sL --max-time 30 -A "$SURVIVE_UA" "$api/core/bundles/$bundle/bitstreams" 2>/dev/null \
+         | tr -d '\n ' | grep -oE '"uuid":"[0-9a-f-]{36}","name":"[^"]+\.pdf"' | head -1 | grep -oE '^"uuid":"[0-9a-f-]{36}' | grep -oE '[0-9a-f-]{36}' || true)
+    [[ -n "$bs" ]] || { echo "$fallback"; return 0; }
+    echo "$api/core/bitstreams/$bs/content"
+}
+
+dl_who() {  # dl_who <name> <handle> <old-url> <dest-dir> <filename>
+    dl_file "$1" "$(who_pdf_url "$2" "$3")" "$4" "$5"
+}
+
 dl_file() {
     local name="$1"
     local url="$2"
@@ -204,13 +227,13 @@ dl_obstetrics() {
         "$DIR" "Emergency_Childbirth_Gregory_White.pdf"
 
     # WHO Pregnancy and Childbirth Guide
-    dl_file "WHO Safe Motherhood Practical Guide" \
+    dl_who "WHO Safe Motherhood Practical Guide" "10665/43972" \
         "https://apps.who.int/iris/bitstream/handle/10665/43972/9789241545426_eng.pdf" \
         "$DIR" "WHO_Safe_Motherhood_Guide.pdf"
 
     # Basic Obstetric Care — Peace Corps
     dl_file "Peace Corps Maternal Child Health Guide" \
-        "https://files.peacecorps.gov/multimedia/pdf/library/M0063_maternalchildhealtheng.pdf" \
+        "https://files.peacecorps.gov/multimedia/pdf/library/M0063.pdf" \
         "$DIR" "Peace_Corps_Maternal_Child_Health.pdf"
 }
 
@@ -224,7 +247,7 @@ dl_dental() {
         "$DIR" "Where_There_Is_No_Dentist.pdf"
 
     # WHO Oral Health Guide for Primary Care
-    dl_file "WHO Oral Health Primary Care" \
+    dl_who "WHO Oral Health Primary Care" "10665/42654" \
         "https://apps.who.int/iris/bitstream/handle/10665/42654/9241545690.pdf" \
         "$DIR" "WHO_Oral_Health_Primary_Care.pdf"
 }
@@ -239,7 +262,7 @@ dl_mental_health() {
         "$DIR" "Where_There_Is_No_Psychiatrist.pdf"
 
     # WHO Psychological First Aid (free)
-    dl_file "WHO Psychological First Aid Guide" \
+    dl_who "WHO Psychological First Aid Guide" "10665/44615" \
         "https://apps.who.int/iris/bitstream/handle/10665/44615/9789241548205_eng.pdf" \
         "$DIR" "WHO_Psychological_First_Aid.pdf"
 
@@ -250,7 +273,7 @@ dl_mental_health() {
 
     # Sphere Handbook (humanitarian standards — disaster psychology chapters)
     dl_file "The Sphere Handbook (Mental Health chapter)" \
-        "https://spherestandards.org/wp-content/uploads/Sphere-Handbook-2018-EN.pdf" \
+        "https://sphere-standards-media.s3.eu-central-1.amazonaws.com/app/uploads/2026/07/02150526/Sphere-Handbook-2018-EN.pdf" \
         "$DIR" "Sphere_Handbook_Humanitarian_Standards.pdf"
 
     # CDC/NIOSH — Psychological Issues in Escape, Rescue, and Survival (free)
@@ -269,7 +292,7 @@ dl_sanitation() {
         "$DIR" "Humanure_Handbook.pdf"
 
     # WHO Sanitation & Hygiene Guide
-    dl_file "WHO Sanitation and Health Guide" \
+    dl_who "WHO Sanitation and Health Guide" "10665/337673" \
         "https://apps.who.int/iris/bitstream/handle/10665/337673/9789240012226-eng.pdf" \
         "$DIR" "WHO_Sanitation_Health.pdf"
 
@@ -468,7 +491,7 @@ dl_water_systems() {
         "$DIR" "Peace_Corps_Water_Supply.pdf"
 
     # WHO Water Treatment
-    dl_file "WHO Guidelines for Drinking Water Quality" \
+    dl_who "WHO Guidelines for Drinking Water Quality" "10665/352532" \
         "https://apps.who.int/iris/bitstream/handle/10665/352532/9789240045064-eng.pdf" \
         "$DIR" "WHO_Drinking_Water_Quality.pdf"
 
@@ -513,13 +536,13 @@ dl_community_economics() {
         "$DIR" "FEMA_Community_Resilience_Guide.pdf"
 
     # WHO Community Health Worker Guide
-    dl_file "WHO Community Health Worker Guidelines" \
+    dl_who "WHO Community Health Worker Guidelines" "10665/275765" \
         "https://apps.who.int/iris/bitstream/handle/10665/275765/9789241550369-eng.pdf" \
         "$DIR" "WHO_Community_Health_Workers.pdf"
 
     # SPHERE Handbook (humanitarian standards for shelter, food, water, health)
     dl_file "Sphere Handbook 2018 (Humanitarian Standards)" \
-        "https://spherestandards.org/wp-content/uploads/Sphere-Handbook-2018-EN.pdf" \
+        "https://sphere-standards-media.s3.eu-central-1.amazonaws.com/app/uploads/2026/07/02150526/Sphere-Handbook-2018-EN.pdf" \
         "$DIR" "Sphere_Handbook_Humanitarian_Standards.pdf"
 }
 
@@ -551,25 +574,63 @@ dl_hesperian_bundle() {
     info "=== FREE: Complete Hesperian Health Guides ==="
     local DIR="$PDF_DIR/medicine_advanced"
 
-    # Hesperian's own store now gates PDFs behind an email form; archive.org
-    # hosts freely-mirrored copies of most titles. Titles still pointing at
-    # store.hesperian.org have no public mirror — they fail into the manual
-    # download list (grab them at https://hesperian.org > free downloads).
-    declare -A HESPERIAN=(
-        ["Where_There_Is_No_Doctor.pdf"]="https://archive.org/download/where-there-is-no-doctor/Where%20There%20Is%20No%20Doctor.pdf"
-        ["Where_There_Is_No_Dentist.pdf"]="https://archive.org/download/Where_There_is_no_Dentist/Where_There_is_no_Dentist.pdf"
-        ["Book_for_Midwives.pdf"]="https://archive.org/download/ABookForMidwives/26.SusanKlien-ABookForMidwives.pdf"
-        ["Where_There_Is_No_Psychiatrist.pdf"]="https://store.hesperian.org/prod/pdf/A490E.pdf"
-        ["Helping_Children_Who_Are_Blind.pdf"]="https://store.hesperian.org/prod/pdf/A250E.pdf"
-        ["Helping_Children_Who_Are_Deaf.pdf"]="https://store.hesperian.org/prod/pdf/A280E.pdf"
-        ["A_Health_Handbook_for_Women_with_Disabilities.pdf"]="https://archive.org/download/A_Health_Handbook_for_Women_with_Disabilities/A_Health_Handbook_for_Women_with_Disabilities.pdf"
-        ["Workers_Guide_to_Health_and_Safety.pdf"]="https://store.hesperian.org/prod/pdf/A420E.pdf"
-        ["Helping_Health_Workers_Learn.pdf"]="https://archive.org/download/HelpingHealthWorkersLearn-DavidWerner/13.DavidWerner-HelpingHealthWorkersLearn.pdf"
-    )
+    # Hesperian publishes every book free of charge as one PDF per chapter at
+    # hesperian.org/wp-content/uploads/pdf/<edition>/<edition>_<part>.pdf (see
+    # languages.hesperian.org/pages/en/pdf.html). The store's whole-book PDFs
+    # went away in 2025, so each title is fetched chapter by chapter into its
+    # own folder; a missing chapter never blocks the rest of the book.
+    dl_hesperian_book "Where There Is No Doctor (2025)" "en_wtnd_2025" "$DIR/Where_There_Is_No_Doctor" \
+        fm toc int $(seq -f "%02g" 1 23) gp info gloss resc indx bm
+    dl_hesperian_book "Where There Is No Dentist (2024)" "en_dent_2024" "$DIR/Where_There_Is_No_Dentist" \
+        fm $(seq -f "%02g" 1 12) bm
+    dl_hesperian_book "A Book for Midwives (2026)" "en_midw_2026" "$DIR/Book_for_Midwives" \
+        fm $(seq -f "%02g" 1 25) gp resc gloss indx ddc bm
+    dl_hesperian_book "Where Women Have No Doctor (2024)" "en_wwhnd_2024" "$DIR/Where_Women_Have_No_Doctor" \
+        fm $(seq -f "%02g" 1 31) gp skills gloss resc indx ob
+    dl_hesperian_book "Helping Children Who Are Blind" "en_hcwb_2000" "$DIR/Helping_Children_Who_Are_Blind" \
+        fm $(seq -f "%02g" 1 20)
+    dl_hesperian_book "Helping Children Who Are Deaf (2026)" "en_hcwd_2026" "$DIR/Helping_Children_Who_Are_Deaf" \
+        fm $(seq -f "%02g" 1 15) appa appb appc bm
+    dl_hesperian_book "Workers Guide to Health and Safety" "en_wgthas_2015" "$DIR/Workers_Guide_to_Health_and_Safety" \
+        fm toc $(seq -f "%02g" 1 33) appa appb resc indx ob
+    dl_hesperian_book "Helping Health Workers Learn (2026)" "en_hhwl_2026" "$DIR/Helping_Health_Workers_Learn" \
+        fm $(seq -f "%02g" 1 27) bm1 bm2 resc indx ob
+    dl_hesperian_book "A Community Guide to Environmental Health" "en_cgeh_2012" "$DIR/Community_Guide_to_Environmental_Health" \
+        fm $(seq -f "%02g" 1 23) appa appb gloss indx resc
+    dl_hesperian_book "Promoting Community Mental Health (2025)" "en_pcmh_2025" "$DIR/Promoting_Community_Mental_Health" \
+        fm int $(seq -f "%02g" 1 9) bm indx info ob
+    dl_hesperian_book "Disabled Village Children (2025)" "en_dvc_2025" "$DIR/Disabled_Village_Children" \
+        fm $(seq -f "%02g" 1 67) resc gloss indx ob
 
-    for filename in "${!HESPERIAN[@]}"; do
-        dl_file "Hesperian: ${filename%.pdf}" "${HESPERIAN[$filename]}" "$DIR" "$filename"
+    # Not a Hesperian title despite the old label: RCPsych hosts it openly.
+    dl_file "Where There Is No Psychiatrist (Patel)" \
+        "https://www.rcpsych.ac.uk/docs/default-source/members/faculties/international/where-there-is-no-psychiatrist.pdf" \
+        "$DIR" "Where_There_Is_No_Psychiatrist.pdf"
+}
+
+# dl_hesperian_book <name> <edition-slug> <dest-dir> <part> [<part>...]
+dl_hesperian_book() {
+    local name="$1" slug="$2" dest="$3" part got=0 missing=0
+    shift 3
+    mkdir -p "$dest"
+    for part in "$@"; do
+        local file="${slug}_${part}.pdf"
+        if [[ -s "$dest/$file" ]] && _is_valid_download "$dest/$file"; then
+            got=$((got + 1)); continue
+        fi
+        if _fetch "https://hesperian.org/wp-content/uploads/pdf/${slug}/${file}" "$dest/$file" \
+           && _is_valid_download "$dest/$file"; then
+            got=$((got + 1))
+        else
+            rm -f "$dest/$file"; missing=$((missing + 1))
+        fi
     done
+    if (( missing == 0 )); then
+        success "$name: $got chapter PDFs"
+    else
+        warn "$name: $got chapters saved, $missing missing (re-run to retry)"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') PARTIAL [Hesperian: $name] $missing chapter(s) missing" >> "$FAILED_LOG"
+    fi
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -580,7 +641,11 @@ dl_peace_corps_library() {
     local DIR="$PDF_DIR/reference"
     mkdir -p "$DIR/peace_corps"
 
-    # Peace Corps technical manuals — comprehensive rural skills
+    # Peace Corps technical manuals — comprehensive rural skills.
+    # NOTE (2026-10): Peace Corps removed most of the old ICE library from
+    # files.peacecorps.gov (only a handful of codes still resolve, e.g. M0042,
+    # M0063) and the Wayback Machine never captured these PDFs. They are kept
+    # so a future re-upload is picked up automatically; expect them to fail.
     declare -A PC_MANUALS=(
         ["PC_Agroforestry.pdf"]="https://files.peacecorps.gov/multimedia/pdf/library/M0006_agroforestry.pdf"
         ["PC_Small_Farm_Grain_Storage.pdf"]="https://files.peacecorps.gov/multimedia/pdf/library/M0035_smallfarmgrain.pdf"
