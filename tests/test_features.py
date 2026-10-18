@@ -258,6 +258,7 @@ def test_body_limit_still_tight_elsewhere(client):
 def test_comms_pages_and_csv_import(client, server, admin_password):
     for path in ("/comms", "/comms/morse", "/comms/repeaters"):
         assert client.get(path).status_code == 200
+    assert b"MeshCore" in client.get("/comms").data
     csv = "Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,Mode,Comment\n0,W7ABC,146.880,-,0.6,Tone,100.0,FM,Bend\n"
     server.app.config["WTF_CSRF_ENABLED"] = False
     try:

@@ -1,0 +1,27 @@
+[Unit]
+Description=SurviveV1 MeshCore Web Client (static files on :8085)
+After=network.target local-fs.target
+Wants=local-fs.target
+RequiresMountsFor=/mnt/survive
+# The client is fetched by download/comms.sh; stay inactive until it exists.
+ConditionPathExists=/mnt/survive/comms/meshcore-web/index.html
+
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/mnt/survive/comms/meshcore-web
+# Flutter web build; needs its own origin (absolute asset paths and a service
+# worker scoped to /). Python's stdlib server knows .wasm and .js MIME types.
+ExecStart=/usr/bin/python3 -m http.server 8085 --bind 0.0.0.0 --directory /mnt/survive/comms/meshcore-web
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=survive-meshcore
+
+[Install]
+WantedBy=multi-user.target

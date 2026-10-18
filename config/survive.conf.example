@@ -31,6 +31,9 @@ CONTENT_APPS="Y"
 CONTENT_DRUGS="Y"
 # Meshtastic web client (~10 MB) served on :8084 for LoRa mesh radios.
 CONTENT_MESHTASTIC="Y"
+# MeshCore web client (~50 MB) on :8085 plus its Android/Windows apps (~130 MB)
+# for the app depot.
+CONTENT_MESHCORE="Y"
 # Official US national park map PDFs (~2-3 GB; North American regions only).
 CONTENT_NPS_MAPS="Y"
 # World satellite overlay for the map page, zoom 0-6 (~25 MB).

@@ -30,7 +30,7 @@ id "$SERVICE_USER" &>/dev/null || SERVICE_USER="pi"
 
 # Units the dashboard is allowed to restart. Keep in sync with the `unit`
 # fields in web/constants.py SERVICES, plus the dashboard's own unit.
-UNITS=(kiwix kolibri calibre-web jellyfin martin-tiles ollama survive-dashboard survive-meshtastic)
+UNITS=(kiwix kolibri calibre-web jellyfin martin-tiles ollama survive-dashboard survive-meshtastic survive-meshcore)
 
 SYSTEMCTL="$(command -v systemctl || echo /usr/bin/systemctl)"
 

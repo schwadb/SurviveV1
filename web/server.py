@@ -49,6 +49,7 @@ from constants import (  # noqa: E402
     PORT_JELLYFIN,
     PORT_MAPS,
     PORT_MESHTASTIC,
+    PORT_MESHCORE,
 )
 import textutils  # noqa: E402  (pure helpers: markdown, pins, CSV)
 
@@ -126,6 +127,7 @@ def _inject_globals():
         "PORT_JELLYFIN": PORT_JELLYFIN,
         "PORT_MAPS": PORT_MAPS,
         "PORT_MESHTASTIC": PORT_MESHTASTIC,
+        "PORT_MESHCORE": PORT_MESHCORE,
         "PORT_OLLAMA": PORT_OLLAMA,
         "storage_mounted": STORAGE_MOUNTED,
         "now": datetime.now(),
@@ -2053,10 +2055,14 @@ def _band_of(freq_text: str) -> str:
 @app.route("/comms")
 def comms_page():
     mesh_installed = (COMMS_DIR / "meshtastic-web" / "index.html").exists()
+    core_installed = (COMMS_DIR / "meshcore-web" / "index.html").exists()
     return render_template(
         "comms.html",
         mesh_installed=mesh_installed,
         mesh_running=check_service(PORT_MESHTASTIC) if mesh_installed else False,
+        core_installed=core_installed,
+        core_running=check_service(PORT_MESHCORE) if core_installed else False,
+        core_apk=(STORAGE_PATH / "apps" / "android" / "meshcore.apk").exists(),
         repeater_count=len(_repeaters_cache.get(_compute_repeaters)),
         repeater_files=[p.name for p in _repeater_files()],
     )

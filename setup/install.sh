@@ -469,6 +469,7 @@ install_services() {
     systemctl enable martin-tiles.service 2>/dev/null || true
     # Stays inactive (ConditionPathExists) until download/comms.sh has run.
     systemctl enable survive-meshtastic.service 2>/dev/null || true
+    systemctl enable survive-meshcore.service 2>/dev/null || true
     success "Systemd services installed"
 }
 

@@ -344,6 +344,7 @@ These are HTML pages with CSRF-protected forms rather than JSON APIs.
 | Jellyfin (Videos) | 8096 | http://survive.local:8096 |
 | Martin (Maps, optional) | 3000 | http://survive.local:3000 |
 | Meshtastic Web | 8084 | http://survive.local:8084 |
+| MeshCore Web | 8085 | http://survive.local:8085 |
 | Ollama (AI) | 11434 | http://survive.local:11434 |
 
 ---

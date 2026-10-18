@@ -116,5 +116,5 @@ fi
 echo ""
 info "Services updated for storage path: $STORAGE_PATH"
 info "Enable and start with:"
-echo "  sudo systemctl enable survive-dashboard kiwix ollama martin-tiles calibre-web jellyfin survive-meshtastic"
+echo "  sudo systemctl enable survive-dashboard kiwix ollama martin-tiles calibre-web jellyfin survive-meshtastic survive-meshcore"
 echo "  sudo systemctl start survive-dashboard kiwix ollama martin-tiles"

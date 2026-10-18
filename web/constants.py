@@ -11,6 +11,7 @@ PORT_CALIBRE   = 8083
 PORT_JELLYFIN  = 8096
 PORT_MAPS      = 3000
 PORT_MESHTASTIC = 8084
+PORT_MESHCORE   = 8085
 PORT_OLLAMA    = 11434
 
 # ── Service registry ──────────────────────────────────────────────────────────
@@ -32,6 +33,8 @@ SERVICES = {
                  "icon": "🤖", "color": "#16a085", "unit": "ollama"},
     "meshtastic": {"name": "Meshtastic Web",  "port": PORT_MESHTASTIC,
                  "icon": "📡", "color": "#67ea94", "unit": "survive-meshtastic"},
+    "meshcore":   {"name": "MeshCore Web",    "port": PORT_MESHCORE,
+                 "icon": "📶", "color": "#2ea0d8", "unit": "survive-meshcore"},
 }
 
 # ── Content budget ─────────────────────────────────────────────────────────────

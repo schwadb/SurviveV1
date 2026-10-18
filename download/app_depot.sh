@@ -134,9 +134,14 @@ ANDROID (.apk)
      Organic Maps (offline maps), OsmAnd, and more — but only when online.
      Install it now so it is ready.
 
+  5. MeshCore (meshcore.apk, if present): LoRa mesh messenger. Pairs with a
+     MeshCore companion radio over Bluetooth; works with no internet at all.
+
 WINDOWS
   - Kiwix Desktop (.zip): unzip and run kiwix-desktop.exe to read the ZIMs.
   - VLC (.exe): plays the downloaded videos.
+  - MeshCore (meshcore-windows-x64.zip, if present): unzip and run; connects
+    to a companion radio over USB.
 
 Verify a file with SHA256SUMS (optional): sha256sum -c SHA256SUMS
 EOF

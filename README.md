@@ -19,7 +19,7 @@ A self-hosted, offline-first knowledge base for post-apocalyptic or grid-down su
 | **Maps & Pins** | In-browser street maps (no tile server), saved pins with notes, GPX/GeoJSON import/export, satellite overlay, official national park map PDFs |
 | **Library Manager** | Browse the Kiwix catalog in any language, download ZIMs from the dashboard, register sideloaded files |
 | **Notes & Shared Files** | Shared Markdown notebook and a drop box for your own documents, both stored on the drive |
-| **Comms** | Morse encoder/decoder, Meshtastic web client, searchable imported repeater lists, emergency frequency reference |
+| **Comms** | Morse encoder/decoder, Meshtastic and MeshCore web clients, searchable imported repeater lists, emergency frequency reference |
 
 ---
 
@@ -103,6 +103,7 @@ SurviveV1/
 | Calibre-Web | 8083 | Ebook reader (PDFs, EPUBs) |
 | Ollama AI | 11434 | Local LLM API |
 | Meshtastic Web | 8084 | LoRa mesh radio client (after `download/comms.sh`) |
+| MeshCore Web | 8085 | MeshCore LoRa mesh client (after `download/comms.sh`); its Android/Windows apps land in the app depot |
 | Nginx | 80 | Reverse proxy (optional) |
 
 ### Dashboard pages

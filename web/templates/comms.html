@@ -41,6 +41,21 @@
       {% endif %}
     </div>
     <div class="tool">
+      <div class="t">&#128246; MeshCore web client</div>
+      <div class="d">
+        The other LoRa mesh network. Configure and message MeshCore companion radios from the browser over
+        USB or Bluetooth (both need the HTTPS address; see Status &rarr; TLS).
+        {% if core_apk %}Phones can install the <a href="/apps" style="color:var(--accent2);">MeshCore Android app</a> from the depot.{% endif %}
+        {% if not core_installed %}<br><span style="color:var(--warning);">Not downloaded yet</span> &mdash; run
+        <code>bash download/comms.sh</code> on the Pi.{% elif not core_running %}<br><span style="color:var(--warning);">Installed but not running</span> &mdash; restart it from the Status page.{% endif %}
+      </div>
+      {% if core_installed and core_running %}
+      <a href="http://{{ request.host.split(':')[0] }}:{{ PORT_MESHCORE }}/" target="_blank" class="btn btn-primary btn-sm">Open (port {{ PORT_MESHCORE }})</a>
+      {% else %}
+      <a href="/status" class="btn btn-secondary btn-sm">Status page</a>
+      {% endif %}
+    </div>
+    <div class="tool">
       <div class="t">&#128250; Repeater directory</div>
       <div class="d">Your own imported repeater lists (CHIRP or RepeaterBook CSV exports), searchable offline by city, callsign or band.
         {% if repeater_count %}<br><strong style="color:var(--text);">{{ repeater_count }}</strong> repeaters from {{ repeater_files|length }} file(s).{% else %}<br>No lists imported yet.{% endif %}</div>
@@ -71,6 +86,7 @@
         <tr><td>NOAA weather radio</td><td class="f">162.400 .425 .450 .475 .500 .525 .550 MHz</td><td>Continuous forecasts and alerts; receive-only.</td></tr>
         <tr><td>Aviation emergency</td><td class="f">121.500 MHz AM</td><td>International aeronautical distress; 243.000 MHz military.</td></tr>
         <tr><td>Meshtastic (US)</td><td class="f">906&ndash;928 MHz LoRa</td><td>Default LongFast preset, channel slot 20 (906.875 MHz). Licence-free.</td></tr>
+        <tr><td>MeshCore (US)</td><td class="f">910.525 MHz LoRa</td><td>Default US/CA preset (SF10, 62.5 kHz, CR8). Licence-free. Separate network from Meshtastic.</td></tr>
         <tr><td>Ham HF emergency nets</td><td class="f">3.985 / 7.265 / 14.300 MHz</td><td>Regional and maritime mobile nets; check the ARRL net directory in the library.</td></tr>
       </tbody>
     </table>
