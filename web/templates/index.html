@@ -122,6 +122,20 @@
     transform: translateY(-1px);
   }
   .quick-link .icon { font-size: 20px; }
+
+  @media (max-width: 768px) {
+    .hero-title { font-size: 24px; }
+    .hero-sub { font-size: 14px; }
+    .hero-stats { gap: 16px; }
+  }
+  .home-grid {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 24px;
+  }
+  @media (max-width: 900px) {
+    .home-grid { grid-template-columns: 1fr; }
+  }
 </style>
 {% endblock %}
 
@@ -217,7 +231,7 @@
   </div>
 
   <!-- Main grid: Categories + Sidebar -->
-  <div style="display:grid; grid-template-columns: 1fr 320px; gap: 24px;">
+  <div class="home-grid">
 
     <!-- Categories -->
     <div>

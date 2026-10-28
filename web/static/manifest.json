@@ -1,0 +1,17 @@
+{
+  "name": "SurviveV1 — Offline Knowledge",
+  "short_name": "SurviveV1",
+  "description": "Offline survival knowledge base with Wikipedia, medical guides, maps, and AI assistant.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

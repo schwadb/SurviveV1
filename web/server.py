@@ -19,6 +19,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import fcntl
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -675,14 +676,15 @@ def _run_doc_query(fts: str, limit: int):
     missing table, [] on FTS errors."""
     conn = sqlite3.connect(str(CONTENT_INDEX_DB), timeout=30)
     try:
-        rows = conn.execute(
-            "SELECT title, path, page, snippet(chunks, 0, '', '', '…', 12) "
-            "FROM chunks WHERE chunks MATCH ? LIMIT ?",
-            (fts, limit),
-        ).fetchall()
+        with conn:
+            rows = conn.execute(
+                "SELECT title, path, page, snippet(chunks, 0, '', '', '…', 12) "
+                "FROM chunks WHERE chunks MATCH ? LIMIT ?",
+                (fts, limit),
+            ).fetchall()
     except sqlite3.OperationalError as exc:
         if "no such table" in str(exc):
-            return None  # half-built index → treat as absent
+            return None
         logging.debug("doc index query failed: %s", exc)
         return []
     finally:
@@ -858,12 +860,20 @@ def _trigger_index_build() -> None:
 
 def _index_refresher() -> None:
     """Daemon loop: build shortly after boot, then refresh every 6 hours.
-    The per-PID stagger keeps the two gunicorn workers from colliding at boot."""
+    A filesystem lock ensures only one gunicorn worker rebuilds per cycle."""
+    lock_path = STORAGE_PATH / ".index_rebuild.lock"
     time.sleep(60 + (os.getpid() % 30))
     while True:
         try:
-            total = _rebuild_search_index()
-            logging.info("search index rebuilt: %d files", total)
+            with open(lock_path, "w") as lock_fd:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    logging.debug("index rebuild: another worker holds the lock")
+                    time.sleep(6 * 3600)
+                    continue
+                total = _rebuild_search_index()
+                logging.info("search index rebuilt: %d files", total)
         except (sqlite3.Error, OSError):
             logging.exception("scheduled index rebuild failed")
         time.sleep(6 * 3600)
@@ -962,7 +972,7 @@ def browse_files():
         for item in sorted(browse_dir.iterdir()):
             if item.name.startswith("."):
                 continue
-            stat = item.stat()
+            stat = item.lstat()
             items.append({
                 "name": item.name,
                 "is_dir": item.is_dir(),
@@ -1988,6 +1998,8 @@ def shared_upload():
             stem, suffix = dest.stem, dest.suffix
             n = 2
             while dest.exists():
+                if n > 999:
+                    return redirect(url_for("shared_page", m="Too many files with that name."))
                 dest = SHARED_DIR / f"{stem}-{n}{suffix}"
                 n += 1
             upload.save(str(dest))
@@ -2391,7 +2403,7 @@ def _compute_connectivity() -> dict:
     online = False
     for probe_host in ("1.1.1.1", "8.8.8.8"):
         try:
-            with socket.create_connection((probe_host, 53), timeout=2):
+            with socket.create_connection((probe_host, 53), timeout=1):
                 online = True
                 break
         except OSError:
@@ -2674,6 +2686,13 @@ def status_page():
     )
 
 
+@app.route("/sw.js")
+def service_worker():
+    """Serve the service worker from root for proper scope."""
+    return send_from_directory(app.static_folder, "sw.js",
+                               mimetype="application/javascript")
+
+
 @app.errorhandler(404)
 def not_found(_e):
     return render_template("error.html", code=404, message="Page not found"), 404
@@ -2688,6 +2707,11 @@ def forbidden(_e):
 def server_error(_e):
     logging.exception("Internal server error")
     return render_template("error.html", code=500, message="Internal server error"), 500
+
+
+@app.errorhandler(413)
+def request_too_large(_e):
+    return render_template("error.html", code=413, message="File too large"), 413
 
 
 # Start the background search-index refresher at import time so it runs under

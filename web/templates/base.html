@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0d1117">
+  <meta name="description" content="Offline survival knowledge base — Wikipedia, medical guides, maps, AI assistant, all running locally on Raspberry Pi.">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
   <title>{% block title %}SurviveV1{% endblock %} — Offline Knowledge</title>
   <style>
     :root {
@@ -110,6 +114,34 @@
     }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      z-index: 200;
+      background: var(--accent);
+      color: #000;
+      padding: 8px 16px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .skip-link:focus { left: 0; }
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+    }
+    .hamburger span {
+      width: 20px;
+      height: 2px;
+      background: var(--text);
+      border-radius: 1px;
+    }
+
     /* ── Layout ──────────────────────────────────────────────── */
     .container {
       max-width: 1400px;
@@ -152,8 +184,21 @@
 
     @media (max-width: 768px) {
       .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
-      .nav-links { display: none; }
+      .nav-links {
+        display: none;
+        position: absolute;
+        top: 56px;
+        left: 0;
+        right: 0;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-direction: column;
+        padding: 8px 20px;
+        z-index: 99;
+      }
+      .nav-links.open { display: flex; }
       .nav-search input { width: 160px; }
+      .hamburger { display: flex; }
     }
 
     /* ── Badges / Pills ──────────────────────────────────────── */
@@ -273,10 +318,14 @@
 </head>
 <body>
 
-<nav>
+<a href="#main" class="skip-link">Skip to content</a>
+<nav role="navigation" aria-label="Main navigation">
   <div class="nav-inner">
     <div class="status-dot" title="Offline — System Running"></div>
     <a href="/" class="nav-logo">SurviveV1<span>OFFLINE</span></a>
+    <button class="hamburger" aria-label="Toggle menu" aria-expanded="false" onclick="this.setAttribute('aria-expanded',this.getAttribute('aria-expanded')==='false');document.querySelector('.nav-links').classList.toggle('open');">
+      <span></span><span></span><span></span>
+    </button>
     <div class="nav-links">
       <a href="/" class="{{ 'active' if request.endpoint == 'index' }}">Home</a>
       <a href="/files" class="{{ 'active' if request.endpoint == 'browse_files' }}">Browse</a>
@@ -322,7 +371,9 @@
 </div>
 {% endif %}
 
+<main id="main" role="main">
 {% block content %}{% endblock %}
+</main>
 
 <footer>
   <strong>SurviveV1</strong> — Offline Survival Knowledge Repository •
@@ -331,6 +382,9 @@
 </footer>
 
 <script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
 // Press "/" anywhere to jump to the search box (like GitHub/Wikipedia).
 document.addEventListener('keydown', (e) => {
   if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {

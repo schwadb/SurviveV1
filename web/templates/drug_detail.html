@@ -63,11 +63,18 @@ function checkInteraction(aId) {
     .then(d => {
       if (d.error) { out.textContent = d.error; return; }
       const flagged = d.a_label_mentions_b || d.b_label_mentions_a;
-      out.innerHTML =
-        (flagged
-          ? '<span style="color:var(--danger);font-weight:600;">⚠ One label mentions the other — read both Warnings/Interactions sections.</span>'
-          : '<span style="color:var(--text-dim);">No mention found in either label.</span>') +
-        '<div style="color:var(--text-dim);margin-top:6px;">' + d.note + '</div>';
+      out.textContent = '';
+      const span = document.createElement('span');
+      span.style.fontWeight = flagged ? '600' : '';
+      span.style.color = flagged ? 'var(--danger)' : 'var(--text-dim)';
+      span.textContent = flagged
+        ? '⚠ One label mentions the other — read both Warnings/Interactions sections.'
+        : 'No mention found in either label.';
+      out.appendChild(span);
+      const noteEl = document.createElement('div');
+      noteEl.style.cssText = 'color:var(--text-dim);margin-top:6px;';
+      noteEl.textContent = d.note;
+      out.appendChild(noteEl);
     })
     .catch(() => { out.textContent = 'Check failed.'; });
 }
