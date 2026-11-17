@@ -228,7 +228,7 @@ def test_note_save_rejects_missing_csrf(client):
     assert client.post("/notes/save", data={"body": "# x"}).status_code == 400
 
 
-def test_shared_upload_download_delete(client, server, admin_password):
+def test_shared_upload_download_delete(client, server, admin_password, notes):
     server.app.config["WTF_CSRF_ENABLED"] = False
     try:
         assert client.get("/shared").status_code == 200
@@ -236,13 +236,13 @@ def test_shared_upload_download_delete(client, server, admin_password):
         resp = client.post("/shared/upload", data={"files": (io.BytesIO(payload), "../evil name.PDF")},
                            content_type="multipart/form-data", follow_redirects=True)
         assert resp.status_code == 200 and b"Saved 1" in resp.data
-        assert (server.SHARED_DIR / "evil_name.PDF").read_bytes() == payload
+        assert (notes.SHARED_DIR / "evil_name.PDF").read_bytes() == payload
         assert client.get("/serve/shared/evil_name.PDF").status_code == 200
         resp = client.post("/shared/delete", data={"name": "evil_name.PDF"})
         assert resp.status_code == 302 and "/login" in resp.headers["Location"]
         _as_admin(client)
         client.post("/shared/delete", data={"name": "evil_name.PDF"})
-        assert not (server.SHARED_DIR / "evil_name.PDF").exists()
+        assert not (notes.SHARED_DIR / "evil_name.PDF").exists()
     finally:
         _as_guest(client)
         server.app.config["WTF_CSRF_ENABLED"] = True
@@ -255,7 +255,7 @@ def test_body_limit_still_tight_elsewhere(client):
 
 # ── routes: comms + schedule ───────────────────────────────────────────────────
 
-def test_comms_pages_and_csv_import(client, server, admin_password):
+def test_comms_pages_and_csv_import(client, server, admin_password, comms):
     for path in ("/comms", "/comms/morse", "/comms/repeaters"):
         assert client.get(path).status_code == 200
     assert b"MeshCore" in client.get("/comms").data
@@ -269,7 +269,7 @@ def test_comms_pages_and_csv_import(client, server, admin_password):
         assert b"W7ABC" in client.get("/comms/repeaters?band=2m&q=bend").data
         assert b"W7ABC" not in client.get("/comms/repeaters?band=70cm").data
         client.post("/comms/repeaters/delete", data={"name": "mine.csv"})
-        assert not (server.REPEATERS_DIR / "mine.csv").exists()
+        assert not (comms.REPEATERS_DIR / "mine.csv").exists()
     finally:
         _as_guest(client)
         server.app.config["WTF_CSRF_ENABLED"] = True

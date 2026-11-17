@@ -19,8 +19,8 @@ Offline-first survival knowledge base for Raspberry Pi 5 + Hailo-8L AI Hat. Flas
 shellcheck --severity=warning --exclude=SC1090,SC1091 --shell=bash \
   $(find . -name "*.sh" ! -path "./.git/*")
 
-# Python
-pylint web/server.py \
+# Python (every module under web/, blueprints included)
+pylint web/*.py web/blueprints/*.py \
   --disable=C0114,C0115,C0116 \
   --disable=R0903,R0913,R0914 \
   --fail-under=7.0
@@ -88,9 +88,29 @@ bash download/maps.sh --region us            # tiles + fonts + satellite overlay
 
 ## Architecture
 
-### Web server (`web/server.py`)
+### Web server (`web/`)
 
-Single-file Flask app. All port constants and the `SERVICES` registry live in `web/constants.py` — **never hardcode ports**. The `_inject_globals()` context processor makes every port constant available in every Jinja template automatically.
+Flask app split into an app factory plus feature blueprints. URL paths are unchanged from the old single-file layout; only endpoint names carry a blueprint prefix (`url_for("notes.note_view")`, `url_for("core.index")`). Templates use literal paths, not `url_for`.
+
+| File | Owns |
+|------|------|
+| `server.py` | Builds `app`: config, per-route body limits, CSRF + limiter `init_app`, `_inject_globals()`, security headers, error pages, blueprint registration, starts the index refresher. gunicorn target is still `server:app`. |
+| `settings.py` | Everything read from the environment at startup: `STORAGE_PATH`, `REPO_DIR`, timeouts, `OLLAMA_BASE`, `ADMIN_PASSWORD_FILE`, captive-portal hosts. (Named `settings`, not `config`, so it never collides with the repo's `config/` directory on `sys.path`.) |
+| `extensions.py` | The `csrf` and `limiter` instances, created app-less so blueprints can decorate with them. |
+| `common.py` | `_TTLCache`, `_safe_walk`, admin auth (`is_admin`, `_admin_required`), `_require_json`, storage/content stats, service probes (`check_all_services`), connectivity, and the detached-job helpers (`_launch_detached`, `_read_job_state`). |
+| `search_index.py` | Read side of the SQLite indexes (`.search_index.db`, `.content_index.db`, `.drug_index.db`), the FTS filename-index builder + refresher thread, and the Kiwix full-text search wrapper. |
+| `constants.py` | Ports, `SERVICES`, `CATEGORIES`, `DOWNLOAD_CATEGORIES` — **never hardcode ports**. |
+| `textutils.py` | Pure helpers: Markdown subset, pins/GPX/GeoJSON, Kiwix catalog XML, repeater CSV. |
+| `blueprints/core.py` | `/`, `/category`, `/files`, `/serve`, `/apps`, `/search`, `/health`, captive-portal probes. |
+| `blueprints/ai.py` | `/ai`, `/api/ai/chat` — RAG retrieval + streaming Ollama proxy. |
+| `blueprints/maps.py` | `/maps`, `/api/map/*` — pins DB, PMTiles asset discovery, relaxed CSP. |
+| `blueprints/content.py` | `/content`, `/api/content/*` — Kiwix catalog proxy, ZIM downloads, rescan. |
+| `blueprints/notes.py` | `/notes/*`, `/shared/*` — Markdown notebook and file drop box. |
+| `blueprints/comms.py` | `/comms/*` — Morse page, mesh clients, repeater CSVs. |
+| `blueprints/drugs.py` | `/drugs/*`, `/api/drugs/*` — disclaimer-gated drug reference. |
+| `blueprints/system.py` | `/login`, `/logout`, `/status`, `/api/status`, `/api/downloads`, `/api/update/*`, `/api/service/*/restart`, `/api/system`, `/api/connectivity`. |
+
+Adding a feature: create `blueprints/<name>.py` with `bp = Blueprint("<name>", __name__)`, import shared helpers from `common`/`settings`/`search_index`, and add `bp` to `ALL_BLUEPRINTS` in `blueprints/__init__.py`. Module-level paths (`STORAGE_PATH / "x"`) are fine — tests monkeypatch them per module.
 
 Key patterns:
 
@@ -101,7 +121,7 @@ Key patterns:
 - **Rate limiting:** Flask-Limiter at 120/min default, 30/min on `/search`, 5/min on `/api/ai/chat`.
 - **CSRF:** Flask-WTF `CSRFProtect` on HTML form POSTs; `/api/ai/chat` is `@csrf.exempt` but enforces `Content-Type: application/json` (browsers cannot send that cross-origin without a CORS preflight).
 - **AI RAG + streaming:** `ai_chat()` first calls `_retrieve_context()` (Kiwix full-text search → article excerpts) and injects them into the system prompt via `_build_rag_prompt()`. The Ollama completion is streamed to the client as newline-delimited JSON (`{"sources":...}`, then `{"delta":...}`, then `{"done":...}`). Pre-stream errors keep real HTTP status codes; mid-stream failures become an `{"error":...}` line. Requires gunicorn `--threads` (a stream holds a worker) and nginx `proxy_buffering off` on `/api/ai/chat`.
-- **Search index:** `/search` queries a SQLite **FTS5** filename index (`$STORAGE/.search_index.db`) built by a background thread (`_index_refresher`, 6 h cadence, on-demand rebuild via `_trigger_index_build`). Falls back to `_search_walk()` until the index exists. Download scripts `rm` the DB on completion to force a rebuild. A second `/search` section shows in-article Kiwix hits via `_kiwix_search()`.
+- **Search index:** `/search` queries a SQLite **FTS5** filename index (`$STORAGE/.search_index.db`) built by a background thread (`search_index._index_refresher`, 6 h cadence, on-demand rebuild via `_trigger_index_build`). Falls back to `_search_walk()` until the index exists. Download scripts `rm` the DB on completion to force a rebuild. A second `/search` section shows in-article Kiwix hits via `_kiwix_search()`.
 - **Download progress:** `/api/downloads` (`_compute_download_status`) reads `.download_progress` (written by `download_all.sh`'s `run_category`), content sizes, and the `.logs` tail. Category ids in `constants.DOWNLOAD_CATEGORIES` **must** match the `run_category` names.
 - **One-click update:** `POST /api/update/start` launches `scripts/update_content.sh` detached (`start_new_session`); state is reconstructed from disk (`.logs/update_content.{log,pid}` + an `UPDATE_FINISHED exit=N` marker the bash wrapper appends) because gunicorn workers don't share memory. `GET /api/update/status` polls it; button UI lives in `status.html`. The refresh is gap-fill only — `download_zim` skips any title already owned (any build, any path) and enforces a 10 GB free-space margin; ZIM build upgrades stay manual (`kiwix_content.sh --update`). The same log/marker convention is reused by `_launch_detached()`/`_read_job_state()` for ZIM downloads (`ZIMDL_FINISHED`) and library rescans (`RESCAN_FINISHED`).
 - **Nightly auto-update:** `systemd/survive-content-update.timer` runs `update_content.sh --scheduled` (skips when offline or when a manual update is running, caps bandwidth with `SURVIVE_AUTO_UPDATE_RATE_LIMIT`). `GET/POST /api/update/schedule` reads the timer with `systemctl show` and flips it with the two exact `enable/disable --now` commands allowlisted by `scripts/install_sudoers.sh`. `generate_services.sh` rewrites `OnCalendar` from `SURVIVE_AUTO_UPDATE_TIME` and exports `SURVIVE_REPO_DIR` so the installed dashboard (a copy under `/opt/survive`) can find the scripts in the clone.
@@ -179,8 +199,8 @@ Production deployment runs gunicorn under `User=pi` at `/opt/survive`. Path `/op
 
 ### Templates (`web/templates/`)
 
-All templates extend `base.html`. The nav bar in `base.html` uses `PORT_KIWIX`, `PORT_KOLIBRI`, etc. injected by `_inject_globals()`. A sticky amber banner is shown automatically when `storage_mounted` is `False` (injected alongside the port constants).
+All templates extend `base.html` and link with literal paths (`/notes`, `/api/...`), never `url_for`, so moving a route between blueprints needs no template change. The nav bar in `base.html` uses `PORT_KIWIX`, `PORT_KOLIBRI`, etc. injected by `_inject_globals()`. A sticky amber banner is shown automatically when `storage_mounted` is `False` (injected alongside the port constants).
 
 ### CI (`.github/workflows/test.yml`)
 
-Three jobs: `shellcheck` (all `*.sh`), `python` (pylint on `web/*.py` + `scripts/*.py`, pytest in `tests/`, smoke tests), `validate-configs` (nginx + YAML). ShellCheck excludes `SC1090`/`SC1091` — dynamic `source "$_CONF"` is intentional. Pylint threshold is 7.0 with docstring and naming rules disabled.
+Three jobs: `shellcheck` (all `*.sh`), `python` (pylint on `web/*.py` + `web/blueprints/*.py` + `scripts/*.py`, pytest in `tests/`, smoke tests), `validate-configs` (nginx + YAML). ShellCheck excludes `SC1090`/`SC1091` — dynamic `source "$_CONF"` is intentional. Pylint threshold is 7.0 with docstring and naming rules disabled.

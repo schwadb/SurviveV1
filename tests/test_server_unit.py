@@ -1,4 +1,4 @@
-"""Unit tests for web/server.py's pure logic.
+"""Unit tests for the dashboard's pure logic (web/*.py and web/blueprints/).
 
 Run: python3 -m pytest tests/ -q
 No network, no Ollama, no Kiwix — everything external is either avoided or
@@ -7,78 +7,79 @@ exercised through failure paths.
 
 import re
 import sqlite3
+import subprocess
 
 import pytest
 
 
 # ── HTML stripping ─────────────────────────────────────────────────────────────
 
-def test_strip_html_removes_tags(server):
-    assert server._strip_html("<p>hello <b>world</b></p>") == "hello world"
+def test_strip_html_removes_tags(idx):
+    assert idx._strip_html("<p>hello <b>world</b></p>") == "hello world"
 
 
-def test_strip_html_drops_script_and_style_contents(server):
+def test_strip_html_drops_script_and_style_contents(idx):
     html = "<script>evil()</script>text<style>.a{color:red}</style>"
-    assert server._strip_html(html) == "text"
+    assert idx._strip_html(html) == "text"
 
 
-def test_strip_html_collapses_whitespace(server):
-    assert server._strip_html("a\n\n  b\t c") == "a b c"
+def test_strip_html_collapses_whitespace(idx):
+    assert idx._strip_html("a\n\n  b\t c") == "a b c"
 
 
 # ── Kiwix link handling ────────────────────────────────────────────────────────
 
-def test_kiwix_path_strips_host(server):
+def test_kiwix_path_strips_host(idx):
     link = "http://localhost:8081/viewer#wikipedia/A/Water"
-    assert server._kiwix_path(link) == "/viewer#wikipedia/A/Water"
+    assert idx._kiwix_path(link) == "/viewer#wikipedia/A/Water"
 
 
-def test_kiwix_path_passthrough_relative(server):
-    assert server._kiwix_path("/viewer#a/b") == "/viewer#a/b"
+def test_kiwix_path_passthrough_relative(idx):
+    assert idx._kiwix_path("/viewer#a/b") == "/viewer#a/b"
 
 
-def test_kiwix_path_empty(server):
-    assert server._kiwix_path("") == ""
+def test_kiwix_path_empty(idx):
+    assert idx._kiwix_path("") == ""
 
 
 # ── RAG prompt building ────────────────────────────────────────────────────────
 
-def test_rag_prompt_empty_articles_admits_no_sources(server):
-    prompt = server._build_rag_prompt([])
+def test_rag_prompt_empty_articles_admits_no_sources(ai):
+    prompt = ai._build_rag_prompt([])
     assert "No reference articles" in prompt
 
 
-def test_rag_prompt_numbers_articles(server):
+def test_rag_prompt_numbers_articles(ai):
     articles = [
         {"title": "Water", "snippet": "s1", "text": "boil it"},
         {"title": "Burns", "snippet": "s2", "text": "cool it"},
     ]
-    prompt = server._build_rag_prompt(articles)
+    prompt = ai._build_rag_prompt(articles)
     assert "[1] Water: boil it" in prompt
     assert "[2] Burns: cool it" in prompt
     assert "source" in prompt.lower()
 
 
-def test_sources_for_builds_host_urls_and_doc_urls(server):
+def test_sources_for_builds_host_urls_and_doc_urls(ai):
     articles = [
         {"title": "Kiwix hit", "path": "/viewer#a"},
         {"title": "Doc hit", "url": "/serve/pdfs/x.pdf#page=3"},
     ]
-    sources = server._sources_for(articles, "192.168.1.5")
-    assert sources[0]["url"] == f"http://192.168.1.5:{server.PORT_KIWIX}/viewer#a"
+    sources = ai._sources_for(articles, "192.168.1.5")
+    assert sources[0]["url"] == f"http://192.168.1.5:{ai.PORT_KIWIX}/viewer#a"
     assert sources[1]["url"] == "/serve/pdfs/x.pdf#page=3"
 
 
 # ── FTS sanitisation + filename index ─────────────────────────────────────────
 
-def test_fts_sanitize_strips_operators(server):
-    assert '"' not in server._fts_sanitize('water AND "')
-    assert server._fts_sanitize("   ") == ""
-    assert server._fts_sanitize("doct") == "doct*"
+def test_fts_sanitize_strips_operators(idx):
+    assert '"' not in idx._fts_sanitize('water AND "')
+    assert idx._fts_sanitize("   ") == ""
+    assert idx._fts_sanitize("doct") == "doct*"
 
 
 @pytest.fixture(scope="session")
-def built_index(server, storage):
+def built_index(idx, storage):
     (storage / "pdfs").mkdir(exist_ok=True)
     names = [
         "Where_There_Is_No_Doctor.pdf",
@@ -89,7 +90,7 @@ def built_index(server, storage):
     ]
     for n in names:
         (storage / "pdfs" / n).touch()
-    count = server._rebuild_search_index()
+    count = idx._rebuild_search_index()
     return count
 
 
@@ -97,34 +98,34 @@ def test_index_build_counts_files(built_index):
     assert built_index == 5
 
 
-def test_index_matches_normalised_names(server, built_index):
-    hits = server._query_search_index("doctor")
+def test_index_matches_normalised_names(built_index, idx):
+    hits = idx._query_search_index("doctor")
     assert any(h["filename"] == "Where_There_Is_No_Doctor.pdf" for h in hits)
 
 
-def test_index_prefix_match(server, built_index):
-    hits = server._query_search_index("doct")
+def test_index_prefix_match(built_index, idx):
+    hits = idx._query_search_index("doct")
     assert hits, "prefix query should match"
 
 
-def test_index_syntax_bomb_returns_empty(server, built_index):
-    assert server._query_search_index('water AND "') == []
+def test_index_syntax_bomb_returns_empty(built_index, idx):
+    assert idx._query_search_index('water AND "') == []
 
 
-def test_index_meta_after_build(server, built_index):
-    meta = server._index_meta()
+def test_index_meta_after_build(built_index, idx):
+    meta = idx._index_meta()
     assert meta["count"] == 5
     assert meta["built_at"] is not None
 
 
 # ── Document (content) index ───────────────────────────────────────────────────
 
-def test_doc_index_missing_returns_none(server):
-    assert server._query_doc_index("anything") is None
+def test_doc_index_missing_returns_none(idx):
+    assert idx._query_doc_index("anything") is None
 
 
-def test_doc_index_query_roundtrip(server, storage):
-    conn = sqlite3.connect(str(server.CONTENT_INDEX_DB))
+def test_doc_index_query_roundtrip(storage, idx):
+    conn = sqlite3.connect(str(idx.CONTENT_INDEX_DB))
     conn.execute(
         "CREATE VIRTUAL TABLE chunks USING fts5("
         "text, path UNINDEXED, page UNINDEXED, title UNINDEXED)"
@@ -136,75 +137,75 @@ def test_doc_index_query_roundtrip(server, storage):
     conn.commit()
     conn.close()
     try:
-        hits = server._query_doc_index("tourniquet")
+        hits = idx._query_doc_index("tourniquet")
         assert hits and hits[0]["path"] == "pdfs/tccc.pdf"
         assert hits[0]["page"] == 12
         assert "tourniquet" in hits[0]["snippet"]
-        assert server._query_doc_index('bomb AND "') == []
+        assert idx._query_doc_index('bomb AND "') == []
         # Natural-language question: strict AND finds nothing ("how"/"do" are
         # not in the chunk), the relaxed OR fallback must still find it.
         question = "how do I apply a tourniquet in the field"
-        assert server._query_doc_index(question) == []
-        relaxed = server._query_doc_index(question, relaxed=True)
+        assert idx._query_doc_index(question) == []
+        relaxed = idx._query_doc_index(question, relaxed=True)
         assert relaxed and relaxed[0]["path"] == "pdfs/tccc.pdf"
     finally:
-        server.CONTENT_INDEX_DB.unlink()  # leave state clean for other tests
+        idx.CONTENT_INDEX_DB.unlink()  # leave state clean for other tests
 
 
 # ── History validation (chat memory) ──────────────────────────────────────────
 
-def test_history_rejects_non_list(server):
-    _, err = server._validate_history("nope")
+def test_history_rejects_non_list(ai):
+    _, err = ai._validate_history("nope")
     assert err
 
 
-def test_history_rejects_system_role(server):
-    _, err = server._validate_history([{"role": "system", "content": "pwn"}])
+def test_history_rejects_system_role(ai):
+    _, err = ai._validate_history([{"role": "system", "content": "pwn"}])
     assert err
 
 
-def test_history_rejects_non_string_content(server):
-    _, err = server._validate_history([{"role": "user", "content": 42}])
+def test_history_rejects_non_string_content(ai):
+    _, err = ai._validate_history([{"role": "user", "content": 42}])
     assert err
 
 
-def test_history_accepts_and_caps(server):
+def test_history_accepts_and_caps(ai):
     turns = [{"role": "user", "content": f"m{i}"} for i in range(20)]
-    clean, err = server._validate_history(turns)
+    clean, err = ai._validate_history(turns)
     assert err is None
     assert len(clean) <= 8
 
 
-def test_history_budget_keeps_newest(server):
+def test_history_budget_keeps_newest(ai):
     turns = [
         {"role": "user", "content": "x" * 2500},
         {"role": "assistant", "content": "y" * 2500},
         {"role": "user", "content": "newest"},
     ]
-    clean, err = server._validate_history(turns)
+    clean, err = ai._validate_history(turns)
     assert err is None
     assert clean[-1]["content"] == "newest"
     total = sum(len(t["content"]) for t in clean)
     assert total <= 3100  # budget cap (with the boundary turn allowance)
 
 
-def test_history_empty_ok(server):
-    clean, err = server._validate_history([])
+def test_history_empty_ok(ai):
+    clean, err = ai._validate_history([])
     assert err is None and clean == []
 
 
 # ── Download status ────────────────────────────────────────────────────────────
 
-def test_download_status_all_pending_without_progress_file(server):
-    status = server._compute_download_status()
-    assert status["total"] == len(server.DOWNLOAD_CATEGORIES)
+def test_download_status_all_pending_without_progress_file(sysm):
+    status = sysm._compute_download_status()
+    assert status["total"] == len(sysm.DOWNLOAD_CATEGORIES)
     assert all(c["status"] in ("pending", "in_progress") for c in status["categories"])
 
 
-def test_download_status_reads_progress_and_ignores_garbage(server, storage):
+def test_download_status_reads_progress_and_ignores_garbage(storage, sysm):
     (storage / ".download_progress").write_text("kiwix\r\ngarbage-not-a-category\n")
     try:
-        status = server._compute_download_status()
+        status = sysm._compute_download_status()
         by_id = {c["id"]: c for c in status["categories"]}
         assert by_id["kiwix"]["status"] == "complete"
         assert status["complete"] == 1
@@ -212,7 +213,7 @@ def test_download_status_reads_progress_and_ignores_garbage(server, storage):
         (storage / ".download_progress").unlink()
 
 
-def test_active_log_tail_strips_ansi_and_reads_only_tail(server, storage):
+def test_active_log_tail_strips_ansi_and_reads_only_tail(storage, sysm):
     logs = storage / ".logs"
     logs.mkdir(exist_ok=True)
     filler = ("old line\n" * 1200)  # ~10 KB, forces the seek path
@@ -220,7 +221,7 @@ def test_active_log_tail_strips_ansi_and_reads_only_tail(server, storage):
         filler.encode() + b"\x1b[0;34m[DL]\x1b[0m fetching wikipedia 42%\n"
     )
     try:
-        tail = server._tail_active_log()
+        tail = sysm._tail_active_log()
         assert tail["line"] == "[DL] fetching wikipedia 42%"
         assert "\x1b" not in tail["line"]
     finally:
@@ -229,15 +230,15 @@ def test_active_log_tail_strips_ansi_and_reads_only_tail(server, storage):
 
 # ── System health ──────────────────────────────────────────────────────────────
 
-def test_system_health_shape_and_no_crash(server):
-    health = server._compute_system_health()
+def test_system_health_shape_and_no_crash(sysm):
+    health = sysm._compute_system_health()
     assert set(health) >= {"temperature_c", "throttle", "memory", "load", "uptime_days"}
     assert isinstance(health["throttle"]["undervoltage"], bool)
     assert health["load"]["cores"] >= 0
 
 
-def test_throttle_state_survives_missing_vcgencmd(server):
-    state = server._read_throttle_state()
+def test_throttle_state_survives_missing_vcgencmd(sysm):
+    state = sysm._read_throttle_state()
     assert state["raw"] is None or re.match(r"0x[0-9a-f]+", state["raw"])
 
 
@@ -285,12 +286,12 @@ def test_api_endpoints_json(client):
 # ── Model-name validation regex ───────────────────────────────────────────────
 
 @pytest.mark.parametrize("name", ["survive", "gemma4:12b", "a.b-c_d:1"])
-def test_model_names_valid(server, name):
+def test_model_names_valid(name):
     assert re.fullmatch(r"[a-zA-Z0-9:.\-_]{1,100}", name)
 
 
 @pytest.mark.parametrize("name", ["a/b", "", "a b", "x" * 101])
-def test_model_names_invalid(server, name):
+def test_model_names_invalid(name):
     assert not re.fullmatch(r"[a-zA-Z0-9:.\-_]{1,100}", name)
 
 
@@ -317,15 +318,15 @@ def test_update_start_requires_json(server, admin_password):
     assert resp.status_code == 415
 
 
-def test_update_state_reads_finish_marker(server, tmp_path, monkeypatch):
+def test_update_state_reads_finish_marker(tmp_path, monkeypatch, sysm):
     logs = tmp_path / ".logs"
     logs.mkdir()
     (logs / "update_content.pid").write_text("999999")
     (logs / "update_content.log").write_text(
         "[UPDATE] doing things\nUPDATE_FINISHED exit=2\n"
     )
-    monkeypatch.setattr(server, "STORAGE_PATH", tmp_path)
-    state = server._read_update_state()  # pylint: disable=protected-access
+    monkeypatch.setattr(sysm, "STORAGE_PATH", tmp_path)
+    state = sysm._read_update_state()  # pylint: disable=protected-access
     assert state["running"] is False
     assert state["exit_code"] == 2
     # the marker line itself is not shown in the log tail
@@ -334,44 +335,44 @@ def test_update_state_reads_finish_marker(server, tmp_path, monkeypatch):
 
 # ── Remote-Ollama env hook (Phase 0) ──────────────────────────────────────────
 
-def test_resolve_ollama_base_default(server):
-    assert server._resolve_ollama_base.__doc__  # exists
+def test_resolve_ollama_base_default(cfg):
+    assert cfg._resolve_ollama_base.__doc__  # exists
     # default when env absent is localhost
     import os
     old = os.environ.pop("SURVIVE_OLLAMA_HOST", None)
     try:
-        base = server._resolve_ollama_base()
-        assert base == f"http://localhost:{server.PORT_OLLAMA}"
+        base = cfg._resolve_ollama_base()
+        assert base == f"http://localhost:{cfg.PORT_OLLAMA}"
     finally:
         if old is not None:
             os.environ["SURVIVE_OLLAMA_HOST"] = old
 
 
-def test_resolve_ollama_base_valid_remote(server, monkeypatch):
+def test_resolve_ollama_base_valid_remote(monkeypatch, cfg):
     monkeypatch.setenv("SURVIVE_OLLAMA_HOST", "http://192.168.1.50:11434/")
-    assert server._resolve_ollama_base() == "http://192.168.1.50:11434"
+    assert cfg._resolve_ollama_base() == "http://192.168.1.50:11434"
 
 
-def test_resolve_ollama_base_garbage_falls_back(server, monkeypatch):
+def test_resolve_ollama_base_garbage_falls_back(monkeypatch, cfg):
     monkeypatch.setenv("SURVIVE_OLLAMA_HOST", "not a url")
-    assert server._resolve_ollama_base() == f"http://localhost:{server.PORT_OLLAMA}"
+    assert cfg._resolve_ollama_base() == f"http://localhost:{cfg.PORT_OLLAMA}"
 
 
-def test_ai_page_renders_when_ollama_down(server, client, monkeypatch):
+def test_ai_page_renders_when_ollama_down(ai, client, monkeypatch):
     # _ollama_alive False => page still renders, empty model list, no exception
-    monkeypatch.setattr(server, "_ollama_alive", lambda: False)
+    monkeypatch.setattr(ai, "_ollama_alive", lambda: False)
     resp = client.get("/ai")
     assert resp.status_code == 200
 
 
-def test_check_all_services_ai_uses_ollama_alive(server, monkeypatch):
+def test_check_all_services_ai_uses_ollama_alive(server, monkeypatch, common):
     called = {"ai": False}
     def fake_alive():
         called["ai"] = True
         return True
-    monkeypatch.setattr(server, "_ollama_alive", fake_alive)
-    monkeypatch.setattr(server, "check_service", lambda port: False)
-    result = server.check_all_services()
+    monkeypatch.setattr(common, "_ollama_alive", fake_alive)
+    monkeypatch.setattr(common, "check_service", lambda port: False)
+    result = common.check_all_services()
     assert called["ai"] is True
     assert result["ai"]["running"] is True
 
@@ -404,7 +405,7 @@ def test_apps_page_empty_storage(client):
     assert resp.status_code == 200
 
 
-def test_apk_mimetype_registered(server):
+def test_apk_mimetype_registered(server):  # pylint: disable=unused-argument
     import mimetypes
     typ, _ = mimetypes.guess_type("kiwix.apk")
     assert typ == "application/vnd.android.package-archive"
@@ -417,13 +418,13 @@ def _csrf_token(html):
     return m.group(1) if m else None
 
 
-def test_update_start_403_when_no_admin_password(server):
+def test_update_start_403_when_no_admin_password(server, cfg, common):
     # No password file => admin endpoints fail closed with 403.
     try:
-        server.ADMIN_PASSWORD_FILE.unlink()
+        cfg.ADMIN_PASSWORD_FILE.unlink()
     except FileNotFoundError:
         pass
-    server._admin_hash_cache._ts = 0.0
+    common._admin_hash_cache._ts = 0.0
     c = server.app.test_client()
     resp = c.post("/api/update/start", json={})
     assert resp.status_code == 403
@@ -475,12 +476,12 @@ def test_login_form_requires_csrf(server, admin_password):
 
 # ── Per-service restart (Phase 3) ─────────────────────────────────────────────
 
-def test_service_restart_requires_admin(server):
+def test_service_restart_requires_admin(server, cfg, common):
     try:
-        server.ADMIN_PASSWORD_FILE.unlink()
+        cfg.ADMIN_PASSWORD_FILE.unlink()
     except FileNotFoundError:
         pass
-    server._admin_hash_cache._ts = 0.0
+    common._admin_hash_cache._ts = 0.0
     c = server.app.test_client()
     resp = c.post("/api/service/kiwix/restart", json={})
     assert resp.status_code == 403
@@ -509,7 +510,7 @@ def test_service_restart_runs_allowlisted_argv(server, admin_password, monkeypat
     def fake_run(cmd, **kwargs):
         captured["cmd"] = cmd
         return _R()
-    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     c = _admin_client(server, admin_password)
     resp = c.post("/api/service/kiwix/restart", json={})
     assert resp.status_code == 200
@@ -524,7 +525,7 @@ def test_service_restart_dashboard_is_detached(server, admin_password, monkeypat
         class _P:
             pid = 4242
         return _P()
-    monkeypatch.setattr(server.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
     # dashboard isn't a SERVICES key; assert the mapped-unit path via 'maps'
     # would use run, while a hypothetical self-restart uses Popen. Here we
     # confirm martin-tiles uses run (not detached).
@@ -532,7 +533,7 @@ def test_service_restart_dashboard_is_detached(server, admin_password, monkeypat
         returncode = 0
         stdout = ""
         stderr = ""
-    monkeypatch.setattr(server.subprocess, "run", lambda cmd, **k: _R())
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **k: _R())
     c = _admin_client(server, admin_password)
     resp = c.post("/api/service/maps/restart", json={})
     assert resp.status_code == 200
@@ -540,9 +541,9 @@ def test_service_restart_dashboard_is_detached(server, admin_password, monkeypat
 
 # ── Offline drug reference (Phase 4) ──────────────────────────────────────────
 
-def _build_drug_db(server):
+def _build_drug_db(idx):
     """Build a 3-drug fixture drug index matching build_drug_index.py's schema."""
-    conn = sqlite3.connect(str(server.DRUG_INDEX_DB))
+    conn = sqlite3.connect(str(idx.DRUG_INDEX_DB))
     conn.executescript(
         """
         CREATE TABLE drugs (id INTEGER PRIMARY KEY, brand_name TEXT,
@@ -578,24 +579,24 @@ def _build_drug_db(server):
     conn.close()
 
 
-def test_drug_index_missing_returns_none(server):
-    server.DRUG_INDEX_DB.unlink(missing_ok=True)
-    assert server._query_drug_index("amoxicillin") is None
+def test_drug_index_missing_returns_none(idx):
+    idx.DRUG_INDEX_DB.unlink(missing_ok=True)
+    assert idx._query_drug_index("amoxicillin") is None
 
 
-def test_drug_search_by_name_and_symptom(server):
-    _build_drug_db(server)
+def test_drug_search_by_name_and_symptom(idx):
+    _build_drug_db(idx)
     try:
-        by_drug = server._query_drug_index("amoxicillin", mode="drug")
+        by_drug = idx._query_drug_index("amoxicillin", mode="drug")
         assert by_drug and by_drug[0]["generic_name"] == "amoxicillin"
-        by_symptom = server._query_drug_index("diarrhea", mode="symptom")
+        by_symptom = idx._query_drug_index("diarrhea", mode="symptom")
         assert by_symptom and by_symptom[0]["brand_name"] == "Imodium"
     finally:
-        server.DRUG_INDEX_DB.unlink(missing_ok=True)
+        idx.DRUG_INDEX_DB.unlink(missing_ok=True)
 
 
-def test_drug_disclaimer_gate(server):
-    _build_drug_db(server)
+def test_drug_disclaimer_gate(server, idx):
+    _build_drug_db(idx)
     try:
         c = server.app.test_client()
         # Before accepting: page shows the disclaimer, not results.
@@ -608,20 +609,20 @@ def test_drug_disclaimer_gate(server):
         assert resp.status_code == 200
         assert b"Amoxil" in resp.data
     finally:
-        server.DRUG_INDEX_DB.unlink(missing_ok=True)
+        idx.DRUG_INDEX_DB.unlink(missing_ok=True)
 
 
-def test_drug_interactions_text_match(server):
-    _build_drug_db(server)
+def test_drug_interactions_text_match(server, idx):
+    _build_drug_db(idx)
     try:
         c = server.app.test_client()
         token = _csrf_token(c.get("/drugs").get_data(as_text=True))
         c.post("/drugs/disclaimer", data={"csrf_token": token, "next": "/drugs"})
-        amox = server._query_drug_index("amoxicillin")[0]["id"]
+        amox = idx._query_drug_index("amoxicillin")[0]["id"]
         # Amoxil's label mentions warfarin.
         r = c.get(f"/api/drugs/interactions?a={amox}&b=warfarin").get_json()
         assert r["a_label_mentions_b"] is True
         r2 = c.get(f"/api/drugs/interactions?a={amox}&b=tylenol").get_json()
         assert r2["a_label_mentions_b"] is False
     finally:
-        server.DRUG_INDEX_DB.unlink(missing_ok=True)
+        idx.DRUG_INDEX_DB.unlink(missing_ok=True)
