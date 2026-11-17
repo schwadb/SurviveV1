@@ -257,7 +257,7 @@ curl http://localhost:8080/serve/pdfs/military_manuals/FM21-76_Army_Survival_Man
 
 Returns an HTML page listing all files in a content category.
 
-Available category IDs: `medical`, `food`, `shelter`, `energy`, `skills`, `communication`, `security`, `maps`, `reference`, `videos`, and more — see `web/server.py` `CATEGORIES` list.
+Available category IDs: `medical`, `food`, `shelter`, `energy`, `skills`, `communication`, `security`, `maps`, `reference`, `videos`, and more — see the `CATEGORIES` list in `web/constants.py`.
 
 ---
 

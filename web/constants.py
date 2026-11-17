@@ -45,7 +45,7 @@ CONTENT_BUDGET_GB = 800  # target total content size in GB
 # run_category call in download/download_all.sh — that literal string is what
 # gets written to $STORAGE_PATH/.download_progress. A mismatch makes the
 # category read as "pending" forever. `dir` is the storage subdir whose size is
-# reported (must be a key produced by _compute_content_stats in server.py).
+# reported (must be a key produced by _compute_content_stats in common.py).
 # NOTE on "dir": several libraries are delivered as Kiwix ZIMs, so their bytes
 # live under zim/ and count toward the "kiwix" row — NOT their own row. The
 # Gutenberg library (~207 GB) is a ZIM (zim/books/gutenberg_*.zim), so it is

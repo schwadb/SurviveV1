@@ -16,7 +16,7 @@ deps:  ## Install Python dependencies only (for development)
 	pip install -r requirements.txt
 
 lint:  ## Run pylint + shellcheck
-	pylint web/server.py web/constants.py scripts/index_documents.py \
+	pylint web/*.py web/blueprints/*.py scripts/index_documents.py \
 	  scripts/build_drug_index.py scripts/set_admin_password.py \
 	  --disable=C0114,C0115,C0116,R0903,R0913,R0914,R0801 --fail-under=7.0
 	@command -v shellcheck >/dev/null && \
