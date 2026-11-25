@@ -2092,7 +2092,7 @@ def comms_morse():
 def comms_repeaters():
     query = request.args.get("q", "").strip().lower()[:80]
     band = request.args.get("band", "").strip().lower()
-    rows = _repeaters_cache.get(_compute_repeaters)
+    rows = _repeaters_cache.get(_compute_repeaters) or []
     if query:
         rows = [r for r in rows if query in " ".join(str(v) for v in r.values()).lower()]
     if band in _BANDS:
