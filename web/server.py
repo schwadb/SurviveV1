@@ -60,6 +60,9 @@ logging.basicConfig(
 
 app = Flask(__name__)
 app.config.update(
+    # Lax (not Strict) because the appliance is HTTP-only behind nginx on a
+    # LAN — Secure=True would break every session, and Strict blocks the
+    # admin login redirect after a top-level navigation from an external link.
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_HTTPONLY=True,
     # Cap POST body size: the chat API only needs a JSON envelope; large bodies
@@ -378,6 +381,7 @@ def _compute_content_stats() -> dict:
         "comms": STORAGE_PATH / "comms",
         "notes": STORAGE_PATH / "notes",
         "shared": STORAGE_PATH / "shared",
+        "kolibri": STORAGE_PATH / "kolibri",
     }
     for name, path in dirs.items():
         if path.exists():
@@ -845,13 +849,14 @@ def _trigger_index_build() -> None:
         return
 
     def _run():
-        _index_building.set()
-        try:
-            _rebuild_search_index()
-        except (sqlite3.Error, OSError):
-            logging.exception("on-demand index build failed")
-        finally:
-            _index_building.clear()
+        if not _index_building.is_set():
+            _index_building.set()
+            try:
+                _rebuild_search_index()
+            except (sqlite3.Error, OSError):
+                logging.exception("on-demand index build failed")
+            finally:
+                _index_building.clear()
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -960,14 +965,14 @@ def browse_files():
     items = []
     try:
         for item in sorted(browse_dir.iterdir()):
-            if item.name.startswith("."):
+            if item.name.startswith(".") or item.is_symlink():
                 continue
-            stat = item.stat()
+            st = item.lstat()
             items.append({
                 "name": item.name,
                 "is_dir": item.is_dir(),
-                "size_mb": round(stat.st_size / (1024**2), 1) if item.is_file() else None,
-                "modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d"),
+                "size_mb": round(st.st_size / (1024**2), 1) if item.is_file() else None,
+                "modified": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d"),
                 "path": str(item.relative_to(STORAGE_PATH)),
                 "ext": item.suffix.lower().lstrip(".") if item.is_file() else "",
             })
@@ -1314,8 +1319,8 @@ def _launch_detached(script: Path, args: list, log_file: Path, pid_file: Path,
     log_file.parent.mkdir(parents=True, exist_ok=True)
     log_file.write_text("")
     cmd = ["bash", "-c",
-           'bash "$0" "${@:2}" >>"$1" 2>&1; echo "' + marker + '$?" >>"$1"',
-           str(script), str(log_file)] + [str(a) for a in args]
+           'bash "$0" "${@:3}" >>"$1" 2>&1; echo "$2$?" >>"$1"',
+           str(script), str(log_file), marker] + [str(a) for a in args]
     proc = subprocess.Popen(  # pylint: disable=consider-using-with
         cmd, cwd=str(REPO_DIR),
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -1379,27 +1384,34 @@ def _pins_connect():
 
 
 def _pins_all() -> list:
+    conn = _pins_connect()
     try:
-        with _pins_connect() as conn:
+        with conn:
             rows = conn.execute("SELECT * FROM pins ORDER BY name COLLATE NOCASE").fetchall()
         return [dict(r) for r in rows]
     except sqlite3.Error as exc:
         logging.warning("pins read failed: %s", exc)
         return []
+    finally:
+        conn.close()
 
 
 def _pin_insert_many(pins: list) -> list:
     """Insert cleaned pins; returns the stored rows."""
     now = textutils.utc_now_iso()
     stored = []
-    with _pins_lock, _pins_connect() as conn:
-        for pin in pins:
-            cur = conn.execute(
-                "INSERT INTO pins (name, lat, lon, icon, color, notes, hidden, created, updated)"
-                " VALUES (?,?,?,?,?,?,?,?,?)",
-                (pin["name"], pin["lat"], pin["lon"], pin["icon"], pin["color"],
-                 pin["notes"], pin["hidden"], now, now))
-            stored.append({**pin, "id": cur.lastrowid, "created": now, "updated": now})
+    conn = _pins_connect()
+    try:
+        with _pins_lock, conn:
+            for pin in pins:
+                cur = conn.execute(
+                    "INSERT INTO pins (name, lat, lon, icon, color, notes,"
+                    " hidden, created, updated) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (pin["name"], pin["lat"], pin["lon"], pin["icon"], pin["color"],
+                     pin["notes"], pin["hidden"], now, now))
+                stored.append({**pin, "id": cur.lastrowid, "created": now, "updated": now})
+    finally:
+        conn.close()
     return stored
 
 
@@ -1493,8 +1505,9 @@ def api_pin_modify(pin_id):
     err = _require_json()
     if err:
         return err
+    conn = _pins_connect()
     try:
-        with _pins_lock, _pins_connect() as conn:
+        with _pins_lock, conn:
             if request.method == "DELETE":
                 cur = conn.execute("DELETE FROM pins WHERE id = ?", (pin_id,))
                 if cur.rowcount == 0:
@@ -1516,6 +1529,8 @@ def api_pin_modify(pin_id):
         return jsonify({"error": str(exc)}), 400
     except sqlite3.Error as exc:
         return jsonify({"error": f"Could not update pin: {exc}"}), 500
+    finally:
+        conn.close()
 
 
 @app.route("/api/map/pins/export")
@@ -1940,10 +1955,10 @@ def _shared_listing() -> list:
     if not SHARED_DIR.is_dir():
         return items
     for entry in SHARED_DIR.iterdir():
-        if entry.name.startswith("."):
+        if entry.name.startswith(".") or entry.is_symlink():
             continue
         try:
-            st = entry.stat()
+            st = entry.lstat()
         except OSError:
             continue
         items.append({
