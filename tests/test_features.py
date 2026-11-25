@@ -174,6 +174,18 @@ def test_pins_crud_and_export(client):
     assert "Well" in names  # the imported copy survives
 
 
+def test_pins_validation_edge_cases(client):
+    """Out-of-range coordinates, NaN, missing fields, bad update targets."""
+    assert client.post("/api/map/pins", json={"lat": -91, "lon": 0}).status_code == 400
+    assert client.post("/api/map/pins", json={"lat": 0, "lon": 181}).status_code == 400
+    assert client.post("/api/map/pins", json={"lat": "nan", "lon": 0}).status_code == 400
+    assert client.post("/api/map/pins", json={}).status_code == 400
+    assert client.put("/api/map/pins/999999", json={"name": "ghost"}).status_code == 404
+    assert client.delete("/api/map/pins/999999", json={}).status_code == 404
+    resp = client.get("/api/map/pins/export?format=geojson")
+    assert resp.status_code == 200 and b"FeatureCollection" in resp.data
+
+
 # ── routes: library manager ────────────────────────────────────────────────────
 
 def test_content_page_and_local_listing(client, storage):

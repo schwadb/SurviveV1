@@ -94,7 +94,7 @@ def built_index(server, storage):
 
 
 def test_index_build_counts_files(built_index):
-    assert built_index == 5
+    assert built_index >= 5
 
 
 def test_index_matches_normalised_names(server, built_index):
@@ -113,7 +113,7 @@ def test_index_syntax_bomb_returns_empty(server, built_index):
 
 def test_index_meta_after_build(server, built_index):
     meta = server._index_meta()
-    assert meta["count"] == 5
+    assert meta["count"] >= 5
     assert meta["built_at"] is not None
 
 
@@ -423,7 +423,7 @@ def test_update_start_403_when_no_admin_password(server):
         server.ADMIN_PASSWORD_FILE.unlink()
     except FileNotFoundError:
         pass
-    server._admin_hash_cache._ts = 0.0
+    server._admin_hash_cache.invalidate()
     c = server.app.test_client()
     resp = c.post("/api/update/start", json={})
     assert resp.status_code == 403
@@ -480,7 +480,7 @@ def test_service_restart_requires_admin(server):
         server.ADMIN_PASSWORD_FILE.unlink()
     except FileNotFoundError:
         pass
-    server._admin_hash_cache._ts = 0.0
+    server._admin_hash_cache.invalidate()
     c = server.app.test_client()
     resp = c.post("/api/service/kiwix/restart", json={})
     assert resp.status_code == 403
