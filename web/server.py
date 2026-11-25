@@ -245,8 +245,8 @@ class _TTLCache:
         """Return cached value, calling compute() to refresh if TTL has expired."""
         with self._lock:
             if time.monotonic() - self._ts > self._ttl:
-                self._ts = time.monotonic()
                 self._data = compute()
+                self._ts = time.monotonic()
             return self._data
 
 
@@ -433,7 +433,7 @@ def _compute_recent_downloads() -> list:
 
 def get_recent_downloads() -> list:
     """Cached wrapper — recomputes at most once per _CACHE_TTL seconds."""
-    return _recent_cache.get(_compute_recent_downloads)
+    return _recent_cache.get(_compute_recent_downloads) or []
 
 
 # ── AI retrieval (RAG over the local Kiwix library) ─────────────────────────────
@@ -2078,7 +2078,7 @@ def comms_page():
         core_installed=core_installed,
         core_running=check_service(PORT_MESHCORE) if core_installed else False,
         core_apk=(STORAGE_PATH / "apps" / "android" / "meshcore.apk").exists(),
-        repeater_count=len(_repeaters_cache.get(_compute_repeaters)),
+        repeater_count=len(_repeaters_cache.get(_compute_repeaters) or []),
         repeater_files=[p.name for p in _repeater_files()],
     )
 
@@ -2366,7 +2366,7 @@ def _compute_download_status() -> dict:
     except OSError:
         pass
 
-    stats = get_content_stats()  # cached; no extra walk
+    stats = get_content_stats() or {}
     cats = []
     for cat in DOWNLOAD_CATEGORIES:
         size_gb = stats.get(cat["dir"], {}).get("size_gb", 0)
